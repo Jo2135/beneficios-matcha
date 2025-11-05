@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beneficios del Té Matcha - App Interactiva</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navegación Superior -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">🍵 Matcha Benefits</div>
+            <ul class="nav-menu">
+                <li><a href="#inicio" class="nav-link">Inicio</a></li>
+                <li><a href="#deficit" class="nav-link">Déficit Calórico</a></li>
+                <li><a href="#tdah" class="nav-link">TDAH</a></li>
+                <li><a href="#ayunas" class="nav-link">En Ayunas</a></li>
+                <li><a href="#como-tomar" class="nav-link">Cómo Tomar</a></li>
+            </ul>
+            <div class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="inicio" class="hero">
+        <div class="hero-content">
+            <h1>Té Matcha: Tu Aliado Natural</h1>
+            <p>Para TDAH y Pérdida de Peso</p>
+            <div class="hero-buttons">
+                <button class="btn-primary" onclick="scrollToSection('deficit')">🔥 Déficit Calórico</button>
+                <button class="btn-primary" onclick="scrollToSection('tdah')">🧠 TDAH</button>
+                <button class="btn-primary" onclick="scrollToSection('ayunas')">☀️ En Ayunas</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sección: Déficit Calórico -->
+    <section id="deficit" class="benefits-section">
+        <div class="container">
+            <h2>💚 Beneficios para Déficit Calórico</h2>
+            <p class="section-subtitle">Acelera tu metabolismo y quema de grasa de forma natural</p>
+            
+            <div class="benefits-grid" id="deficit-grid">
+                <!-- Los cards se llenarán con JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Sección: TDAH -->
+    <section id="tdah" class="benefits-section">
+        <div class="container">
+            <h2>🧠 Beneficios para TDAH</h2>
+            <p class="section-subtitle">Mejora tu atención, concentración y función cognitiva</p>
+            
+            <div class="benefits-grid" id="tdah-grid">
+                <!-- Los cards se llenarán con JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Sección: Beneficios en Ayunas -->
+    <section id="ayunas" class="benefits-section">
+        <div class="container">
+            <h2>✨ ¿Por Qué en Ayunas?</h2>
+            <p class="section-subtitle">Maximiza la absorción y efectividad del matcha</p>
+            
+            <div class="benefits-grid" id="ayunas-grid">
+                <!-- Los cards se llenarán con JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Sección: Cómo Tomar -->
+    <section id="como-tomar" class="how-to-section">
+        <div class="container">
+            <h2>🌅 Cómo Tomar Matcha en Ayunas</h2>
+            
+            <!-- Timeline de pasos -->
+            <div class="timeline">
+                <h3>Paso a Paso (7 Pasos)</h3>
+                <div class="timeline-content" id="timeline-content">
+                    <!-- Se llenará con JavaScript -->
+                </div>
+            </div>
+
+            <!-- Dosis Recomendada -->
+            <div class="dosage-section">
+                <h3>📊 Dosis Recomendada</h3>
+                <div class="dosage-grid">
+                    <div class="dosage-card">
+                        <strong>Cantidad</strong>
+                        <p>1-1.5 gramos (1/2 a 1 cucharadita)</p>
+                    </div>
+                    <div class="dosage-card">
+                        <strong>Frecuencia</strong>
+                        <p>1-2 tazas al día máximo</p>
+                    </div>
+                    <div class="dosage-card">
+                        <strong>Temperatura</strong>
+                        <p>70-80°C (no hirviendo)</p>
+                    </div>
+                    <div class="dosage-card">
+                        <strong>Momento</strong>
+                        <p>Mañana en ayunas o antes de ejercicio</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Precauciones -->
+            <div class="precautions-section">
+                <h3>⚠️ Precauciones Importantes</h3>
+                <div class="precautions-grid" id="precautions-grid">
+                    <!-- Se llenará con JavaScript -->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>📌 Recordatorios Clave</h4>
+                    <ul>
+                        <li>Máximo 3 tazas diarias (5 gramos)</li>
+                        <li>Elige matcha orgánico, grado ceremonial</li>
+                        <li>Evita después de las 4 PM</li>
+                        <li>Consulta con profesional de salud antes de cambios significativos</li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>🔬 Basado en Investigación</h4>
+                    <p>Esta app contiene información respaldada por estudios científicos publicados en revistas académicas especializadas.</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Beneficios del Té Matcha | App Educativa</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Botón "Volver Arriba" -->
+    <button id="back-to-top" class="back-to-top" onclick="scrollToTop()">↑</button>
+
+    <script src="script.js"></script>
+</body>
+</html>
