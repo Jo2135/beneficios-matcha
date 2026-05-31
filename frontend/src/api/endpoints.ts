@@ -1,0 +1,64 @@
+import { api } from "./client";
+
+// Clientes
+export const clientesApi = {
+  listar: () => api.get("/clientes").then((r) => r.data),
+  buscar: (q: string) => api.get(`/clientes/buscar?q=${q}`).then((r) => r.data),
+  obtener: (id: number) => api.get(`/clientes/${id}`).then((r) => r.data),
+  crear: (data: any) => api.post("/clientes", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.put(`/clientes/${id}`, data).then((r) => r.data),
+};
+
+// Productos
+export const productosApi = {
+  listar: (params?: { categoria?: number; origen?: string }) =>
+    api.get("/productos", { params }).then((r) => r.data),
+  buscar: (q: string) => api.get(`/productos/buscar?q=${q}`).then((r) => r.data),
+  crear: (data: any) => api.post("/productos", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.put(`/productos/${id}`, data).then((r) => r.data),
+};
+
+// Categorías
+export const categoriasApi = {
+  listar: () => api.get("/categorias").then((r) => r.data),
+};
+
+// Listas de precios
+export const listasApi = {
+  listar: () => api.get("/listas-precios").then((r) => r.data),
+  obtener: (id: number) => api.get(`/listas-precios/${id}`).then((r) => r.data),
+  crear: (data: any) => api.post("/listas-precios", data).then((r) => r.data),
+  actualizarDetalle: (id: number, lineas: any[]) =>
+    api.put(`/listas-precios/${id}/detalle`, lineas).then((r) => r.data),
+  precioParaCliente: (clienteId: number, productoId: number) =>
+    api.get(`/listas-precios/precio/${clienteId}/${productoId}`).then((r) => r.data),
+};
+
+// Cotizaciones
+export const cotizacionesApi = {
+  listar: (params?: any) => api.get("/cotizaciones", { params }).then((r) => r.data),
+  obtener: (id: number) => api.get(`/cotizaciones/${id}`).then((r) => r.data),
+  crear: (data: any) => api.post("/cotizaciones", data).then((r) => r.data),
+  cambiarEstado: (id: number, estado: string) =>
+    api.patch(`/cotizaciones/${id}/estado`, { estado }).then((r) => r.data),
+  generarFactura: (id: number) =>
+    api.post(`/cotizaciones/${id}/generar-factura`).then((r) => r.data),
+};
+
+// Facturas
+export const facturasApi = {
+  listar: (params?: any) => api.get("/facturas", { params }).then((r) => r.data),
+  obtener: (id: number) => api.get(`/facturas/${id}`).then((r) => r.data),
+  balance: () => api.get("/facturas/balance").then((r) => r.data),
+  resumenCliente: (clienteId: number) =>
+    api.get(`/facturas/cliente/${clienteId}/resumen`).then((r) => r.data),
+};
+
+// Pagos
+export const pagosApi = {
+  listar: (params?: any) => api.get("/pagos", { params }).then((r) => r.data),
+  pendientes: () => api.get("/pagos/pendientes").then((r) => r.data),
+  registrar: (data: any) => api.post("/pagos", data).then((r) => r.data),
+  asignar: (id: number, asignaciones: any[]) =>
+    api.post(`/pagos/${id}/asignar`, asignaciones).then((r) => r.data),
+};

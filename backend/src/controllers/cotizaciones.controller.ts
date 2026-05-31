@@ -1,0 +1,195 @@
+import { Request, Response } from "express";
+import { prisma } from "../lib/prisma";
+import { siguienteNumero } from "../utils/secuencia";
+import { Decimal } from "@prisma/client/runtime/library";
+
+interface LineaInput {
+  productoId: number;
+  cantidad: number;
+  notaCantidad?: string;
+  descuentoPct?: number;
+}
+
+export async function listar(req: Request, res: Response) {
+  const { estado, clienteId } = req.query;
+  const cotizaciones = await prisma.cotizacion.findMany({
+    where: {
+      ...(estado ? { estado: estado as any } : {}),
+      ...(clienteId ? { clienteId: Number(clienteId) } : {}),
+    },
+    include: {
+      cliente: { select: { id: true, nombre: true, empresaFactura: true } },
+      vendedor: { select: { id: true, nombre: true } },
+      empresa: { select: { id: true, nombre: true } },
+    },
+    orderBy: { creadoEn: "desc" },
+  });
+  res.json(cotizaciones);
+}
+
+export async function obtener(req: Request, res: Response) {
+  const cotizacion = await prisma.cotizacion.findUnique({
+    where: { id: Number(req.params.id) },
+    include: {
+      cliente: { include: { vendedor: true, listaPrecio: true } },
+      vendedor: true,
+      empresa: true,
+      lineas: {
+        include: { producto: { include: { categoria: true } } },
+        orderBy: { orden: "asc" },
+      },
+    },
+  });
+  if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
+  res.json(cotizacion);
+}
+
+export async function crear(req: Request, res: Response) {
+  const { clienteId, vendedorId, empresaId, validezDias, notas, lineas } = req.body as {
+    clienteId: number;
+    vendedorId?: number;
+    empresaId?: number;
+    validezDias?: number;
+    notas?: string;
+    lineas: LineaInput[];
+  };
+
+  const cliente = await prisma.cliente.findUnique({
+    where: { id: clienteId },
+    include: { listaPrecio: { include: { detalle: true } } },
+  });
+  if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" });
+
+  const numero = await siguienteNumero("COT");
+  const fechaVencimiento = new Date();
+  fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));
+
+  // Resolver precios con snapshot
+  const lineasConPrecios = await Promise.all(
+    lineas.map(async (linea, idx) => {
+      const detallePrecio = cliente.listaPrecio?.detalle.find(
+        (d) => d.productoId === linea.productoId
+      );
+
+      if (!detallePrecio) {
+        throw new Error(`Producto ${linea.productoId} no tiene precio en la lista del cliente`);
+      }
+
+      const descuento = linea.descuentoPct ?? Number(detallePrecio.descuentoPct);
+      const precioBase = Number(detallePrecio.precioUnitario);
+      const precioFinal = precioBase * (1 - descuento / 100);
+      const totalLinea = precioFinal * linea.cantidad;
+
+      const producto = await prisma.producto.findUnique({ where: { id: linea.productoId } });
+      const pesoTotalKg = producto?.pesoUnitarioKg
+        ? Number(producto.pesoUnitarioKg) * linea.cantidad
+        : null;
+
+      return {
+        productoId: linea.productoId,
+        cantidad: linea.cantidad,
+        notaCantidad: linea.notaCantidad,
+        precioUnitarioAplicado: precioBase,
+        descuentoPct: descuento,
+        precioFinal,
+        totalLinea,
+        listaPrecioOrigenId: cliente.listaPrecioId,
+        pesoTotalKg,
+        orden: idx,
+      };
+    })
+  );
+
+  const totalBruto = lineasConPrecios.reduce((s, l) => s + Number(l.precioUnitarioAplicado) * l.cantidad, 0);
+  const descuentoTotal = totalBruto - lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
+  const totalNeto = lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
+
+  const cotizacion = await prisma.cotizacion.create({
+    data: {
+      numero,
+      clienteId,
+      vendedorId: vendedorId ?? cliente.vendedorId,
+      empresaId,
+      validezDias: validezDias ?? 30,
+      fechaVencimiento,
+      totalBruto,
+      descuentoTotal,
+      totalNeto,
+      notas,
+      lineas: { create: lineasConPrecios },
+    },
+    include: {
+      cliente: true,
+      lineas: { include: { producto: { include: { categoria: true } } } },
+    },
+  });
+
+  res.status(201).json(cotizacion);
+}
+
+export async function cambiarEstado(req: Request, res: Response) {
+  const { estado } = req.body;
+  const cotizacion = await prisma.cotizacion.update({
+    where: { id: Number(req.params.id) },
+    data: { estado },
+  });
+  res.json(cotizacion);
+}
+
+export async function generarFactura(req: Request, res: Response) {
+  const cotizacionId = Number(req.params.id);
+
+  const cotizacion = await prisma.cotizacion.findUnique({
+    where: { id: cotizacionId },
+    include: {
+      cliente: true,
+      lineas: { include: { producto: true } },
+    },
+  });
+
+  if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
+  if (cotizacion.estado !== "APROBADA" && cotizacion.estado !== "EN_DESPACHO") {
+    return res.status(400).json({ error: "Solo se pueden facturar cotizaciones aprobadas" });
+  }
+
+  const numero = await siguienteNumero("FAC");
+  const fechaVencimiento = cotizacion.cliente.diasCredito
+    ? new Date(Date.now() + cotizacion.cliente.diasCredito * 86400000)
+    : null;
+
+  const factura = await prisma.factura.create({
+    data: {
+      numero,
+      clienteId: cotizacion.clienteId,
+      empresaId: cotizacion.empresaId,
+      fechaVencimiento,
+      totalBruto: cotizacion.totalBruto,
+      descuentoTotal: cotizacion.descuentoTotal,
+      totalNeto: cotizacion.totalNeto,
+      saldoPendiente: cotizacion.totalNeto,
+      lineas: {
+        create: cotizacion.lineas.map((l, idx) => ({
+          productoId: l.productoId,
+          cantidad: l.cantidad,
+          precioUnitario: l.precioFinal,
+          descuentoPct: l.descuentoPct,
+          totalLinea: l.totalLinea,
+          origen: l.producto.origen,
+          pesoTotalKg: l.pesoTotalKg,
+          orden: idx,
+        })),
+      },
+    },
+    include: {
+      cliente: true,
+      lineas: { include: { producto: { include: { categoria: true } } } },
+    },
+  });
+
+  await prisma.cotizacion.update({
+    where: { id: cotizacionId },
+    data: { estado: "COMPLETADA" },
+  });
+
+  res.status(201).json(factura);
+}

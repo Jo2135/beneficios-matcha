@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── CONFIGURACIÓN BASE ────────────────────────────────────────────────────
+
+model Empresa {
+  id       Int     @id @default(autoincrement())
+  nombre   String
+  rif      String  @unique
+  activa   Boolean @default(true)
+
+  cotizaciones Cotizacion[]
+  facturas     Factura[]
+}
+
+model Vendedor {
+  id                  Int       @id @default(autoincrement())
+  nombre              String
+  comisionPct         Decimal   @db.Decimal(5, 2) @default(0)
+  comisionReferidoPct Decimal   @db.Decimal(5, 2) @default(0)
+  referidoPorId       Int?
+  referidoPor         Vendedor? @relation("Referidos", fields: [referidoPorId], references: [id])
+  referidos           Vendedor[] @relation("Referidos")
+  activo              Boolean   @default(true)
+
+  clientes     Cliente[]
+  cotizaciones Cotizacion[]
+}
+
+// ─── CATÁLOGO ──────────────────────────────────────────────────────────────
+
+model CategoriaCosto {
+  id            Int     @id @default(autoincrement())
+  nombre        String  @unique
+  factorCostoKg Decimal @db.Decimal(8, 4)
+  gananciaKg    Decimal @db.Decimal(8, 4)
+  descripcion   String?
+
+  productos Producto[]
+}
+
+model Producto {
+  id             Int            @id @default(autoincrement())
+  nombre         String
+  medida         String
+  descripcion    String?
+  origen         OrigenProducto @default(INTERNO)
+  categoriaId    Int
+  categoria      CategoriaCosto @relation(fields: [categoriaId], references: [id])
+  pesoUnitarioKg Decimal?       @db.Decimal(8, 4)
+  activo         Boolean        @default(true)
+  creadoEn       DateTime       @default(now())
+
+  preciosDetalle   ListaPrecioDetalle[]
+  cotizacionLineas CotizacionLinea[]
+  despachoLineas   DespachoLinea[]
+  facturaLineas    FacturaLinea[]
+}
+
+enum OrigenProducto {
+  INTERNO
+  EXTERNO
+}
+
+// ─── LISTAS DE PRECIOS ─────────────────────────────────────────────────────
+
+model ListaPrecio {
+  id            Int       @id @default(autoincrement())
+  nombre        String
+  clienteId     Int?
+  cliente       Cliente?  @relation("ListasDelCliente", fields: [clienteId], references: [id])
+  vigenciaDesde DateTime  @default(now())
+  vigenciaHasta DateTime?
+  activa        Boolean   @default(true)
+  creadoEn      DateTime  @default(now())
+
+  detalle  ListaPrecioDetalle[]
+  clientes Cliente[]           @relation("ListaPredeterminada")
+}
+
+model ListaPrecioDetalle {
+  id            Int         @id @default(autoincrement())
+  listaPrecioId Int
+  listaPrecio   ListaPrecio @relation(fields: [listaPrecioId], references: [id])
+  productoId    Int
+  producto      Producto    @relation(fields: [productoId], references: [id])
+  precioUnitario Decimal    @db.Decimal(10, 4)
+  descuentoPct  Decimal     @db.Decimal(5, 2) @default(0)
+
+  @@unique([listaPrecioId, productoId])
+}
+
+// ─── CLIENTES ──────────────────────────────────────────────────────────────
+
+model Cliente {
+  id             Int          @id @default(autoincrement())
+  nombre         String
+  rif            String?
+  direccion      String?
+  telefono       String?
+  email          String?
+  vendedorId     Int?
+  vendedor       Vendedor?    @relation(fields: [vendedorId], references: [id])
+  listaPrecioId  Int?
+  listaPrecio    ListaPrecio? @relation("ListaPredeterminada", fields: [listaPrecioId], references: [id])
+  empresaFactura String       @default("ECOPLAST F.P.")
+  fletePct       Decimal      @db.Decimal(5, 2) @default(0)
+  diasCredito    Int          @default(0)
+  condicionPago  String?
+  observaciones  String?
+  activo         Boolean      @default(true)
+  creadoEn       DateTime     @default(now())
+
+  listasPrecios ListaPrecio[] @relation("ListasDelCliente")
+  cotizaciones  Cotizacion[]
+  facturas      Factura[]
+  pagos         Pago[]
+}
+
+// ─── COTIZACIONES ──────────────────────────────────────────────────────────
+
+model Cotizacion {
+  id               Int              @id @default(autoincrement())
+  numero           String           @unique
+  clienteId        Int
+  cliente          Cliente          @relation(fields: [clienteId], references: [id])
+  vendedorId       Int?
+  vendedor         Vendedor?        @relation(fields: [vendedorId], references: [id])
+  empresaId        Int?
+  empresa          Empresa?         @relation(fields: [empresaId], references: [id])
+  estado           EstadoCotizacion @default(BORRADOR)
+  validezDias      Int              @default(30)
+  fechaVencimiento DateTime?
+  totalBruto       Decimal          @db.Decimal(12, 2) @default(0)
+  descuentoTotal   Decimal          @db.Decimal(12, 2) @default(0)
+  totalNeto        Decimal          @db.Decimal(12, 2) @default(0)
+  notas            String?
+  creadoEn         DateTime         @default(now())
+  actualizadoEn    DateTime         @updatedAt
+
+  lineas         CotizacionLinea[]
+  despachoLineas DespachoLinea[]
+}
+
+enum EstadoCotizacion {
+  BORRADOR
+  ENVIADA
+  APROBADA
+  EN_DESPACHO
+  COMPLETADA
+  RECHAZADA
+  VENCIDA
+}
+
+model CotizacionLinea {
+  id                     Int        @id @default(autoincrement())
+  cotizacionId           Int
+  cotizacion             Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  productoId             Int
+  producto               Producto   @relation(fields: [productoId], references: [id])
+  cantidad               Decimal    @db.Decimal(10, 2)
+  notaCantidad           String?
+  precioUnitarioAplicado Decimal    @db.Decimal(10, 4)
+  descuentoPct           Decimal    @db.Decimal(5, 2) @default(0)
+  precioFinal            Decimal    @db.Decimal(10, 4)
+  totalLinea             Decimal    @db.Decimal(12, 2)
+  listaPrecioOrigenId    Int?
+  pesoTotalKg            Decimal?   @db.Decimal(10, 4)
+  orden                  Int        @default(0)
+}
+
+// ─── DESPACHOS ─────────────────────────────────────────────────────────────
+
+model OrdenDespacho {
+  id          Int            @id @default(autoincrement())
+  numero      String         @unique
+  fechaSalida DateTime       @default(now())
+  chofer      String?
+  vehiculo    String?
+  estado      EstadoDespacho @default(PENDIENTE)
+  notas       String?
+  creadoEn    DateTime       @default(now())
+
+  lineas   DespachoLinea[]
+  facturas Factura[]
+}
+
+enum EstadoDespacho {
+  PENDIENTE
+  EN_RUTA
+  ENTREGADO
+  PARCIAL
+}
+
+model DespachoLinea {
+  id                 Int           @id @default(autoincrement())
+  ordenDespachoId    Int
+  ordenDespacho      OrdenDespacho @relation(fields: [ordenDespachoId], references: [id])
+  cotizacionId       Int?
+  cotizacion         Cotizacion?   @relation(fields: [cotizacionId], references: [id])
+  productoId         Int
+  producto           Producto      @relation(fields: [productoId], references: [id])
+  cantidadPedida     Decimal       @db.Decimal(10, 2)
+  cantidadDespachada Decimal       @db.Decimal(10, 2) @default(0)
+  cantidadFaltante   Decimal       @db.Decimal(10, 2) @default(0)
+  estado             EstadoLinea   @default(PENDIENTE)
+}
+
+enum EstadoLinea {
+  PENDIENTE
+  DESPACHADO
+  FALTO
+  PARCIAL
+}
+
+// ─── FACTURAS ──────────────────────────────────────────────────────────────
+
+model Factura {
+  id               Int           @id @default(autoincrement())
+  numero           String        @unique
+  clienteId        Int
+  cliente          Cliente       @relation(fields: [clienteId], references: [id])
+  ordenDespachoId  Int?
+  ordenDespacho    OrdenDespacho? @relation(fields: [ordenDespachoId], references: [id])
+  empresaId        Int?
+  empresa          Empresa?      @relation(fields: [empresaId], references: [id])
+  estado           EstadoFactura @default(EMITIDA)
+  fechaEmision     DateTime      @default(now())
+  fechaVencimiento DateTime?
+  totalBruto       Decimal       @db.Decimal(12, 2) @default(0)
+  descuentoTotal   Decimal       @db.Decimal(12, 2) @default(0)
+  totalNeto        Decimal       @db.Decimal(12, 2) @default(0)
+  totalPagado      Decimal       @db.Decimal(12, 2) @default(0)
+  saldoPendiente   Decimal       @db.Decimal(12, 2) @default(0)
+  notas            String?
+  creadoEn         DateTime      @default(now())
+  actualizadoEn    DateTime      @updatedAt
+
+  lineas    FacturaLinea[]
+  pagos     PagoAsignacion[]
+  gastos    DespachoGasto[]
+  ganancias DistribucionGanancia[]
+}
+
+enum EstadoFactura {
+  EMITIDA
+  PENDIENTE_COBRO
+  COBRADA_PARCIAL
+  COBRADA
+  VENCIDA
+  ANULADA
+}
+
+model FacturaLinea {
+  id             Int            @id @default(autoincrement())
+  facturaId      Int
+  factura        Factura        @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  productoId     Int
+  producto       Producto       @relation(fields: [productoId], references: [id])
+  cantidad       Decimal        @db.Decimal(10, 2)
+  precioUnitario Decimal        @db.Decimal(10, 4)
+  descuentoPct   Decimal        @db.Decimal(5, 2) @default(0)
+  totalLinea     Decimal        @db.Decimal(12, 2)
+  motivoAjuste   String?
+  origen         OrigenProducto @default(INTERNO)
+  pesoTotalKg    Decimal?       @db.Decimal(10, 4)
+  orden          Int            @default(0)
+}
+
+// ─── PAGOS Y TESORERÍA ─────────────────────────────────────────────────────
+
+model Pago {
+  id                 Int        @id @default(autoincrement())
+  clienteId          Int?
+  cliente            Cliente?   @relation(fields: [clienteId], references: [id])
+  cuentaId           Int?
+  cuenta             Cuenta?    @relation(fields: [cuentaId], references: [id])
+  monto              Decimal    @db.Decimal(12, 2)
+  moneda             Moneda     @default(USD)
+  montousd           Decimal?   @db.Decimal(12, 2)
+  tasaCambioBs       Decimal?   @db.Decimal(12, 4)
+  tasaCambioCop      Decimal?   @db.Decimal(12, 4)
+  fecha              DateTime   @default(now())
+  estado             EstadoPago @default(LIBRE)
+  origenFondos       String?
+  destinoUso         String?
+  observaciones      String?
+  fechaProximoAbono  DateTime?
+  creadoEn           DateTime   @default(now())
+
+  asignaciones PagoAsignacion[]
+}
+
+enum Moneda {
+  USD
+  USDT
+  BS
+  COP
+}
+
+enum EstadoPago {
+  LIBRE
+  ASIGNADO
+  PARCIAL
+}
+
+model PagoAsignacion {
+  id              Int      @id @default(autoincrement())
+  pagoId          Int
+  pago            Pago     @relation(fields: [pagoId], references: [id])
+  facturaId       Int
+  factura         Factura  @relation(fields: [facturaId], references: [id])
+  montoAsignado   Decimal  @db.Decimal(12, 2)
+  fechaAsignacion DateTime @default(now())
+  notas           String?
+}
+
+model Cuenta {
+  id               Int      @id @default(autoincrement())
+  nombre           String
+  moneda           Moneda
+  propietario      String
+  comisionPct      Decimal  @db.Decimal(5, 2) @default(0)
+  saldoActual      Decimal  @db.Decimal(12, 2) @default(0)
+  activa           Boolean  @default(true)
+  ultimoMovimiento DateTime?
+
+  pagos       Pago[]
+  movimientos MovimientoTesoreria[]
+}
+
+model MovimientoTesoreria {
+  id           Int            @id @default(autoincrement())
+  cuentaId     Int
+  cuenta       Cuenta         @relation(fields: [cuentaId], references: [id])
+  tipo         TipoMovimiento
+  monto        Decimal        @db.Decimal(12, 2)
+  moneda       Moneda
+  tasaAplicada Decimal?       @db.Decimal(12, 4)
+  facturaId    Int?
+  fecha        DateTime       @default(now())
+  descripcion  String?
+  alertaUsdt   Boolean        @default(false)
+}
+
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+  TRANSFERENCIA
+  COMISION
+}
+
+// ─── COSTOS Y GANANCIAS ────────────────────────────────────────────────────
+
+model DespachoGasto {
+  id              Int     @id @default(autoincrement())
+  facturaId       Int
+  factura         Factura @relation(fields: [facturaId], references: [id])
+  renglon         String
+  monto           Decimal @db.Decimal(12, 2)
+  formulaAplicada String?
+  esVariable      Boolean @default(false)
+  notas           String?
+}
+
+model DistribucionGanancia {
+  id             Int     @id @default(autoincrement())
+  facturaId      Int
+  factura        Factura @relation(fields: [facturaId], references: [id])
+  beneficiario   String
+  tipo           String
+  porcentaje     Decimal @db.Decimal(5, 2)
+  montoCalculado Decimal @db.Decimal(12, 2)
+  montoAbonado   Decimal @db.Decimal(12, 2) @default(0)
+  saldoPendiente Decimal @db.Decimal(12, 2)
+  notas          String?
+}
+
+model Secuencia {
+  id      Int    @id @default(autoincrement())
+  prefijo String @unique
+  ultimo  Int    @default(0)
+}
