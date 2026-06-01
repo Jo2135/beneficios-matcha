@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { despachosApi } from "../api/endpoints";
-import { Truck, CheckCircle, AlertTriangle, Clock, Package } from "lucide-react";
+import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download } from "lucide-react";
+import { pdfDespacho } from "../utils/pdf";
 
 const ESTADO_DESPACHO: Record<string, { label: string; color: string; icon: any }> = {
   PENDIENTE:  { label: "Pendiente",  color: "#6b7280", icon: Clock },
@@ -164,11 +165,19 @@ export default function Despachos() {
               <button onClick={cerrar} style={btnClose}>✕</button>
             </div>
 
-            {despacho.facturas?.length > 0 && (
-              <div style={{ background: "#dcfce7", border: "1px solid #86efac", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#166534" }}>
-                ✓ Factura generada: <strong>{despacho.facturas[0].numero}</strong>
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              {despacho.facturas?.length > 0 && (
+                <div style={{ flex: 1, background: "#dcfce7", border: "1px solid #86efac", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#166534" }}>
+                  ✓ Factura generada: <strong>{despacho.facturas[0].numero}</strong>
+                </div>
+              )}
+              <button
+                onClick={() => pdfDespacho(despacho)}
+                style={{ ...btnAction, background: "#f1f5f9", color: "#475569" }}
+              >
+                <Download size={14} /> Manifiesto PDF
+              </button>
+            </div>
 
             {/* Tabla de líneas */}
             <div style={{ overflowX: "auto" }}>

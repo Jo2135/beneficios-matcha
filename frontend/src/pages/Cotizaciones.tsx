@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck } from "lucide-react";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download } from "lucide-react";
+import { pdfCotizacion } from "../utils/pdf";
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   BORRADOR: { label: "Borrador", color: "#6b7280" },
@@ -25,6 +26,13 @@ export default function Cotizaciones() {
   const { data: cotizaciones = [] } = useQuery({
     queryKey: ["cotizaciones", filtroEstado],
     queryFn: () => cotizacionesApi.listar(filtroEstado ? { estado: filtroEstado } : undefined),
+  });
+
+  // Carga el detalle completo con líneas cuando se abre el panel
+  const { data: cotizacionDetallada } = useQuery({
+    queryKey: ["cotizacion-detalle", detalle?.id],
+    queryFn: () => cotizacionesApi.obtener(detalle!.id),
+    enabled: !!detalle?.id,
   });
 
   const cambiarEstado = useMutation({
@@ -176,8 +184,38 @@ export default function Cotizaciones() {
               </div>
             )}
 
+            {/* Líneas de productos */}
+            {cotizacionDetallada?.lineas && cotizacionDetallada.lineas.length > 0 && (
+              <div style={{ marginBottom: 16, overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <th style={thStyle}>Producto</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>Cant.</th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>Precio</th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cotizacionDetallada.lineas.map((l: any) => (
+                      <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "7px 10px" }}>
+                          <span style={{ fontWeight: 600 }}>{l.producto?.nombre}</span>
+                          {l.producto?.medida && <span style={{ color: "#94a3b8", marginLeft: 4 }}>{l.producto.medida}</span>}
+                          {l.notaCantidad && <span style={{ color: "#64748b", marginLeft: 4 }}>({l.notaCantidad})</span>}
+                        </td>
+                        <td style={{ padding: "7px 10px", textAlign: "center" }}>{Number(l.cantidad)}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right" }}>${Number(l.precioUnitarioAplicado).toFixed(2)}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 600 }}>${Number(l.totalLinea).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {/* Acciones según estado */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8, justifyContent: "space-between", alignItems: "center" }}>
               {detalle.estado === "BORRADOR" && (
                 <button onClick={() => cambiarEstado.mutate({ id: detalle.id, estado: "ENVIADA" })} style={{ ...btnAction, background: "#dbeafe", color: "#1d4ed8" }}>
                   <Send size={14} /> Marcar Enviada
@@ -211,6 +249,16 @@ export default function Cotizaciones() {
                   </button>
                 </>
               )}
+            </div>
+            {/* Botón PDF siempre visible */}
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => cotizacionDetallada && pdfCotizacion(cotizacionDetallada)}
+                disabled={!cotizacionDetallada}
+                style={{ ...btnAction, background: "#f1f5f9", color: "#475569", opacity: cotizacionDetallada ? 1 : 0.5 }}
+              >
+                <Download size={14} /> Descargar PDF
+              </button>
             </div>
           </div>
         </div>
