@@ -6,6 +6,7 @@ import * as cotizaciones from "../controllers/cotizaciones.controller";
 import * as facturas from "../controllers/facturas.controller";
 import * as pagos from "../controllers/pagos.controller";
 import { seedRouter } from "./seed.routes";
+import { seedProductosRouter } from "./seed-productos.routes";
 import { categoriasRouter } from "./categorias.routes";
 
 const router = Router();
@@ -57,5 +58,6 @@ router.post("/pagos/:id/asignar", pagos.asignarAFactura);
 // Categorías y seed
 router.use("/categorias", categoriasRouter);
 router.use("/seed", seedRouter);
+router.use("/seed-productos", seedProductosRouter);
 
 export { router };
