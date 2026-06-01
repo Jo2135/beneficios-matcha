@@ -6,6 +6,7 @@ import Clientes from "./pages/Clientes";
 import Catalogo from "./pages/Catalogo";
 import ListasPrecios from "./pages/ListasPrecios";
 import Cotizaciones from "./pages/Cotizaciones";
+import NuevaCotizacion from "./pages/NuevaCotizacion";
 import Pagos from "./pages/Pagos";
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/catalogo" element={<Catalogo />} />
             <Route path="/precios" element={<ListasPrecios />} />
             <Route path="/cotizaciones" element={<Cotizaciones />} />
+            <Route path="/cotizaciones/nueva" element={<NuevaCotizacion />} />
             <Route path="/pagos" element={<Pagos />} />
             <Route path="/despachos" element={<Placeholder titulo="Despachos" desc="Órdenes de despacho, manifiestos y control de entrega" />} />
             <Route path="/facturas" element={<Placeholder titulo="Facturas" desc="Gestión de facturas emitidas y estados de cobro" />} />
