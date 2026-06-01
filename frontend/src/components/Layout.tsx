@@ -2,24 +2,37 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Users, Package, FileText, Truck, Receipt, Banknote,
-  BarChart3, Settings, ChevronLeft, ChevronRight, DollarSign
+  BarChart3, Settings, ChevronLeft, ChevronRight, DollarSign,
+  UserCog, LogOut, Shield, Briefcase,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
-const nav = [
-  { path: "/clientes", label: "Clientes", icon: Users },
-  { path: "/catalogo", label: "Catálogo", icon: Package },
-  { path: "/precios", label: "Listas de Precios", icon: DollarSign },
-  { path: "/cotizaciones", label: "Cotizaciones", icon: FileText },
-  { path: "/despachos", label: "Despachos", icon: Truck },
-  { path: "/facturas", label: "Facturas", icon: Receipt },
-  { path: "/pagos", label: "Pagos", icon: Banknote },
-  { path: "/reportes", label: "Reportes", icon: BarChart3 },
-  { path: "/configuracion", label: "Configuración", icon: Settings },
-];
+const ROL_BADGE = {
+  MASTER:   { label: "Master",   color: "#a78bfa", icon: Shield },
+  ADMIN:    { label: "Admin",    color: "#60a5fa", icon: Briefcase },
+  VENDEDOR: { label: "Vendedor", color: "#34d399", icon: Users },
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { usuario, logout, esMaster, puedeEditar } = useAuth();
+
+  const nav = [
+    { path: "/clientes",    label: "Clientes",          icon: Users,     roles: ["MASTER","ADMIN","VENDEDOR"] },
+    { path: "/catalogo",    label: "Catálogo",           icon: Package,   roles: ["MASTER","ADMIN","VENDEDOR"] },
+    { path: "/precios",     label: "Listas de Precios",  icon: DollarSign,roles: ["MASTER","ADMIN"] },
+    { path: "/cotizaciones",label: "Cotizaciones",        icon: FileText,  roles: ["MASTER","ADMIN","VENDEDOR"] },
+    { path: "/despachos",   label: "Despachos",           icon: Truck,     roles: ["MASTER","ADMIN"] },
+    { path: "/facturas",    label: "Facturas",            icon: Receipt,   roles: ["MASTER","ADMIN"] },
+    { path: "/pagos",       label: "Pagos",               icon: Banknote,  roles: ["MASTER","ADMIN"] },
+    { path: "/reportes",    label: "Reportes",            icon: BarChart3, roles: ["MASTER","ADMIN"] },
+    { path: "/usuarios",    label: "Usuarios",            icon: UserCog,   roles: ["MASTER","ADMIN"] },
+    { path: "/configuracion",label: "Configuración",     icon: Settings,  roles: ["MASTER"] },
+  ].filter((item) => !usuario || item.roles.includes(usuario.rol));
+
+  const rolInfo = usuario ? ROL_BADGE[usuario.rol] : null;
+  const RolIcon = rolInfo?.icon ?? Shield;
 
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Segoe UI', sans-serif" }}>
@@ -35,18 +48,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         flexShrink: 0,
       }}>
         {/* Logo */}
-        <div style={{
-          padding: "16px 12px",
-          borderBottom: "1px solid #2d3f55",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}>
-          <div style={{
-            width: 36, height: 36, background: "#2563eb",
-            borderRadius: 8, display: "flex", alignItems: "center",
-            justifyContent: "center", fontSize: 18, flexShrink: 0,
-          }}>E</div>
+        <div style={{ padding: "16px 12px", borderBottom: "1px solid #2d3f55", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, background: "#2563eb", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0, fontWeight: 700 }}>
+            E
+          </div>
           {!collapsed && (
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>ECOPLAST</div>
@@ -56,7 +61,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav items */}
-        <nav style={{ flex: 1, padding: "8px 0" }}>
+        <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
           {nav.map(({ path, label, icon: Icon }) => {
             const active = location.pathname.startsWith(path);
             return (
@@ -65,18 +70,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 to={path}
                 title={collapsed ? label : undefined}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
+                  display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 16px",
                   color: active ? "#60a5fa" : "#94a3b8",
                   background: active ? "#2d3f55" : "transparent",
-                  textDecoration: "none",
-                  fontSize: 14,
+                  textDecoration: "none", fontSize: 14,
                   fontWeight: active ? 600 : 400,
                   borderLeft: active ? "3px solid #3b82f6" : "3px solid transparent",
-                  transition: "all 0.15s",
-                  whiteSpace: "nowrap",
+                  transition: "all 0.15s", whiteSpace: "nowrap",
                 }}
               >
                 <Icon size={18} style={{ flexShrink: 0 }} />
@@ -86,21 +87,38 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
+        {/* Usuario actual */}
+        {usuario && (
+          <div style={{ borderTop: "1px solid #2d3f55", padding: "10px 12px" }}>
+            {!collapsed && (
+              <div style={{ marginBottom: 8, padding: "8px 10px", background: "#2d3f55", borderRadius: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0", marginBottom: 2 }}>{usuario.nombre}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <RolIcon size={10} style={{ color: rolInfo?.color }} />
+                  <span style={{ fontSize: 11, color: rolInfo?.color }}>{rolInfo?.label}</span>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={logout}
+              title="Cerrar sesión"
+              style={{
+                width: "100%", padding: collapsed ? "8px" : "8px 12px",
+                background: "none", border: "none", color: "#94a3b8",
+                cursor: "pointer", display: "flex", alignItems: "center",
+                gap: 8, fontSize: 13, borderRadius: 6,
+              }}
+            >
+              <LogOut size={16} style={{ flexShrink: 0 }} />
+              {!collapsed && "Cerrar sesión"}
+            </button>
+          </div>
+        )}
+
         {/* Toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          style={{
-            padding: "12px 16px",
-            background: "none",
-            border: "none",
-            color: "#94a3b8",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 13,
-            borderTop: "1px solid #2d3f55",
-          }}
+          style={{ padding: "12px 16px", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontSize: 13, borderTop: "1px solid #2d3f55" }}
         >
           {collapsed ? <ChevronRight size={16} /> : <><ChevronLeft size={16} />Contraer</>}
         </button>

@@ -30,6 +30,7 @@ model Vendedor {
 
   clientes     Cliente[]
   cotizaciones Cotizacion[]
+  usuario      Usuario?
 }
 
 // ─── CATÁLOGO ──────────────────────────────────────────────────────────────
@@ -385,4 +386,25 @@ model Secuencia {
   id      Int    @id @default(autoincrement())
   prefijo String @unique
   ultimo  Int    @default(0)
+}
+
+// ─── USUARIOS Y AUTENTICACIÓN ──────────────────────────────────────────────
+
+enum RolUsuario {
+  MASTER
+  ADMIN
+  VENDEDOR
+}
+
+model Usuario {
+  id           Int        @id @default(autoincrement())
+  nombre       String
+  email        String     @unique
+  passwordHash String
+  rol          RolUsuario @default(VENDEDOR)
+  vendedorId   Int?       @unique
+  vendedor     Vendedor?  @relation(fields: [vendedorId], references: [id])
+  activo       Boolean    @default(true)
+  creadoEn     DateTime   @default(now())
+  ultimoAcceso DateTime?
 }
