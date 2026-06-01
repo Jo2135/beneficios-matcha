@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { router } from "./routes/index";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
 const PORT = process.env.PORT || 5101;
@@ -14,6 +15,7 @@ app.use(morgan("dev"));
 app.use(express.json());
 
 app.use("/api", router);
+app.use(errorHandler);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
