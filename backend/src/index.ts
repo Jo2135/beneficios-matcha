@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 5101;
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: ["http://localhost:3001", "http://localhost:5173"] }));
+app.use(cors({ origin: /^http:\/\/localhost(:\d+)?$/ }));
 app.use(morgan("dev"));
 app.use(express.json());
 
