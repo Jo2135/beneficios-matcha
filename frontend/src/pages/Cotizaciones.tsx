@@ -109,7 +109,7 @@ export default function Cotizaciones() {
 
       {/* Modal crear despacho */}
       {modalDespacho && detalle && (
-        <div style={modalOverlay} onClick={() => setModalDespacho(false)}>
+        <div style={{ ...modalOverlay, zIndex: 100 }} onClick={() => setModalDespacho(false)}>
           <div style={{ ...modalBox, width: "min(440px, 95vw)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 700 }}>Crear Despacho</h2>
             <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
