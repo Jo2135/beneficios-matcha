@@ -30,6 +30,8 @@ export const listasApi = {
   crear: (data: any) => api.post("/listas-precios", data).then((r) => r.data),
   actualizarDetalle: (id: number, lineas: any[]) =>
     api.put(`/listas-precios/${id}/detalle`, lineas).then((r) => r.data),
+  importarPrecios: (id: number, lineas: { nombre: string; medida: string; precio: number }[]) =>
+    api.post(`/listas-precios/${id}/importar`, lineas).then((r) => r.data),
   precioParaCliente: (clienteId: number, productoId: number) =>
     api.get(`/listas-precios/precio/${clienteId}/${productoId}`).then((r) => r.data),
 };

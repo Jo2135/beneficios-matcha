@@ -33,6 +33,7 @@ router.get("/listas-precios", listaPrecios.listar);
 router.get("/listas-precios/:id", listaPrecios.obtener);
 router.post("/listas-precios", listaPrecios.crear);
 router.put("/listas-precios/:id/detalle", listaPrecios.upsertDetalle);
+router.post("/listas-precios/:id/importar", listaPrecios.importarPrecios);
 router.delete("/listas-precios/:id", listaPrecios.eliminar);
 router.get("/listas-precios/precio/:clienteId/:productoId", listaPrecios.precioParaCliente);
 

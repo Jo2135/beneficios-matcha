@@ -105,7 +105,51 @@ export async function upsertDetalle(req: Request, res: Response) {
   res.json({ actualizados: result.length });
 }
 
-export async function eliminar(req: Request, res: Response) {
+export async function importarPrecios(req: Request, res: Response) {
+  const listaId = Number(req.params.id);
+  const lineas: { nombre: string; medida: string; precio: number }[] = req.body;
+
+  if (!Array.isArray(lineas) || lineas.length === 0) {
+    return res.status(400).json({ error: "No hay líneas para importar" });
+  }
+
+  const productos = await prisma.producto.findMany({
+    where: { activo: true },
+    select: { id: true, nombre: true, medida: true },
+  });
+
+  const noEncontrados: string[] = [];
+  const ops: ReturnType<typeof prisma.listaPrecioDetalle.upsert>[] = [];
+
+  for (const linea of lineas) {
+    const precio = Number(linea.precio);
+    if (!precio || precio <= 0) continue;
+
+    const match = productos.find(
+      (p) =>
+        p.nombre.toLowerCase().trim() === String(linea.nombre).toLowerCase().trim() &&
+        p.medida.toLowerCase().trim() === String(linea.medida).toLowerCase().trim()
+    );
+
+    if (!match) {
+      noEncontrados.push(`${linea.nombre} / ${linea.medida}`);
+      continue;
+    }
+
+    ops.push(
+      prisma.listaPrecioDetalle.upsert({
+        where: { listaPrecioId_productoId: { listaPrecioId: listaId, productoId: match.id } },
+        update: { precioUnitario: precio },
+        create: { listaPrecioId: listaId, productoId: match.id, precioUnitario: precio, descuentoPct: 0 },
+      })
+    );
+  }
+
+  if (ops.length > 0) await prisma.$transaction(ops);
+
+  res.json({ importados: ops.length, noEncontrados, total: lineas.length });
+}
+
   await prisma.listaPrecio.update({
     where: { id: Number(req.params.id) },
     data: { activa: false },
