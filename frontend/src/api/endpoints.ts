@@ -54,6 +54,17 @@ export const facturasApi = {
     api.get(`/facturas/cliente/${clienteId}/resumen`).then((r) => r.data),
 };
 
+// Despachos
+export const despachosApi = {
+  listar: (params?: any) => api.get("/despachos", { params }).then((r) => r.data),
+  obtener: (id: number) => api.get(`/despachos/${id}`).then((r) => r.data),
+  crearDesdeCotizacion: (cotizacionId: number, data: any) =>
+    api.post(`/despachos/desde-cotizacion/${cotizacionId}`, data).then((r) => r.data),
+  actualizarLineas: (id: number, lineas: any[]) =>
+    api.put(`/despachos/${id}/lineas`, lineas).then((r) => r.data),
+  finalizar: (id: number) => api.post(`/despachos/${id}/finalizar`).then((r) => r.data),
+};
+
 // Pagos
 export const pagosApi = {
   listar: (params?: any) => api.get("/pagos", { params }).then((r) => r.data),

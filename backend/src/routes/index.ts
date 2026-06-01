@@ -5,6 +5,7 @@ import * as listaPrecios from "../controllers/listaPrecios.controller";
 import * as cotizaciones from "../controllers/cotizaciones.controller";
 import * as facturas from "../controllers/facturas.controller";
 import * as pagos from "../controllers/pagos.controller";
+import * as despachos from "../controllers/despachos.controller";
 import { seedRouter } from "./seed.routes";
 import { seedProductosRouter } from "./seed-productos.routes";
 import { categoriasRouter } from "./categorias.routes";
@@ -54,6 +55,13 @@ router.get("/pagos", pagos.listar);
 router.get("/pagos/pendientes", pagos.pagosPendientes);
 router.post("/pagos", pagos.registrar);
 router.post("/pagos/:id/asignar", pagos.asignarAFactura);
+
+// Despachos
+router.get("/despachos", despachos.listar);
+router.post("/despachos/desde-cotizacion/:cotizacionId", despachos.crearDesdeCotizacion);
+router.post("/despachos/:id/finalizar", despachos.finalizar);
+router.put("/despachos/:id/lineas", despachos.actualizarLineas);
+router.get("/despachos/:id", despachos.obtener);
 
 // Categorías y seed
 router.use("/categorias", categoriasRouter);

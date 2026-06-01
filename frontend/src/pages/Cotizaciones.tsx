@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { cotizacionesApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight } from "lucide-react";
+import { cotizacionesApi, despachosApi } from "../api/endpoints";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck } from "lucide-react";
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   BORRADOR: { label: "Borrador", color: "#6b7280" },
@@ -15,8 +16,11 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 
 export default function Cotizaciones() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [filtroEstado, setFiltroEstado] = useState("");
   const [detalle, setDetalle] = useState<any>(null);
+  const [modalDespacho, setModalDespacho] = useState(false);
+  const [formDespacho, setFormDespacho] = useState({ chofer: "", vehiculo: "" });
 
   const { data: cotizaciones = [] } = useQuery({
     queryKey: ["cotizaciones", filtroEstado],
@@ -40,6 +44,17 @@ export default function Cotizaciones() {
       setDetalle(null);
       alert(`Factura ${factura.numero} generada exitosamente`);
     },
+  });
+
+  const crearDespacho = useMutation({
+    mutationFn: () => despachosApi.crearDesdeCotizacion(detalle.id, formDespacho),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cotizaciones"] });
+      setDetalle(null);
+      setModalDespacho(false);
+      navigate("/despachos");
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al crear despacho"),
   });
 
   return (
@@ -92,6 +107,49 @@ export default function Cotizaciones() {
         </table>
       </div>
 
+      {/* Modal crear despacho */}
+      {modalDespacho && detalle && (
+        <div style={modalOverlay} onClick={() => setModalDespacho(false)}>
+          <div style={{ ...modalBox, width: "min(440px, 95vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 700 }}>Crear Despacho</h2>
+            <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
+              Cotización <strong>{detalle.numero}</strong> · {detalle.cliente?.nombre}
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={labelStyle}>Chofer</label>
+                <input
+                  style={inputStyle}
+                  placeholder="Nombre del chofer"
+                  value={formDespacho.chofer}
+                  onChange={(e) => setFormDespacho({ ...formDespacho, chofer: e.target.value })}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Vehículo</label>
+                <input
+                  style={inputStyle}
+                  placeholder="Placa o descripción"
+                  value={formDespacho.vehiculo}
+                  onChange={(e) => setFormDespacho({ ...formDespacho, vehiculo: e.target.value })}
+                />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 22 }}>
+              <button onClick={() => setModalDespacho(false)} style={btnSecondary}>Cancelar</button>
+              <button
+                onClick={() => crearDespacho.mutate()}
+                disabled={crearDespacho.isPending}
+                style={{ ...btnPrimary, background: "#7c3aed" }}
+              >
+                <Truck size={14} />
+                {crearDespacho.isPending ? "Creando..." : "Crear Despacho"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Panel lateral de detalle */}
       {detalle && (
         <div style={modalOverlay} onClick={() => setDetalle(null)}>
@@ -136,14 +194,22 @@ export default function Cotizaciones() {
                 </>
               )}
               {detalle.estado === "APROBADA" && (
-                <button
-                  onClick={() => generarFactura.mutate(detalle.id)}
-                  disabled={generarFactura.isPending}
-                  style={{ ...btnPrimary }}
-                >
-                  <FileText size={14} />
-                  {generarFactura.isPending ? "Generando..." : "Generar Factura"}
-                </button>
+                <>
+                  <button
+                    onClick={() => { setFormDespacho({ chofer: "", vehiculo: "" }); setModalDespacho(true); }}
+                    style={{ ...btnAction, background: "#ede9fe", color: "#6d28d9" }}
+                  >
+                    <Truck size={14} /> Crear Despacho
+                  </button>
+                  <button
+                    onClick={() => generarFactura.mutate(detalle.id)}
+                    disabled={generarFactura.isPending}
+                    style={{ ...btnPrimary }}
+                  >
+                    <FileText size={14} />
+                    {generarFactura.isPending ? "Generando..." : "Factura Directa"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -163,7 +229,10 @@ function Stat({ label, value, bold }: { label: string; value: string; bold?: boo
 }
 
 const btnPrimary: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, background: "#2563eb", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 };
+const btnSecondary: React.CSSProperties = { background: "#fff", color: "#374151", border: "1px solid #d1d5db", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 14 };
 const btnAction: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, border: "none", padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 };
+const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" };
+const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 };
 const chipBtn: React.CSSProperties = { border: "none", padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 500 };
 const cardStyle: React.CSSProperties = { background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" };
 const thStyle: React.CSSProperties = { padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase" };
