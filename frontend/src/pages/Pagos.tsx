@@ -30,7 +30,8 @@ export default function Pagos() {
   const [modalCuentas, setModalCuentas] = useState(false);
   const [form, setForm] = useState<any>(FORM_VACIO);
   const [asignaciones, setAsignaciones] = useState<any[]>([]);
-  const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: "", moneda: "USD", propietario: "Empresa", comisionPct: "0" });
+  const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: "", moneda: "USD", tipoCuenta: "Ahorro", numeroCuenta: "", cedula: "", propietario: "Empresa", comisionPct: "0" });
+  const [editCuenta, setEditCuenta] = useState<any>(null);
 
   const { data: pagos = [] } = useQuery({ queryKey: ["pagos"], queryFn: () => pagosApi.listar() });
   const { data: pendientes = [] } = useQuery({ queryKey: ["pagos-pendientes"], queryFn: pagosApi.pendientes });
@@ -48,7 +49,12 @@ export default function Pagos() {
 
   const crearCuenta = useMutation({
     mutationFn: (data: any) => cuentasApi.crear(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cuentas"] }); setNuevaCuenta({ nombre: "", moneda: "USD", propietario: "Empresa", comisionPct: "0" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cuentas"] }); setNuevaCuenta({ nombre: "", moneda: "USD", tipoCuenta: "Ahorro", numeroCuenta: "", cedula: "", propietario: "Empresa", comisionPct: "0" }); },
+  });
+
+  const actualizarCuenta = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => cuentasApi.actualizar(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cuentas"] }); setEditCuenta(null); },
   });
 
   const registrar = useMutation({
@@ -377,8 +383,8 @@ export default function Pagos() {
 
       {/* ── Modal: Gestionar Cuentas ──────────────────────────── */}
       {modalCuentas && (
-        <div style={overlay} onClick={() => setModalCuentas(false)}>
-          <div style={{ ...modal, width: "min(600px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={overlay} onClick={() => { setModalCuentas(false); setEditCuenta(null); }}>
+          <div style={{ ...modal, width: "min(700px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Cuentas Bancarias</h2>
               {cuentas.length === 0 && esMaster && (
@@ -390,52 +396,78 @@ export default function Pagos() {
 
             {/* Lista de cuentas existentes */}
             {cuentas.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
+              <div style={{ marginBottom: 20, maxHeight: 340, overflowY: "auto" }}>
                 {cuentas.map((c: any) => (
-                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f1f5f9" }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</div>
-                      <div style={{ fontSize: 12, color: "#64748b" }}>{c.moneda} · {c.propietario}</div>
-                    </div>
-                    <span style={{ ...tagStyle, background: "#f1f5f9" }}>{c.moneda}</span>
+                  <div key={c.id}>
+                    {editCuenta?.id === c.id ? (
+                      /* Modo edición inline */
+                      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                          <label style={lbl}>Nombre<input style={inp} value={editCuenta.nombre} onChange={(e) => setEditCuenta({ ...editCuenta, nombre: e.target.value })} /></label>
+                          <label style={lbl}>Moneda<select style={inp} value={editCuenta.moneda} onChange={(e) => setEditCuenta({ ...editCuenta, moneda: e.target.value })}>{MONEDAS.map((m) => <option key={m}>{m}</option>)}</select></label>
+                          <label style={lbl}>Tipo<select style={inp} value={editCuenta.tipoCuenta || ""} onChange={(e) => setEditCuenta({ ...editCuenta, tipoCuenta: e.target.value })}>
+                            <option value="">—</option>
+                            <option>Ahorro</option><option>Corriente</option><option>Billetera Digital</option><option>Efectivo</option>
+                          </select></label>
+                          <label style={lbl}>N° de Cuenta<input style={inp} value={editCuenta.numeroCuenta || ""} placeholder="Ej: 0134-0000-00-0000000000" onChange={(e) => setEditCuenta({ ...editCuenta, numeroCuenta: e.target.value })} /></label>
+                          <label style={lbl}>Cédula del titular<input style={inp} value={editCuenta.cedula || ""} placeholder="Ej: V-12345678" onChange={(e) => setEditCuenta({ ...editCuenta, cedula: e.target.value })} /></label>
+                          <label style={lbl}>Propietario<input style={inp} value={editCuenta.propietario} onChange={(e) => setEditCuenta({ ...editCuenta, propietario: e.target.value })} /></label>
+                          <label style={lbl}>Comisión %<input type="number" style={inp} value={editCuenta.comisionPct} step="0.01" onChange={(e) => setEditCuenta({ ...editCuenta, comisionPct: e.target.value })} /></label>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <button onClick={() => setEditCuenta(null)} style={btnSecondary}>Cancelar</button>
+                          <button onClick={() => actualizarCuenta.mutate({ id: c.id, data: { ...editCuenta, comisionPct: Number(editCuenta.comisionPct) } })} style={btnPrimary}>Guardar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Vista normal */
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f1f5f9" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</div>
+                          <div style={{ fontSize: 12, color: "#64748b", display: "flex", gap: 10, flexWrap: "wrap", marginTop: 2 }}>
+                            <span>{c.moneda}{c.tipoCuenta ? ` · ${c.tipoCuenta}` : ""}</span>
+                            {c.numeroCuenta && <span>N°: {c.numeroCuenta}</span>}
+                            {c.cedula && <span>CI: {c.cedula}</span>}
+                            <span>{c.propietario}</span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{ ...tagStyle }}>{c.moneda}</span>
+                          {puedeEditar && (
+                            <button onClick={() => setEditCuenta({ ...c, comisionPct: String(c.comisionPct) })} style={{ ...btnIcon, fontSize: 12, padding: "5px 10px" }}>
+                              Editar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
 
             {/* Agregar nueva cuenta */}
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Agregar nueva cuenta</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <label style={lbl}>
-                  Nombre de la cuenta
-                  <input style={inp} value={nuevaCuenta.nombre} placeholder="Ej: BANCAMIGA Dólares" onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, nombre: e.target.value })} />
-                </label>
-                <label style={lbl}>
-                  Moneda
-                  <select style={inp} value={nuevaCuenta.moneda} onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, moneda: e.target.value })}>
-                    {MONEDAS.map((m) => <option key={m}>{m}</option>)}
-                  </select>
-                </label>
-                <label style={lbl}>
-                  Propietario / Titular
-                  <input style={inp} value={nuevaCuenta.propietario} onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, propietario: e.target.value })} />
-                </label>
-                <label style={lbl}>
-                  Comisión % (si aplica)
-                  <input type="number" style={inp} value={nuevaCuenta.comisionPct} step="0.01" onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, comisionPct: e.target.value })} />
-                </label>
+            {!editCuenta && (
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Agregar nueva cuenta</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <label style={lbl}>Nombre<input style={inp} value={nuevaCuenta.nombre} placeholder="Ej: BANCAMIGA Dólares" onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, nombre: e.target.value })} /></label>
+                  <label style={lbl}>Moneda<select style={inp} value={nuevaCuenta.moneda} onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, moneda: e.target.value })}>{MONEDAS.map((m) => <option key={m}>{m}</option>)}</select></label>
+                  <label style={lbl}>Tipo de cuenta<select style={inp} value={nuevaCuenta.tipoCuenta} onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, tipoCuenta: e.target.value })}>
+                    <option>Ahorro</option><option>Corriente</option><option>Billetera Digital</option><option>Efectivo</option>
+                  </select></label>
+                  <label style={lbl}>N° de Cuenta<input style={inp} value={nuevaCuenta.numeroCuenta} placeholder="0134-0000-00-0000000000" onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, numeroCuenta: e.target.value })} /></label>
+                  <label style={lbl}>Cédula del titular<input style={inp} value={nuevaCuenta.cedula} placeholder="V-12345678" onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, cedula: e.target.value })} /></label>
+                  <label style={lbl}>Propietario / Titular<input style={inp} value={nuevaCuenta.propietario} onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, propietario: e.target.value })} /></label>
+                  <label style={lbl}>Comisión % (si aplica)<input type="number" style={inp} value={nuevaCuenta.comisionPct} step="0.01" onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, comisionPct: e.target.value })} /></label>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                  <button onClick={() => crearCuenta.mutate({ ...nuevaCuenta, comisionPct: Number(nuevaCuenta.comisionPct) })} disabled={!nuevaCuenta.nombre || crearCuenta.isPending} style={btnPrimary}>
+                    {crearCuenta.isPending ? "Guardando..." : "Agregar Cuenta"}
+                  </button>
+                </div>
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-                <button
-                  onClick={() => crearCuenta.mutate({ ...nuevaCuenta, comisionPct: Number(nuevaCuenta.comisionPct) })}
-                  disabled={!nuevaCuenta.nombre || crearCuenta.isPending}
-                  style={btnPrimary}
-                >
-                  {crearCuenta.isPending ? "Guardando..." : "Agregar Cuenta"}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}

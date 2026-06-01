@@ -325,6 +325,9 @@ model Cuenta {
   id               Int      @id @default(autoincrement())
   nombre           String
   moneda           Moneda
+  tipoCuenta       String?  // Ahorro, Corriente, Billetera Digital, Efectivo
+  numeroCuenta     String?
+  cedula           String?
   propietario      String
   comisionPct      Decimal  @db.Decimal(5, 2) @default(0)
   saldoActual      Decimal  @db.Decimal(12, 2) @default(0)
