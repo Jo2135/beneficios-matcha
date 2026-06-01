@@ -10,7 +10,8 @@ const _logoFiles = import.meta.glob<string>(
   { eager: true, import: "default" }
 );
 
-const _logoCache: Record<string, string> = {};
+interface LogoCached { data: string; w: number; h: number; }
+const _logoCache: Record<string, LogoCached> = {};
 
 function _loadLogo(tipo: "ECOPLAST" | "MAXPLASTIC"): Promise<void> {
   const key = tipo === "ECOPLAST"
@@ -25,7 +26,7 @@ function _loadLogo(tipo: "ECOPLAST" | "MAXPLASTIC"): Promise<void> {
       c.width = img.naturalWidth;
       c.height = img.naturalHeight;
       c.getContext("2d")!.drawImage(img, 0, 0);
-      _logoCache[tipo] = c.toDataURL("image/png");
+      _logoCache[tipo] = { data: c.toDataURL("image/png"), w: img.naturalWidth, h: img.naturalHeight };
       resolve();
     };
     img.onerror = () => resolve();
@@ -95,23 +96,16 @@ function detectarTema(data: any): Tema {
 // ─── LOGO DRAWING ─────────────────────────────────────────────────────────────
 
 function drawLogo(doc: jsPDF, tema: Tema, x: number, y: number, w: number, h: number) {
-  const data = _logoCache[tema.tipo];
-  if (data) {
-    // Fit image maintaining aspect ratio, centered in the box
-    const img = new Image();
-    img.src = data;
-    const ratio = img.naturalWidth && img.naturalHeight
-      ? img.naturalWidth / img.naturalHeight
-      : w / h;
-    let iw = w;
-    let ih = w / ratio;
+  const cached = _logoCache[tema.tipo];
+  if (cached) {
+    // Maintain aspect ratio, fit within box, center
+    const ratio = cached.w / cached.h;
+    let iw = w, ih = w / ratio;
     if (ih > h) { ih = h; iw = h * ratio; }
-    const ix = x + (w - iw) / 2;
-    const iy = y + (h - ih) / 2;
-    doc.addImage(data, "PNG", ix, iy, iw, ih);
+    doc.addImage(cached.data, "PNG", x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
     return;
   }
-  // Fallback placeholder while logos are loading or missing
+  // Fallback placeholder
   const [r, g, b] = tema.primary;
   doc.setFillColor(r, g, b);
   doc.roundedRect(x, y, w, h, 2, 2, "F");
@@ -223,17 +217,13 @@ function cabeceraMaxplastic(
   const M = 14;
   const [r, g, b] = tema.primary;
 
-  drawLogo(doc, tema, M, 8, 24, 20);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(r, g, b);
-  doc.text(tema.nombre, M + 28, 17);
+  // Logo wide — the MAXPLASTIC image already contains the company name
+  drawLogo(doc, tema, M, 6, 80, 22);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Formato de facturación / ${titulo.toLowerCase()}`, M + 28, 23);
+  doc.text(`Formato de facturación / ${titulo.toLowerCase()}`, M, 31);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
@@ -244,9 +234,9 @@ function cabeceraMaxplastic(
   doc.text("Moneda: USD", W - M, 22, { align: "right" });
 
   doc.setFillColor(r, g, b);
-  doc.rect(M, 31, W - M * 2, 0.5, "F");
+  doc.rect(M, 35, W - M * 2, 0.5, "F");
 
-  const cY = 38;
+  const cY = 42;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
