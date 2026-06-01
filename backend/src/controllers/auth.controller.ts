@@ -3,6 +3,11 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import { generarToken } from "../middleware/auth";
 
+function sinPassword(u: any) {
+  const { passwordHash: _, ...rest } = u;
+  return rest;
+}
+
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -52,19 +57,17 @@ export async function me(req: Request, res: Response) {
   const usuario = await prisma.usuario.findUnique({
     where: { id: req.usuario!.id },
     include: { vendedor: { select: { id: true, nombre: true, comisionPct: true } } },
-    omit: { passwordHash: true },
   });
   if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
-  res.json(usuario);
+  res.json(sinPassword(usuario));
 }
 
 export async function listarUsuarios(req: Request, res: Response) {
   const usuarios = await prisma.usuario.findMany({
     include: { vendedor: { select: { id: true, nombre: true } } },
-    omit: { passwordHash: true },
     orderBy: { nombre: "asc" },
   });
-  res.json(usuarios);
+  res.json(usuarios.map(sinPassword));
 }
 
 export async function crearUsuario(req: Request, res: Response) {
@@ -74,7 +77,6 @@ export async function crearUsuario(req: Request, res: Response) {
     return res.status(400).json({ error: "Nombre, email y contraseña son requeridos" });
   }
 
-  // Solo MASTER puede crear MASTER. ADMIN puede crear ADMIN y VENDEDOR.
   if (rol === "MASTER" && req.usuario?.rol !== "MASTER") {
     return res.status(403).json({ error: "Solo el usuario Master puede crear otro Master" });
   }
@@ -93,17 +95,15 @@ export async function crearUsuario(req: Request, res: Response) {
       rol: rol || "VENDEDOR",
       vendedorId: vendedorId || null,
     },
-    omit: { passwordHash: true },
   });
 
-  res.status(201).json(usuario);
+  res.status(201).json(sinPassword(usuario));
 }
 
 export async function cambiarPassword(req: Request, res: Response) {
   const { passwordActual, passwordNuevo } = req.body;
   const usuarioId = Number(req.params.id);
 
-  // Solo el propio usuario o el MASTER puede cambiar contraseña
   if (req.usuario!.id !== usuarioId && req.usuario!.rol !== "MASTER") {
     return res.status(403).json({ error: "Sin permisos" });
   }
@@ -111,7 +111,6 @@ export async function cambiarPassword(req: Request, res: Response) {
   const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId } });
   if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
 
-  // Si no es MASTER cambiando otra cuenta, verificar contraseña actual
   if (req.usuario!.rol !== "MASTER" || req.usuario!.id === usuarioId) {
     const ok = await bcrypt.compare(passwordActual, usuario.passwordHash);
     if (!ok) return res.status(400).json({ error: "Contraseña actual incorrecta" });
@@ -126,12 +125,10 @@ export async function toggleActivo(req: Request, res: Response) {
   const usuario = await prisma.usuario.update({
     where: { id: Number(req.params.id) },
     data: { activo: req.body.activo },
-    omit: { passwordHash: true },
   });
-  res.json(usuario);
+  res.json(sinPassword(usuario));
 }
 
-// Endpoint especial: solo funciona si no hay usuarios (primer uso del sistema)
 export async function setup(req: Request, res: Response) {
   const count = await prisma.usuario.count();
   if (count > 0) {
@@ -146,7 +143,6 @@ export async function setup(req: Request, res: Response) {
   const passwordHash = await bcrypt.hash(password, 12);
   const usuario = await prisma.usuario.create({
     data: { nombre, email: email.toLowerCase().trim(), passwordHash, rol: "MASTER" },
-    omit: { passwordHash: true },
   });
 
   const token = generarToken({
@@ -156,5 +152,5 @@ export async function setup(req: Request, res: Response) {
     nombre: usuario.nombre,
   });
 
-  res.status(201).json({ token, usuario });
+  res.status(201).json({ token, usuario: sinPassword(usuario) });
 }
