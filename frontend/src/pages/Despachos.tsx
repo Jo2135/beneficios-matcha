@@ -22,7 +22,7 @@ export default function Despachos() {
   const qc = useQueryClient();
   const [despachoId, setDespachoId] = useState<number | null>(null);
   const [cantidades, setCantidades] = useState<Record<number, number>>({});
-  const [guardando, setGuardando] = useState(false);
+
 
   const { data: despachos = [] } = useQuery({
     queryKey: ["despachos"],
