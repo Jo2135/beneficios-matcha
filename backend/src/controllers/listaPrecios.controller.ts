@@ -150,6 +150,7 @@ export async function importarPrecios(req: Request, res: Response) {
   res.json({ importados: ops.length, noEncontrados, total: lineas.length });
 }
 
+export async function eliminar(req: Request, res: Response) {
   await prisma.listaPrecio.update({
     where: { id: Number(req.params.id) },
     data: { activa: false },
