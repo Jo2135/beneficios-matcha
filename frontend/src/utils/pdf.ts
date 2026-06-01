@@ -1,6 +1,41 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+// ─── LOGO LOADER ───────────────────────────────────────────────────────────────
+// Logos are loaded from src/assets/ at runtime via Vite's asset pipeline.
+// Glob returns empty object if files are missing — placeholder is used as fallback.
+
+const _logoFiles = import.meta.glob<string>(
+  "../assets/*-logo.png",
+  { eager: true, import: "default" }
+);
+
+const _logoCache: Record<string, string> = {};
+
+function _loadLogo(tipo: "ECOPLAST" | "MAXPLASTIC"): Promise<void> {
+  const key = tipo === "ECOPLAST"
+    ? "../assets/ecoplast-logo.png"
+    : "../assets/maxplastic-logo.png";
+  const url = _logoFiles[key];
+  if (!url || _logoCache[tipo]) return Promise.resolve();
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext("2d")!.drawImage(img, 0, 0);
+      _logoCache[tipo] = c.toDataURL("image/png");
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = url;
+  });
+}
+
+// Preload both logos as soon as this module is imported
+Promise.all([_loadLogo("ECOPLAST"), _loadLogo("MAXPLASTIC")]).catch(() => {});
+
 // ─── FORMAT HELPERS ────────────────────────────────────────────────────────────
 
 const usd = (n: any): string => {
@@ -57,10 +92,26 @@ function detectarTema(data: any): Tema {
   return TEMAS[nombre] ?? TEMAS["ECOPLAST F.P."];
 }
 
-// ─── LOGO PLACEHOLDER ─────────────────────────────────────────────────────────
-// Replace with doc.addImage(base64Logo, "PNG", x, y, w, h) when logos are available
+// ─── LOGO DRAWING ─────────────────────────────────────────────────────────────
 
 function drawLogo(doc: jsPDF, tema: Tema, x: number, y: number, w: number, h: number) {
+  const data = _logoCache[tema.tipo];
+  if (data) {
+    // Fit image maintaining aspect ratio, centered in the box
+    const img = new Image();
+    img.src = data;
+    const ratio = img.naturalWidth && img.naturalHeight
+      ? img.naturalWidth / img.naturalHeight
+      : w / h;
+    let iw = w;
+    let ih = w / ratio;
+    if (ih > h) { ih = h; iw = h * ratio; }
+    const ix = x + (w - iw) / 2;
+    const iy = y + (h - ih) / 2;
+    doc.addImage(data, "PNG", ix, iy, iw, ih);
+    return;
+  }
+  // Fallback placeholder while logos are loading or missing
   const [r, g, b] = tema.primary;
   doc.setFillColor(r, g, b);
   doc.roundedRect(x, y, w, h, 2, 2, "F");
