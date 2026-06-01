@@ -75,3 +75,12 @@ export const pagosApi = {
   asignar: (id: number, asignaciones: any[]) =>
     api.post(`/pagos/${id}/asignar`, asignaciones).then((r) => r.data),
 };
+
+// Cuentas bancarias
+export const cuentasApi = {
+  listar: () => api.get("/cuentas").then((r) => r.data),
+  listarTodas: () => api.get("/cuentas/todas").then((r) => r.data),
+  crear: (data: any) => api.post("/cuentas", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.put(`/cuentas/${id}`, data).then((r) => r.data),
+  seedIniciales: () => api.post("/cuentas/seed").then((r) => r.data),
+};

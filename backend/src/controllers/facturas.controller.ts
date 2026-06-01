@@ -3,9 +3,15 @@ import { prisma } from "../lib/prisma";
 
 export async function listar(req: Request, res: Response) {
   const { estado, clienteId } = req.query;
+  // estado puede ser un valor único o varios separados por coma: "EMITIDA,PENDIENTE_COBRO"
+  const estadoFiltro = estado
+    ? String(estado).includes(",")
+      ? { in: String(estado).split(",") as any[] }
+      : (estado as any)
+    : undefined;
   const facturas = await prisma.factura.findMany({
     where: {
-      ...(estado ? { estado: estado as any } : {}),
+      ...(estadoFiltro ? { estado: estadoFiltro } : {}),
       ...(clienteId ? { clienteId: Number(clienteId) } : {}),
     },
     include: {

@@ -7,6 +7,7 @@ import * as facturas from "../controllers/facturas.controller";
 import * as pagos from "../controllers/pagos.controller";
 import * as despachos from "../controllers/despachos.controller";
 import * as auth from "../controllers/auth.controller";
+import * as cuentas from "../controllers/cuentas.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
 import { seedProductosRouter } from "./seed-productos.routes";
@@ -72,6 +73,14 @@ router.get("/facturas/balance", requireRol("MASTER", "ADMIN"), w(facturas.balanc
 router.get("/facturas/cliente/:clienteId/resumen", requireRol("MASTER", "ADMIN"), w(facturas.resumenCliente));
 router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));
+
+// ─── Cuentas bancarias ────────────────────────────────────────────────────
+router.get("/cuentas", w(cuentas.listar));
+router.get("/cuentas/todas", requireRol("MASTER", "ADMIN"), w(cuentas.listarTodas));
+router.post("/cuentas", requireRol("MASTER", "ADMIN"), w(cuentas.crear));
+router.put("/cuentas/:id", requireRol("MASTER", "ADMIN"), w(cuentas.actualizar));
+router.patch("/cuentas/:id/activa", requireRol("MASTER"), w(cuentas.toggleActiva));
+router.post("/cuentas/seed", requireRol("MASTER"), w(cuentas.seedCuentas));
 
 // ─── Pagos ────────────────────────────────────────────────────────────────
 router.get("/pagos", requireRol("MASTER", "ADMIN"), w(pagos.listar));
