@@ -67,6 +67,12 @@ export async function crear(req: Request, res: Response) {
   });
   if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" });
 
+  if (req.usuario!.rol === "VENDEDOR" && req.usuario!.vendedorId) {
+    if (cliente.vendedorId !== req.usuario!.vendedorId) {
+      return res.status(403).json({ error: "Solo puedes crear cotizaciones para tus propios clientes" });
+    }
+  }
+
   const numero = await siguienteNumero("COT");
   const fechaVencimiento = new Date();
   fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));

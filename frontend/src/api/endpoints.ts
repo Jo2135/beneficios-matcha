@@ -1,5 +1,12 @@
 import { api } from "./client";
 
+// Auth / Vendedores
+export const authApi = {
+  listarVendedores: () => api.get("/auth/vendedores").then((r) => r.data),
+  actualizarComision: (id: number, comisionPct: number) =>
+    api.patch(`/auth/usuarios/${id}/comision`, { comisionPct }).then((r) => r.data),
+};
+
 // Clientes
 export const clientesApi = {
   listar: () => api.get("/clientes").then((r) => r.data),

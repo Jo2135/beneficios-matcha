@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientesApi, listasApi } from "../api/endpoints";
+import { clientesApi, listasApi, authApi } from "../api/endpoints";
+import { useAuth } from "../contexts/AuthContext";
 import { Plus, Search, Edit2, MapPin, User } from "lucide-react";
 
 const EMPRESAS = ["ECOPLAST F.P.", "MAXPLASTIC F.P."];
 
 export default function Clientes() {
   const qc = useQueryClient();
+  const { puedeEditar } = useAuth();
   const [busqueda, setBusqueda] = useState("");
   const [modal, setModal] = useState<{ abierto: boolean; datos: any }>({ abierto: false, datos: null });
   const [form, setForm] = useState<any>({});
@@ -19,6 +21,12 @@ export default function Clientes() {
   const { data: listas = [] } = useQuery({
     queryKey: ["listas-precios"],
     queryFn: listasApi.listar,
+  });
+
+  const { data: vendedores = [] } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["vendedores"],
+    queryFn: authApi.listarVendedores,
+    enabled: puedeEditar,
   });
 
   const guardar = useMutation({
@@ -48,9 +56,11 @@ export default function Clientes() {
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Clientes</h1>
           <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>{clientes.length} clientes registrados</p>
         </div>
-        <button onClick={() => abrir()} style={btnPrimary}>
-          <Plus size={16} /> Nuevo Cliente
-        </button>
+        {puedeEditar && (
+          <button onClick={() => abrir()} style={btnPrimary}>
+            <Plus size={16} /> Nuevo Cliente
+          </button>
+        )}
       </div>
 
       {/* Búsqueda */}
@@ -105,7 +115,7 @@ export default function Clientes() {
                   <span style={{ fontSize: 13, color: "#475569" }}>{c.diasCredito} días</span>
                 </td>
                 <td style={{ ...tdStyle, width: 40 }}>
-                  <button onClick={() => abrir(c)} style={btnIcon}><Edit2 size={14} /></button>
+                  {puedeEditar && <button onClick={() => abrir(c)} style={btnIcon}><Edit2 size={14} /></button>}
                 </td>
               </tr>
             ))}
@@ -141,6 +151,13 @@ export default function Clientes() {
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>Dirección</label>
                 <input style={inputStyle} value={form.direccion || ""} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+              </div>
+              <div>
+                <label style={labelStyle}>Vendedor</label>
+                <select style={inputStyle} value={form.vendedorId || ""} onChange={(e) => setForm({ ...form, vendedorId: Number(e.target.value) || null })}>
+                  <option value="">Sin asignar</option>
+                  {(vendedores as any[]).map((v: any) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                </select>
               </div>
               <div>
                 <label style={labelStyle}>Lista de Precios</label>

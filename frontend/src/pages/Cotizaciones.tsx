@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory } from "lucide-react";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -174,11 +174,35 @@ export default function Cotizaciones() {
               </span>
             </div>
 
-            <div style={{ background: "#f8fafc", borderRadius: 8, padding: 14, marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div style={{ background: "#f8fafc", borderRadius: 8, padding: 14, marginBottom: 12, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <Stat label="Total Bruto" value={`$${Number(detalle.totalBruto).toFixed(2)}`} />
               <Stat label="Descuento" value={`$${Number(detalle.descuentoTotal).toFixed(2)}`} />
               <Stat label="Total Neto" value={`$${Number(detalle.totalNeto).toFixed(2)}`} bold />
             </div>
+
+            {/* Panel de flete y comisión — nunca en PDF */}
+            {cotizacionDetallada && (() => {
+              const fletePct = Number(cotizacionDetallada.cliente?.fletePct ?? 0);
+              const comisionPct = Number(cotizacionDetallada.vendedor?.comisionPct ?? 0);
+              const base = Number(cotizacionDetallada.totalNeto);
+              if (fletePct <= 0 && comisionPct <= 0) return null;
+              return (
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  {fletePct > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: 13, color: "#92400e", fontWeight: 600 }}>
+                      <Truck size={13} />
+                      Flete {fletePct}%: ${(base * fletePct / 100).toFixed(2)}
+                    </div>
+                  )}
+                  {comisionPct > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: 13, color: "#166534", fontWeight: 600 }}>
+                      <TrendingUp size={13} />
+                      Comisión {cotizacionDetallada.vendedor?.nombre} {comisionPct}%: ${(base * comisionPct / 100).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {detalle.notas && (
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>

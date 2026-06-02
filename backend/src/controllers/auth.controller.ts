@@ -71,10 +71,37 @@ export async function me(req: Request, res: Response) {
 
 export async function listarUsuarios(req: Request, res: Response) {
   const usuarios = await prisma.usuario.findMany({
-    include: { vendedor: { select: { id: true, nombre: true } } },
+    include: { vendedor: { select: { id: true, nombre: true, comisionPct: true } } },
     orderBy: { nombre: "asc" },
   });
   res.json(usuarios.map(sinPassword));
+}
+
+export async function listarVendedores(req: Request, res: Response) {
+  const vendedores = await prisma.vendedor.findMany({
+    where: { activo: true },
+    select: { id: true, nombre: true, comisionPct: true },
+    orderBy: { nombre: "asc" },
+  });
+  res.json(vendedores);
+}
+
+export async function actualizarComision(req: Request, res: Response) {
+  const usuarioId = Number(req.params.id);
+  const { comisionPct } = req.body;
+
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: usuarioId },
+    select: { vendedorId: true },
+  });
+  if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
+  if (!usuario.vendedorId) return res.status(400).json({ error: "El usuario no está vinculado a un vendedor" });
+
+  const vendedor = await prisma.vendedor.update({
+    where: { id: usuario.vendedorId },
+    data: { comisionPct: Number(comisionPct) },
+  });
+  res.json({ comisionPct: vendedor.comisionPct });
 }
 
 export async function crearUsuario(req: Request, res: Response) {

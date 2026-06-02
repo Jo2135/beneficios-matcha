@@ -2,8 +2,13 @@ import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 
 export async function listar(req: Request, res: Response) {
+  const usuario = req.usuario!;
+  const where: any = { activo: true };
+  if (usuario.rol === "VENDEDOR" && usuario.vendedorId) {
+    where.vendedorId = usuario.vendedorId;
+  }
   const clientes = await prisma.cliente.findMany({
-    where: { activo: true },
+    where,
     include: {
       vendedor: { select: { id: true, nombre: true } },
       listaPrecio: { select: { id: true, nombre: true } },
@@ -15,11 +20,16 @@ export async function listar(req: Request, res: Response) {
 
 export async function buscar(req: Request, res: Response) {
   const { q } = req.query;
+  const usuario = req.usuario!;
+  const where: any = {
+    activo: true,
+    nombre: { contains: String(q || ""), mode: "insensitive" },
+  };
+  if (usuario.rol === "VENDEDOR" && usuario.vendedorId) {
+    where.vendedorId = usuario.vendedorId;
+  }
   const clientes = await prisma.cliente.findMany({
-    where: {
-      activo: true,
-      nombre: { contains: String(q || ""), mode: "insensitive" },
-    },
+    where,
     include: {
       vendedor: { select: { id: true, nombre: true } },
       listaPrecio: { select: { id: true, nombre: true } },

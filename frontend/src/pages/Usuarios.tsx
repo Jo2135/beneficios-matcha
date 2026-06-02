@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { authApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { UserPlus, Shield, Users, Briefcase } from "lucide-react";
+import { UserPlus, Shield, Users, Briefcase, Percent } from "lucide-react";
 
 interface Usuario {
   id: number;
@@ -10,7 +11,7 @@ interface Usuario {
   email: string;
   rol: "MASTER" | "ADMIN" | "VENDEDOR";
   vendedorId: number | null;
-  vendedor?: { id: number; nombre: string } | null;
+  vendedor?: { id: number; nombre: string; comisionPct: string | number | null } | null;
   activo: boolean;
   ultimoAcceso: string | null;
 }
@@ -32,6 +33,7 @@ export default function Usuarios() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [form, setForm] = useState({ nombre: "", email: "", password: "", rol: "VENDEDOR" as "MASTER" | "ADMIN" | "VENDEDOR", vendedorId: "" });
   const [error, setError] = useState("");
+  const [editComision, setEditComision] = useState<{ usuarioId: number; nombre: string; valor: string } | null>(null);
 
   const { data: usuarios = [] } = useQuery<Usuario[]>({
     queryKey: ["usuarios"],
@@ -39,11 +41,9 @@ export default function Usuarios() {
   });
 
   const { data: vendedores = [] } = useQuery<{ id: number; nombre: string }[]>({
-    queryKey: ["vendedores-lista"],
-    queryFn: () => api.get("/clientes").then(() => api.get("/auth/usuarios")).then(() =>
-      api.get("/cotizaciones").then(() => fetch("/api/vendedores-lista").then(() => []))
-    ).catch(() => []),
-    enabled: false,
+    queryKey: ["vendedores"],
+    queryFn: authApi.listarVendedores,
+    enabled: esMaster,
   });
 
   const crearMutation = useMutation({
@@ -69,6 +69,16 @@ export default function Usuarios() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["usuarios"] }),
   });
 
+  const comisionMutation = useMutation({
+    mutationFn: ({ id, comisionPct }: { id: number; comisionPct: number }) =>
+      authApi.actualizarComision(id, comisionPct),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["usuarios"] });
+      setEditComision(null);
+    },
+    onError: (err: any) => alert(err?.response?.data?.error ?? "Error al actualizar comisión"),
+  });
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -88,7 +98,7 @@ export default function Usuarios() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Nombre", "Email", "Rol", "Último acceso", "Estado", ""].map((h) => (
+              {["Nombre", "Email", "Rol", "Comisión", "Último acceso", "Estado", ""].map((h) => (
                 <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr>
@@ -98,6 +108,7 @@ export default function Usuarios() {
               const ri = ROL_INFO[u.rol];
               const Icon = ri.icon;
               const esSelf = u.id === yo?.id;
+              const comisionPct = u.vendedor?.comisionPct != null ? Number(u.vendedor.comisionPct) : null;
               return (
                 <tr key={u.id} style={{ borderBottom: "1px solid #f1f5f9", opacity: u.activo ? 1 : 0.5 }}>
                   <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>
@@ -108,6 +119,24 @@ export default function Usuarios() {
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600, color: ri.color, background: ri.bg }}>
                       <Icon size={11} /> {ri.label}
                     </span>
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>
+                    {u.rol === "VENDEDOR" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: comisionPct && comisionPct > 0 ? "#16a34a" : "#94a3b8" }}>
+                          {comisionPct != null ? `${comisionPct}%` : "—"}
+                        </span>
+                        {esMaster && u.vendedorId && (
+                          <button
+                            onClick={() => setEditComision({ usuarioId: u.id, nombre: u.nombre, valor: String(comisionPct ?? 0) })}
+                            style={{ background: "#f1f5f9", border: "none", borderRadius: 4, padding: "3px 6px", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
+                            title="Editar comisión"
+                          >
+                            <Percent size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: "12px 16px", fontSize: 12, color: "#94a3b8" }}>{fecha(u.ultimoAcceso)}</td>
                   <td style={{ padding: "12px 16px" }}>
@@ -131,6 +160,40 @@ export default function Usuarios() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal editar comisión */}
+      {editComision && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: 28, width: "min(380px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 700 }}>Editar Comisión</h2>
+            <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>{editComision.nombre}</p>
+            <label style={lbl}>
+              Comisión (%)
+              <input
+                style={inp}
+                type="number"
+                step="0.5"
+                min="0"
+                max="100"
+                value={editComision.valor}
+                onChange={(e) => setEditComision({ ...editComision, valor: e.target.value })}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+              <button onClick={() => setEditComision(null)} style={{ padding: "9px 18px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 14 }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => comisionMutation.mutate({ id: editComision.usuarioId, comisionPct: Number(editComision.valor) })}
+                disabled={comisionMutation.isPending}
+                style={{ padding: "9px 18px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14 }}
+              >
+                {comisionMutation.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal crear usuario */}
       {modalAbierto && (
@@ -159,16 +222,25 @@ export default function Usuarios() {
               </label>
               <label style={lbl}>
                 Rol
-                <select style={inp} value={form.rol} onChange={(e) => setForm({ ...form, rol: e.target.value as any })}>
+                <select style={inp} value={form.rol} onChange={(e) => setForm({ ...form, rol: e.target.value as any, vendedorId: "" })}>
                   {esMaster && <option value="MASTER">Master — Acceso total</option>}
                   <option value="ADMIN">Admin — Precios, estadísticas, vendedores</option>
                   <option value="VENDEDOR">Vendedor — Cotizaciones y notas</option>
                 </select>
               </label>
               {form.rol === "VENDEDOR" && (
-                <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#0369a1" }}>
-                  El vendedor podrá ver solo sus propias cotizaciones, agregar notas en pagos y ver el costo de flete y su comisión.
-                </div>
+                <>
+                  <label style={lbl}>
+                    Vincular a Vendedor
+                    <select style={inp} value={form.vendedorId} onChange={(e) => setForm({ ...form, vendedorId: e.target.value })}>
+                      <option value="">Sin vincular</option>
+                      {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                    </select>
+                  </label>
+                  <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#0369a1" }}>
+                    El vendedor verá solo sus propios clientes y cotizaciones, y su comisión en cada cotización.
+                  </div>
+                </>
               )}
             </div>
 

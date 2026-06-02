@@ -31,10 +31,12 @@ router.use(requireAuth);
 
 // ─── AUTH (privado) ───────────────────────────────────────────────────────
 router.get("/auth/me", w(auth.me));
+router.get("/auth/vendedores", w(auth.listarVendedores));
 router.get("/auth/usuarios", requireRol("MASTER", "ADMIN"), w(auth.listarUsuarios));
 router.post("/auth/usuarios", requireRol("MASTER", "ADMIN"), w(auth.crearUsuario));
 router.patch("/auth/usuarios/:id/password", w(auth.cambiarPassword));
 router.patch("/auth/usuarios/:id/activo", requireRol("MASTER"), w(auth.toggleActivo));
+router.patch("/auth/usuarios/:id/comision", requireRol("MASTER"), w(auth.actualizarComision));
 
 // ─── Clientes ─────────────────────────────────────────────────────────────
 router.get("/clientes", w(clientes.listar));
