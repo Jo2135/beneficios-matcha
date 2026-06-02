@@ -8,6 +8,7 @@ import * as pagos from "../controllers/pagos.controller";
 import * as despachos from "../controllers/despachos.controller";
 import * as auth from "../controllers/auth.controller";
 import * as cuentas from "../controllers/cuentas.controller";
+import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
 import { seedProductosRouter } from "./seed-productos.routes";
@@ -50,6 +51,8 @@ router.get("/productos/:id", w(productos.obtener));
 router.post("/productos", requireRol("MASTER", "ADMIN"), w(productos.crear));
 router.put("/productos/:id", requireRol("MASTER", "ADMIN"), w(productos.actualizar));
 router.delete("/productos/:id", requireRol("MASTER"), w(productos.eliminar));
+router.post("/productos/:id/imagen", requireRol("MASTER", "ADMIN"), uploadMiddleware, w(subirImagen));
+router.delete("/productos/:id/imagen", requireRol("MASTER", "ADMIN"), w(eliminarImagen));
 
 // ─── Listas de precios ────────────────────────────────────────────────────
 router.get("/listas-precios", w(listaPrecios.listar));

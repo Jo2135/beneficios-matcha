@@ -54,6 +54,7 @@ model Producto {
   categoriaId    Int
   categoria      CategoriaCosto @relation(fields: [categoriaId], references: [id])
   pesoUnitarioKg Decimal?       @db.Decimal(8, 4)
+  imagenUrl      String?
   activo         Boolean        @default(true)
   creadoEn       DateTime       @default(now())
 

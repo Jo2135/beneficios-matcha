@@ -16,6 +16,14 @@ export const productosApi = {
   buscar: (q: string) => api.get(`/productos/buscar?q=${q}`).then((r) => r.data),
   crear: (data: any) => api.post("/productos", data).then((r) => r.data),
   actualizar: (id: number, data: any) => api.put(`/productos/${id}`, data).then((r) => r.data),
+  subirImagen: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("imagen", file);
+    return api.post(`/productos/${id}/imagen`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  eliminarImagen: (id: number) => api.delete(`/productos/${id}/imagen`).then((r) => r.data),
 };
 
 // Categorías
