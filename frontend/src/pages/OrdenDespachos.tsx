@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cotizacionesApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { Factory, ChevronLeft, ChevronRight, FileDown } from "lucide-react";
+import { Factory, ChevronLeft, ChevronRight, FileDown, X, RotateCcw } from "lucide-react";
 import { pdfOrdenDespachos } from "../utils/pdf";
 
 export default function OrdenDespachos() {
@@ -73,6 +73,16 @@ export default function OrdenDespachos() {
     setOrden(newOrden);
   };
 
+  const eliminarColumna = (cotId: number) => {
+    setOrden((prev) => prev.filter((id) => id !== cotId));
+  };
+
+  const restaurarTodo = () => {
+    setOrden((cotizaciones as any[]).map((c: any) => c.id));
+  };
+
+  const eliminadas = (cotizaciones as any[]).length - orden.length;
+
   if (isLoading) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
@@ -93,13 +103,20 @@ export default function OrdenDespachos() {
             {cotOrdenadas.length} cotizaciones aprobadas · {productos.length} productos a producir
           </p>
         </div>
-        <button
-          onClick={() => pdfOrdenDespachos(cotizaciones as any[], orden)}
-          disabled={cotOrdenadas.length === 0}
-          style={{ ...btnPrimary, opacity: cotOrdenadas.length === 0 ? 0.5 : 1 }}
-        >
-          <FileDown size={16} /> Generar PDF
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {eliminadas > 0 && (
+            <button onClick={restaurarTodo} style={btnSecondary} title="Volver a mostrar todas las cotizaciones">
+              <RotateCcw size={15} /> Restaurar ({eliminadas})
+            </button>
+          )}
+          <button
+            onClick={() => pdfOrdenDespachos(cotizaciones as any[], orden)}
+            disabled={cotOrdenadas.length === 0}
+            style={{ ...btnPrimary, opacity: cotOrdenadas.length === 0 ? 0.5 : 1 }}
+          >
+            <FileDown size={16} /> Generar PDF
+          </button>
+        </div>
       </div>
 
       {cotOrdenadas.length === 0 ? (
@@ -131,23 +148,34 @@ export default function OrdenDespachos() {
                       {cot.vendedor?.nombre && (
                         <div style={{ fontSize: 9, color: "#64748b", marginTop: 1 }}>{cot.vendedor.nombre}</div>
                       )}
-                      {puedeEditar && cotOrdenadas.length > 1 && (
+                      {puedeEditar && (
                         <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: 5 }}>
+                          {cotOrdenadas.length > 1 && (
+                            <>
+                              <button
+                                onClick={() => moverColumna(idx, -1)}
+                                disabled={idx === 0}
+                                title="Mover izquierda"
+                                style={{ ...btnMover, opacity: idx === 0 ? 0.3 : 1 }}
+                              >
+                                <ChevronLeft size={11} />
+                              </button>
+                              <button
+                                onClick={() => moverColumna(idx, 1)}
+                                disabled={idx === cotOrdenadas.length - 1}
+                                title="Mover derecha"
+                                style={{ ...btnMover, opacity: idx === cotOrdenadas.length - 1 ? 0.3 : 1 }}
+                              >
+                                <ChevronRight size={11} />
+                              </button>
+                            </>
+                          )}
                           <button
-                            onClick={() => moverColumna(idx, -1)}
-                            disabled={idx === 0}
-                            title="Mover izquierda (mayor prioridad)"
-                            style={{ ...btnMover, opacity: idx === 0 ? 0.3 : 1 }}
+                            onClick={() => eliminarColumna(cot.id)}
+                            title="Quitar de la vista (ya despachado)"
+                            style={{ ...btnMover, background: "rgba(220,38,38,0.25)", color: "#fca5a5" }}
                           >
-                            <ChevronLeft size={11} />
-                          </button>
-                          <button
-                            onClick={() => moverColumna(idx, 1)}
-                            disabled={idx === cotOrdenadas.length - 1}
-                            title="Mover derecha (menor prioridad)"
-                            style={{ ...btnMover, opacity: idx === cotOrdenadas.length - 1 ? 0.3 : 1 }}
-                          >
-                            <ChevronRight size={11} />
+                            <X size={11} />
                           </button>
                         </div>
                       )}
@@ -224,6 +252,13 @@ export default function OrdenDespachos() {
   );
 }
 
+const btnSecondary: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 6,
+  background: "#fff", color: "#374151",
+  border: "1px solid #d1d5db",
+  padding: "9px 14px", borderRadius: 8, cursor: "pointer",
+  fontSize: 13, fontWeight: 500,
+};
 const btnPrimary: React.CSSProperties = {
   display: "flex", alignItems: "center", gap: 6,
   background: "#16a34a", color: "#fff", border: "none",
