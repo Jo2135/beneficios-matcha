@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download } from "lucide-react";
-import { pdfCotizacion } from "../utils/pdf";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory } from "lucide-react";
+import { pdfCotizacion, pdfHojaProduccion } from "../utils/pdf";
+import { useAuth } from "../contexts/AuthContext";
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   BORRADOR: { label: "Borrador", color: "#6b7280" },
@@ -18,6 +19,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 export default function Cotizaciones() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { puedeEditar, esVendedor } = useAuth();
   const [filtroEstado, setFiltroEstado] = useState("");
   const [detalle, setDetalle] = useState<any>(null);
   const [modalDespacho, setModalDespacho] = useState(false);
@@ -218,21 +220,28 @@ export default function Cotizaciones() {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8, justifyContent: "space-between", alignItems: "center" }}>
               {detalle.estado === "BORRADOR" && (
                 <button onClick={() => cambiarEstado.mutate({ id: detalle.id, estado: "ENVIADA" })} style={{ ...btnAction, background: "#dbeafe", color: "#1d4ed8" }}>
-                  <Send size={14} /> Marcar Enviada
+                  <Send size={14} /> Enviar para Aprobación
                 </button>
               )}
-              {detalle.estado === "ENVIADA" && (
+              {detalle.estado === "ENVIADA" && puedeEditar && (
                 <>
                   <button onClick={() => cambiarEstado.mutate({ id: detalle.id, estado: "APROBADA" })} style={{ ...btnAction, background: "#dcfce7", color: "#166534" }}>
-                    <CheckCircle size={14} /> Aprobada
+                    <CheckCircle size={14} /> Aprobar
                   </button>
                   <button onClick={() => cambiarEstado.mutate({ id: detalle.id, estado: "RECHAZADA" })} style={{ ...btnAction, background: "#fee2e2", color: "#991b1b" }}>
-                    <XCircle size={14} /> Rechazada
+                    <XCircle size={14} /> Rechazar
                   </button>
                 </>
               )}
-              {detalle.estado === "APROBADA" && (
+              {detalle.estado === "APROBADA" && puedeEditar && (
                 <>
+                  <button
+                    onClick={() => cotizacionDetallada && pdfHojaProduccion(cotizacionDetallada)}
+                    disabled={!cotizacionDetallada}
+                    style={{ ...btnAction, background: "#fef3c7", color: "#92400e" }}
+                  >
+                    <Factory size={14} /> Hoja de Producción
+                  </button>
                   <button
                     onClick={() => { setFormDespacho({ chofer: "", vehiculo: "" }); setModalDespacho(true); }}
                     style={{ ...btnAction, background: "#ede9fe", color: "#6d28d9" }}

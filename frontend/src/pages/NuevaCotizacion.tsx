@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { clientesApi, productosApi, listasApi, cotizacionesApi } from "../api/endpoints";
-import { Search, Trash2, ArrowLeft, FileText } from "lucide-react";
+import { Search, Trash2, ArrowLeft, FileText, TrendingUp, Truck } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Linea {
   productoId: number;
@@ -16,6 +17,7 @@ interface Linea {
 
 export default function NuevaCotizacion() {
   const navigate = useNavigate();
+  const { usuario, esVendedor } = useAuth();
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [notas, setNotas] = useState("");
   const [validezDias, setValidezDias] = useState(30);
@@ -306,25 +308,55 @@ export default function NuevaCotizacion() {
 
       {/* Totales y botón crear */}
       {lineas.length > 0 && (
-        <div style={{ ...card, marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
-          <div style={{ fontSize: 13, color: "#64748b" }}>
-            {lineas.length} {lineas.length === 1 ? "línea" : "líneas"} · {lineas.reduce((s, l) => s + l.cantidad, 0)} unidades
+        <div style={{ ...card, marginTop: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
+            <div style={{ fontSize: 13, color: "#64748b" }}>
+              {lineas.length} {lineas.length === 1 ? "línea" : "líneas"} · {lineas.reduce((s, l) => s + l.cantidad, 0)} unidades
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
+              <TotalStat label="Total Bruto" value={`$${totales.bruto.toFixed(2)}`} />
+              {totales.descuento > 0 && (
+                <TotalStat label="Descuento" value={`-$${totales.descuento.toFixed(2)}`} color="#dc2626" />
+              )}
+              <TotalStat label="Total Neto" value={`$${totales.neto.toFixed(2)}`} big />
+              <button
+                onClick={() => crear.mutate()}
+                disabled={!puedeCrear}
+                style={{ ...btnPrimary, opacity: puedeCrear ? 1 : 0.5, cursor: puedeCrear ? "pointer" : "not-allowed" }}
+              >
+                <FileText size={15} />
+                {crear.isPending ? "Creando..." : "Crear Cotización"}
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
-            <TotalStat label="Total Bruto" value={`$${totales.bruto.toFixed(2)}`} />
-            {totales.descuento > 0 && (
-              <TotalStat label="Descuento" value={`-$${totales.descuento.toFixed(2)}`} color="#dc2626" />
-            )}
-            <TotalStat label="Total Neto" value={`$${totales.neto.toFixed(2)}`} big />
-            <button
-              onClick={() => crear.mutate()}
-              disabled={!puedeCrear}
-              style={{ ...btnPrimary, opacity: puedeCrear ? 1 : 0.5, cursor: puedeCrear ? "pointer" : "not-allowed" }}
-            >
-              <FileText size={15} />
-              {crear.isPending ? "Creando..." : "Crear Cotización"}
-            </button>
-          </div>
+
+          {/* Flete y comisión */}
+          {clienteSeleccionado && (Number(clienteSeleccionado.fletePct) > 0 || (esVendedor && Number(usuario?.vendedor?.comisionPct) > 0)) && (
+            <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid #f1f5f9" }}>
+              {Number(clienteSeleccionado.fletePct) > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "#fef3c7", borderRadius: 8 }}>
+                  <Truck size={14} color="#92400e" />
+                  <div>
+                    <div style={{ fontSize: 11, color: "#92400e", fontWeight: 500 }}>Flete ({clienteSeleccionado.fletePct}%)</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#78350f" }}>
+                      ${(totales.neto * Number(clienteSeleccionado.fletePct) / 100).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {esVendedor && Number(usuario?.vendedor?.comisionPct) > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "#dcfce7", borderRadius: 8 }}>
+                  <TrendingUp size={14} color="#166534" />
+                  <div>
+                    <div style={{ fontSize: 11, color: "#166534", fontWeight: 500 }}>Tu comisión ({usuario?.vendedor?.comisionPct}%)</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#14532d" }}>
+                      ${(totales.neto * Number(usuario?.vendedor?.comisionPct) / 100).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

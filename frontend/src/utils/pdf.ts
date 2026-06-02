@@ -643,6 +643,224 @@ export function pdfFactura(fac: any) {
   doc.save(`${fac.numero}.pdf`);
 }
 
+// ─── PDF HOJA DE PRODUCCIÓN ────────────────────────────────────────────────────
+
+export function pdfHojaProduccion(cot: any) {
+  const doc = new jsPDF();
+  const tema = detectarTema(cot);
+  const [r, g, b] = tema.primary;
+  const cliente = cot.cliente ?? {};
+  const lineas: any[] = cot.lineas ?? [];
+
+  // Header bar
+  doc.setFillColor(r, g, b);
+  doc.rect(0, 0, 210, 8, "F");
+
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(r, g, b);
+  doc.text("HOJA DE PRODUCCIÓN", 105, 20, { align: "center" });
+
+  doc.setDrawColor(r, g, b);
+  doc.setLineWidth(0.6);
+  doc.line(14, 24, 196, 24);
+
+  // Info grid
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(80, 80, 80);
+
+  const infoY = 32;
+  doc.text("Cotización:", 14, infoY);
+  doc.text("Cliente:", 14, infoY + 7);
+  doc.text("Fecha:", 14, infoY + 14);
+  doc.text("Empresa:", 105, infoY);
+  doc.text("RIF:", 105, infoY + 7);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0, 0, 0);
+  doc.text(cot.numero ?? "—", 46, infoY);
+  const clienteLines = doc.splitTextToSize(cliente.nombre ?? "—", 85) as string[];
+  doc.text(clienteLines.slice(0, 1), 46, infoY + 7);
+  doc.text(fechaStr(cot.creadoEn), 46, infoY + 14);
+  doc.text(cot.empresa?.nombre ?? cliente.empresaFactura ?? "—", 128, infoY);
+  doc.text(cliente.rif ?? "—", 128, infoY + 7);
+
+  if (cot.notas) {
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100, 100, 100);
+    const notaLines = doc.splitTextToSize(`Notas: ${cot.notas}`, 182) as string[];
+    doc.text(notaLines.slice(0, 2), 14, infoY + 21);
+    doc.setTextColor(0, 0, 0);
+  }
+
+  // Product table
+  autoTable(doc, {
+    startY: infoY + 32,
+    head: [["Descripción del Producto", "Medida", "Cantidad Pedida", "Fabricado", "Faltante"]],
+    body: lineas.map((l: any) => [
+      l.producto?.nombre ?? "—",
+      l.producto?.medida ?? "—",
+      l.notaCantidad ? `${qty(l.cantidad)} (${l.notaCantidad})` : qty(l.cantidad),
+      "",
+      "",
+    ]),
+    headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 9 },
+    styles: { fontSize: 9.5, cellPadding: [4, 3], minCellHeight: 11 },
+    columnStyles: {
+      0: { cellWidth: 78 },
+      1: { halign: "center", cellWidth: 28 },
+      2: { halign: "center", cellWidth: 30 },
+      3: { halign: "center", cellWidth: 27 },
+      4: { halign: "center", cellWidth: 27 },
+    },
+    margin: { left: 14, right: 14 },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    didDrawCell: (data) => {
+      // Draw vertical lines for Fabricado and Faltante columns to make them visually distinct
+      if (data.section === "body" && (data.column.index === 3 || data.column.index === 4)) {
+        const doc2 = data.doc;
+        doc2.setDrawColor(200, 200, 200);
+        doc2.setLineWidth(0.3);
+      }
+    },
+  });
+
+  const finalY = (doc as any).lastAutoTable.finalY ?? 200;
+
+  // Signatures
+  const sigY = Math.min(finalY + 24, 268);
+  doc.setDrawColor(150);
+  doc.setLineWidth(0.4);
+  doc.line(14, sigY, 90, sigY);
+  doc.line(110, sigY, 196, sigY);
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text("Responsable de Producción", 52, sigY + 5, { align: "center" });
+  doc.text("Jefe de Despacho", 153, sigY + 5, { align: "center" });
+  doc.setTextColor(0);
+
+  addFooters(doc);
+  doc.save(`${cot.numero}-produccion.pdf`);
+}
+
+// ─── PDF ORDEN DE DESPACHOS ────────────────────────────────────────────────────
+
+export function pdfOrdenDespachos(cotizaciones: any[], orden: number[]) {
+  const doc = new jsPDF({ orientation: "landscape" });
+  const [r, g, b]: [number, number, number] = [22, 101, 52];
+
+  // Order cotizaciones by provided order array
+  const ordered = orden.length > 0
+    ? orden.map((id) => cotizaciones.find((c: any) => c.id === id)).filter(Boolean) as any[]
+    : cotizaciones as any[];
+
+  // Build unique products map
+  const productMap = new Map<number, { nombre: string; medida: string; categoria: string }>();
+  for (const cot of ordered) {
+    for (const l of cot.lineas ?? []) {
+      if (!productMap.has(l.productoId)) {
+        productMap.set(l.productoId, {
+          nombre: l.producto?.nombre ?? "—",
+          medida: l.producto?.medida ?? "—",
+          categoria: l.producto?.categoria?.nombre ?? "",
+        });
+      }
+    }
+  }
+
+  // Sort products by category → name → medida
+  const products = Array.from(productMap.entries()).sort((a, b) => {
+    const catCmp = a[1].categoria.localeCompare(b[1].categoria);
+    if (catCmp !== 0) return catCmp;
+    const nameCmp = a[1].nombre.localeCompare(b[1].nombre);
+    if (nameCmp !== 0) return nameCmp;
+    return a[1].medida.localeCompare(b[1].medida);
+  });
+
+  // Build lookup: productId → cotId → quantity
+  const lookup = new Map<number, Map<number, number>>();
+  for (const cot of ordered) {
+    for (const l of cot.lineas ?? []) {
+      if (!lookup.has(l.productoId)) lookup.set(l.productoId, new Map());
+      lookup.get(l.productoId)!.set(cot.id, Number(l.cantidad));
+    }
+  }
+
+  // Title
+  doc.setFillColor(r, g, b);
+  doc.rect(0, 0, 297, 8, "F");
+
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(r, g, b);
+  doc.text("ORDEN DE PRODUCCIÓN / DESPACHOS", 148.5, 18, { align: "center" });
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  doc.text(
+    `Generado: ${new Date().toLocaleDateString("es-VE")}   ·   ${ordered.length} cotizaciones aprobadas   ·   ${products.length} productos`,
+    148.5, 24, { align: "center" }
+  );
+
+  doc.setDrawColor(r, g, b);
+  doc.setLineWidth(0.5);
+  doc.line(14, 27, 283, 27);
+
+  // Build table headers and rows
+  const headers = [
+    "Descripción Producto",
+    "Medida",
+    ...ordered.map((c: any) => `${c.cliente?.nombre ?? "?"}\n${c.numero}`),
+    "TOTAL",
+  ];
+
+  const rows = products.map(([productId, p]) => {
+    const qtMap = lookup.get(productId);
+    const qtys = ordered.map((c: any) => {
+      const q = qtMap?.get(c.id);
+      return q ? qty(q) : "";
+    });
+    const total = ordered.reduce((s: number, c: any) => s + (qtMap?.get(c.id) ?? 0), 0);
+    return [p.nombre, p.medida, ...qtys, total > 0 ? qty(total) : ""];
+  });
+
+  // Column widths
+  const totalCols = 2 + ordered.length + 1;
+  const pageW = 297 - 28;
+  const fixedW = 78 + 24;
+  const dynColW = Math.max(18, Math.min(32, (pageW - fixedW - 24) / Math.max(ordered.length, 1)));
+
+  const colStyles: Record<number, any> = {
+    0: { cellWidth: 78 },
+    1: { halign: "center", cellWidth: 24 },
+    [totalCols - 1]: { halign: "center", fontStyle: "bold", cellWidth: 24, fillColor: [220, 252, 231], textColor: [22, 101, 52] },
+  };
+  for (let i = 2; i < totalCols - 1; i++) {
+    colStyles[i] = { halign: "center", cellWidth: dynColW };
+  }
+
+  autoTable(doc, {
+    startY: 31,
+    head: [headers],
+    body: rows,
+    headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 7, valign: "middle", halign: "center", minCellHeight: 14 },
+    styles: { fontSize: 7.5, cellPadding: [2.5, 2] },
+    columnStyles: colStyles,
+    margin: { left: 14, right: 14 },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    didParseCell: (data) => {
+      if (data.section === "head" && data.column.index >= 2 && data.column.index < totalCols - 1) {
+        data.cell.styles.fontSize = 6.5;
+      }
+    },
+  });
+
+  addFooters(doc);
+  doc.save(`orden-produccion-${new Date().toISOString().split("T")[0]}.pdf`);
+}
+
 // ─── PDF DESPACHO / MANIFIESTO ─────────────────────────────────────────────────
 
 export function pdfDespacho(des: any) {

@@ -13,6 +13,7 @@ import Despachos from "./pages/Despachos";
 import Pagos from "./pages/Pagos";
 import Facturas from "./pages/Facturas";
 import Usuarios from "./pages/Usuarios";
+import OrdenDespachos from "./pages/OrdenDespachos";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -67,6 +68,7 @@ function AppRoutes() {
         {/* Solo MASTER y ADMIN */}
         {puedeEditar && <Route path="/precios" element={<ListasPrecios />} />}
         {puedeEditar && <Route path="/despachos" element={<Despachos />} />}
+        {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
         {puedeEditar && <Route path="/facturas" element={<Facturas />} />}
         {puedeEditar && <Route path="/pagos" element={<Pagos />} />}
         {puedeEditar && <Route path="/reportes" element={<Placeholder titulo="Reportes" desc="Balance de pagos, ventas por período, cobranzas por cliente y método de pago" />} />}

@@ -53,6 +53,7 @@ export const cotizacionesApi = {
     api.patch(`/cotizaciones/${id}/estado`, { estado }).then((r) => r.data),
   generarFactura: (id: number) =>
     api.post(`/cotizaciones/${id}/generar-factura`).then((r) => r.data),
+  ordenProduccion: () => api.get("/cotizaciones/orden-produccion").then((r) => r.data),
 };
 
 // Facturas

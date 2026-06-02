@@ -12,11 +12,18 @@ interface LineaInput {
 
 export async function listar(req: Request, res: Response) {
   const { estado, clienteId } = req.query;
+  const usuario = req.usuario!;
+
+  const where: any = {};
+  if (estado) where.estado = estado as any;
+  if (clienteId) where.clienteId = Number(clienteId);
+  // VENDEDOR solo ve sus propias cotizaciones
+  if (usuario.rol === "VENDEDOR" && usuario.vendedorId) {
+    where.vendedorId = usuario.vendedorId;
+  }
+
   const cotizaciones = await prisma.cotizacion.findMany({
-    where: {
-      ...(estado ? { estado: estado as any } : {}),
-      ...(clienteId ? { clienteId: Number(clienteId) } : {}),
-    },
+    where,
     include: {
       cliente: { select: { id: true, nombre: true, empresaFactura: true } },
       vendedor: { select: { id: true, nombre: true } },
@@ -104,11 +111,16 @@ export async function crear(req: Request, res: Response) {
   const descuentoTotal = totalBruto - lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
   const totalNeto = lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
 
+  // VENDEDOR siempre usa su propio vendedorId
+  const vendedorFinal = req.usuario!.rol === "VENDEDOR" && req.usuario!.vendedorId
+    ? req.usuario!.vendedorId
+    : (vendedorId ?? cliente.vendedorId);
+
   const cotizacion = await prisma.cotizacion.create({
     data: {
       numero,
       clienteId,
-      vendedorId: vendedorId ?? cliente.vendedorId,
+      vendedorId: vendedorFinal,
       empresaId,
       validezDias: validezDias ?? 30,
       fechaVencimiento,
@@ -129,11 +141,54 @@ export async function crear(req: Request, res: Response) {
 
 export async function cambiarEstado(req: Request, res: Response) {
   const { estado } = req.body;
+  const cotizacionId = Number(req.params.id);
+  const usuario = req.usuario!;
+
+  if (usuario.rol === "VENDEDOR") {
+    if (estado !== "ENVIADA") {
+      return res.status(403).json({ error: "Solo puedes enviar cotizaciones para aprobación" });
+    }
+    const cot = await prisma.cotizacion.findUnique({
+      where: { id: cotizacionId },
+      select: { vendedorId: true, estado: true },
+    });
+    if (!cot) return res.status(404).json({ error: "Cotización no encontrada" });
+    if (cot.vendedorId !== usuario.vendedorId) {
+      return res.status(403).json({ error: "Solo puedes enviar tus propias cotizaciones" });
+    }
+    if (cot.estado !== "BORRADOR") {
+      return res.status(400).json({ error: "Solo puedes enviar cotizaciones en borrador" });
+    }
+  }
+
   const cotizacion = await prisma.cotizacion.update({
-    where: { id: Number(req.params.id) },
+    where: { id: cotizacionId },
     data: { estado },
   });
   res.json(cotizacion);
+}
+
+export async function ordenProduccion(req: Request, res: Response) {
+  const cotizaciones = await prisma.cotizacion.findMany({
+    where: { estado: { in: ["APROBADA", "EN_DESPACHO"] } },
+    include: {
+      cliente: { select: { id: true, nombre: true } },
+      vendedor: { select: { id: true, nombre: true } },
+      lineas: {
+        include: {
+          producto: {
+            select: {
+              id: true, nombre: true, medida: true,
+              categoria: { select: { nombre: true } },
+            },
+          },
+        },
+        orderBy: { orden: "asc" },
+      },
+    },
+    orderBy: { creadoEn: "asc" },
+  });
+  res.json(cotizaciones);
 }
 
 export async function generarFactura(req: Request, res: Response) {
