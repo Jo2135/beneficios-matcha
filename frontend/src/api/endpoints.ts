@@ -5,6 +5,8 @@ export const authApi = {
   listarVendedores: () => api.get("/auth/vendedores").then((r) => r.data),
   actualizarComision: (id: number, comisionPct: number) =>
     api.patch(`/auth/usuarios/${id}/comision`, { comisionPct }).then((r) => r.data),
+  vincularVendedor: (id: number) =>
+    api.post(`/auth/usuarios/${id}/vincular-vendedor`).then((r) => r.data),
 };
 
 // Clientes

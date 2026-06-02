@@ -79,6 +79,12 @@ export default function Usuarios() {
     onError: (err: any) => alert(err?.response?.data?.error ?? "Error al actualizar comisión"),
   });
 
+  const vincularMutation = useMutation({
+    mutationFn: (id: number) => authApi.vincularVendedor(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["usuarios"] }),
+    onError: (err: any) => alert(err?.response?.data?.error ?? "Error al vincular vendedor"),
+  });
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -123,17 +129,31 @@ export default function Usuarios() {
                   <td style={{ padding: "12px 16px" }}>
                     {u.rol === "VENDEDOR" && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: comisionPct && comisionPct > 0 ? "#16a34a" : "#94a3b8" }}>
-                          {comisionPct != null ? `${comisionPct}%` : "—"}
-                        </span>
-                        {esMaster && u.vendedorId && (
+                        {u.vendedorId ? (
+                          <>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: comisionPct && comisionPct > 0 ? "#16a34a" : "#94a3b8" }}>
+                              {comisionPct != null ? `${comisionPct}%` : "0%"}
+                            </span>
+                            {esMaster && (
+                              <button
+                                onClick={() => setEditComision({ usuarioId: u.id, nombre: u.nombre, valor: String(comisionPct ?? 0) })}
+                                style={{ background: "#f1f5f9", border: "none", borderRadius: 4, padding: "3px 6px", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
+                                title="Editar comisión"
+                              >
+                                <Percent size={11} />
+                              </button>
+                            )}
+                          </>
+                        ) : esMaster ? (
                           <button
-                            onClick={() => setEditComision({ usuarioId: u.id, nombre: u.nombre, valor: String(comisionPct ?? 0) })}
-                            style={{ background: "#f1f5f9", border: "none", borderRadius: 4, padding: "3px 6px", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
-                            title="Editar comisión"
+                            onClick={() => vincularMutation.mutate(u.id)}
+                            disabled={vincularMutation.isPending}
+                            style={{ fontSize: 11, padding: "4px 10px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, cursor: "pointer", color: "#92400e", fontWeight: 600 }}
                           >
-                            <Percent size={11} />
+                            Vincular
                           </button>
+                        ) : (
+                          <span style={{ fontSize: 12, color: "#94a3b8" }}>Sin vincular</span>
                         )}
                       </div>
                     )}

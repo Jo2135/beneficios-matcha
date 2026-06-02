@@ -37,6 +37,7 @@ router.post("/auth/usuarios", requireRol("MASTER", "ADMIN"), w(auth.crearUsuario
 router.patch("/auth/usuarios/:id/password", w(auth.cambiarPassword));
 router.patch("/auth/usuarios/:id/activo", requireRol("MASTER"), w(auth.toggleActivo));
 router.patch("/auth/usuarios/:id/comision", requireRol("MASTER"), w(auth.actualizarComision));
+router.post("/auth/usuarios/:id/vincular-vendedor", requireRol("MASTER"), w(auth.vincularVendedor));
 
 // ─── Clientes ─────────────────────────────────────────────────────────────
 router.get("/clientes", w(clientes.listar));
