@@ -14,10 +14,17 @@ export async function login(req: Request, res: Response) {
     return res.status(400).json({ error: "Email y contraseña requeridos" });
   }
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { email: email.toLowerCase().trim() },
-    include: { vendedor: { select: { id: true, nombre: true, comisionPct: true } } },
-  });
+  const identificador = email.toLowerCase().trim();
+  // Buscar por email si tiene @, de lo contrario buscar por nombre
+  const usuario = identificador.includes("@")
+    ? await prisma.usuario.findUnique({
+        where: { email: identificador },
+        include: { vendedor: { select: { id: true, nombre: true, comisionPct: true } } },
+      })
+    : await prisma.usuario.findFirst({
+        where: { nombre: { equals: email.trim(), mode: "insensitive" } },
+        include: { vendedor: { select: { id: true, nombre: true, comisionPct: true } } },
+      });
 
   if (!usuario || !usuario.activo) {
     return res.status(401).json({ error: "Credenciales incorrectas" });

@@ -150,8 +150,8 @@ export default function Usuarios() {
                 <input style={inp} value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Ej: María González" />
               </label>
               <label style={lbl}>
-                Correo electrónico
-                <input style={inp} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="usuario@empresa.com" />
+                Usuario o correo electrónico
+                <input style={inp} type="text" autoComplete="username" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="miguel o correo@empresa.com" />
               </label>
               <label style={lbl}>
                 Contraseña inicial

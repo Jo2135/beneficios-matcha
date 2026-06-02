@@ -58,14 +58,15 @@ export default function Login() {
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 18 }}>
-            <label style={labelStyle}>Correo electrónico</label>
+            <label style={labelStyle}>Usuario o correo electrónico</label>
             <input
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="usuario@ecoplast.com"
+              placeholder="usuario o correo@ecoplast.com"
               required
               autoFocus
+              autoComplete="username"
               style={inputStyle}
             />
           </div>
