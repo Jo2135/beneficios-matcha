@@ -96,6 +96,16 @@ export const pagosApi = {
     api.post(`/pagos/${id}/asignar`, asignaciones).then((r) => r.data),
 };
 
+// Reportes
+export const reportesApi = {
+  ventasProducto: (params: { q?: string; desde?: string; hasta?: string }) =>
+    api.get("/reportes/ventas-producto", { params }).then((r) => r.data),
+  estadoCuenta: (clienteId: number, params: { desde?: string; hasta?: string }) =>
+    api.get(`/reportes/estado-cuenta/${clienteId}`, { params }).then((r) => r.data),
+  cuentasCobrar: (params?: { producto?: string }) =>
+    api.get("/reportes/cuentas-cobrar", { params }).then((r) => r.data),
+};
+
 // Cuentas bancarias
 export const cuentasApi = {
   listar: () => api.get("/cuentas").then((r) => r.data),
