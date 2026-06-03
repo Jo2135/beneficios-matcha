@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2 } from "lucide-react";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -21,6 +21,9 @@ export default function Cotizaciones() {
   const navigate = useNavigate();
   const { puedeEditar, esVendedor, esMaster } = useAuth();
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [busqueda, setBusqueda] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
   const [detalle, setDetalle] = useState<any>(null);
   const [modalDespacho, setModalDespacho] = useState(false);
   const [formDespacho, setFormDespacho] = useState({ chofer: "", vehiculo: "" });
@@ -73,18 +76,74 @@ export default function Cotizaciones() {
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al crear despacho"),
   });
 
+  const hayFiltros = busqueda || desde || hasta;
+
+  const cotizacionesFiltradas = useMemo(() => {
+    let lista = cotizaciones as any[];
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      lista = lista.filter((c) =>
+        c.numero?.toLowerCase().includes(q) ||
+        c.cliente?.nombre?.toLowerCase().includes(q) ||
+        c.vendedor?.nombre?.toLowerCase().includes(q)
+      );
+    }
+    if (desde) {
+      const d = new Date(desde);
+      lista = lista.filter((c) => new Date(c.creadoEn) >= d);
+    }
+    if (hasta) {
+      const h = new Date(hasta);
+      h.setHours(23, 59, 59);
+      lista = lista.filter((c) => new Date(c.creadoEn) <= h);
+    }
+    return lista;
+  }, [cotizaciones, busqueda, desde, hasta]);
+
+  const limpiarFiltros = () => { setBusqueda(""); setDesde(""); setHasta(""); };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Cotizaciones</h1>
-          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>{cotizaciones.length} cotizaciones</p>
+          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
+            {hayFiltros ? `${cotizacionesFiltradas.length} de ${(cotizaciones as any[]).length}` : `${(cotizaciones as any[]).length}`} cotizaciones
+          </p>
         </div>
         <a href="/cotizaciones/nueva" style={{ ...btnPrimary, textDecoration: "none" }}><Plus size={16} /> Nueva Cotización</a>
       </div>
 
+      {/* Barra de búsqueda y fechas */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 180 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por número, cliente o vendedor..."
+            style={{ width: "100%", padding: "8px 10px 8px 32px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>Desde</span>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>Hasta</span>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        {hayFiltros && (
+          <button onClick={limpiarFiltros} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 12, color: "#64748b" }}>
+            <X size={12} /> Limpiar
+          </button>
+        )}
+      </div>
+
       {/* Filtros de estado */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         <button onClick={() => setFiltroEstado("")} style={{ ...chipBtn, background: !filtroEstado ? "#dbeafe" : "#f1f5f9", color: !filtroEstado ? "#1d4ed8" : "#64748b" }}>Todas</button>
         {Object.entries(ESTADOS).map(([key, { label }]) => (
           <button key={key} onClick={() => setFiltroEstado(key)} style={{ ...chipBtn, background: filtroEstado === key ? "#dbeafe" : "#f1f5f9", color: filtroEstado === key ? "#1d4ed8" : "#64748b" }}>{label}</button>
@@ -96,13 +155,20 @@ export default function Cotizaciones() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Número", "Cliente", "Vendedor", "Total", "Estado", "Vence", "Empresa", ""].map((h) => (
+              {["Número", "Cliente", "Vendedor", "Total", "Estado", "Fecha", "Empresa", ""].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {cotizaciones.map((c: any) => {
+            {cotizacionesFiltradas.length === 0 && (
+              <tr>
+                <td colSpan={8} style={{ padding: "40px 0", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                  No hay cotizaciones que coincidan con los filtros aplicados
+                </td>
+              </tr>
+            )}
+            {cotizacionesFiltradas.map((c: any) => {
               const est = ESTADOS[c.estado];
               return (
                 <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer" }} onClick={() => setDetalle(c)}>
@@ -113,7 +179,7 @@ export default function Cotizaciones() {
                   <td style={tdStyle}>
                     <span style={{ ...tagStyle, color: est?.color, background: est?.color + "18" }}>{est?.label}</span>
                   </td>
-                  <td style={tdStyle}>{c.fechaVencimiento ? new Date(c.fechaVencimiento).toLocaleDateString("es-VE") : "—"}</td>
+                  <td style={tdStyle}>{c.creadoEn ? new Date(c.creadoEn).toLocaleDateString("es-VE") : "—"}</td>
                   <td style={tdStyle}><span style={{ fontSize: 12, color: "#94a3b8" }}>{c.empresa?.nombre ?? c.cliente?.empresaFactura}</span></td>
                   <td style={tdStyle}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
