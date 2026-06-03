@@ -184,6 +184,32 @@ export async function cambiarPassword(req: Request, res: Response) {
   res.json({ ok: true });
 }
 
+export async function actualizarUsuario(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const { nombre, email, rol, vendedorId, password } = req.body;
+
+  const data: any = {};
+  if (nombre)  data.nombre = nombre;
+  if (email)   data.email  = email;
+  if (rol)     data.rol    = rol;
+  data.vendedorId = vendedorId ? Number(vendedorId) : null;
+  if (password && password.length >= 6) {
+    data.passwordHash = await bcrypt.hash(password, 12);
+  }
+
+  try {
+    const usuario = await prisma.usuario.update({
+      where: { id },
+      data,
+      include: { vendedor: { select: { id: true, nombre: true, comisionPct: true } } },
+    });
+    res.json(sinPassword(usuario));
+  } catch (e: any) {
+    if (e.code === "P2002") return res.status(400).json({ error: "Ese email/usuario ya está en uso" });
+    res.status(500).json({ error: e.message });
+  }
+}
+
 export async function toggleActivo(req: Request, res: Response) {
   const usuario = await prisma.usuario.update({
     where: { id: Number(req.params.id) },

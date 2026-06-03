@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { authApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { UserPlus, Shield, Users, Briefcase, Percent } from "lucide-react";
+import { UserPlus, Shield, Users, Briefcase, Percent, Edit2 } from "lucide-react";
 
 interface Usuario {
   id: number;
@@ -34,6 +34,8 @@ export default function Usuarios() {
   const [form, setForm] = useState({ nombre: "", email: "", password: "", rol: "VENDEDOR" as "MASTER" | "ADMIN" | "VENDEDOR", vendedorId: "" });
   const [error, setError] = useState("");
   const [editComision, setEditComision] = useState<{ usuarioId: number; nombre: string; valor: string } | null>(null);
+  const [editUsuario, setEditUsuario] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ nombre: "", email: "", rol: "VENDEDOR" as "MASTER" | "ADMIN" | "VENDEDOR", vendedorId: "", password: "" });
 
   const { data: usuarios = [] } = useQuery<Usuario[]>({
     queryKey: ["usuarios"],
@@ -84,6 +86,21 @@ export default function Usuarios() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["usuarios"] }),
     onError: (err: any) => alert(err?.response?.data?.error ?? "Error al vincular vendedor"),
   });
+
+  const editarMutation = useMutation({
+    mutationFn: (data: typeof editForm & { id: number }) =>
+      api.put(`/auth/usuarios/${data.id}`, { nombre: data.nombre, email: data.email, rol: data.rol, vendedorId: data.vendedorId || null, password: data.password || undefined }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["usuarios"] });
+      setEditUsuario(null);
+    },
+    onError: (err: any) => alert(err?.response?.data?.error ?? "Error al actualizar usuario"),
+  });
+
+  const abrirEditar = (u: Usuario) => {
+    setEditUsuario(u);
+    setEditForm({ nombre: u.nombre, email: u.email, rol: u.rol, vendedorId: String(u.vendedorId ?? ""), password: "" });
+  };
 
   return (
     <div style={{ padding: 24 }}>
@@ -165,14 +182,25 @@ export default function Usuarios() {
                     </span>
                   </td>
                   <td style={{ padding: "12px 16px" }}>
-                    {esMaster && !esSelf && u.rol !== "MASTER" && (
-                      <button
-                        onClick={() => toggleMutation.mutate({ id: u.id, activo: !u.activo })}
-                        style={{ fontSize: 12, padding: "5px 12px", border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", background: "#f8fafc", color: "#64748b" }}
-                      >
-                        {u.activo ? "Desactivar" : "Activar"}
-                      </button>
-                    )}
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {esMaster && !esSelf && (
+                        <button
+                          onClick={() => abrirEditar(u)}
+                          style={{ background: "#f1f5f9", border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: "#475569", display: "flex", alignItems: "center" }}
+                          title="Editar usuario"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                      )}
+                      {esMaster && !esSelf && u.rol !== "MASTER" && (
+                        <button
+                          onClick={() => toggleMutation.mutate({ id: u.id, activo: !u.activo })}
+                          style={{ fontSize: 12, padding: "5px 12px", border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", background: "#f8fafc", color: "#64748b" }}
+                        >
+                          {u.activo ? "Desactivar" : "Activar"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -209,6 +237,59 @@ export default function Usuarios() {
                 style={{ padding: "9px 18px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14 }}
               >
                 {comisionMutation.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar usuario */}
+      {editUsuario && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 55 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: "min(480px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700 }}>Editar Usuario</h2>
+            <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>{editUsuario.email}</p>
+            <div style={{ display: "grid", gap: 14 }}>
+              <label style={lbl}>
+                Nombre completo
+                <input style={inp} value={editForm.nombre} onChange={(e) => setEditForm({ ...editForm, nombre: e.target.value })} />
+              </label>
+              <label style={lbl}>
+                Usuario o correo electrónico
+                <input style={inp} value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+              </label>
+              <label style={lbl}>
+                Nueva contraseña <span style={{ fontWeight: 400, color: "#94a3b8" }}>(dejar vacío para no cambiar)</span>
+                <input style={inp} type="password" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} placeholder="Mínimo 6 caracteres" />
+              </label>
+              <label style={lbl}>
+                Rol
+                <select style={inp} value={editForm.rol} onChange={(e) => setEditForm({ ...editForm, rol: e.target.value as any, vendedorId: "" })}>
+                  <option value="MASTER">Master — Acceso total</option>
+                  <option value="ADMIN">Admin — Precios, estadísticas, vendedores</option>
+                  <option value="VENDEDOR">Vendedor — Cotizaciones y notas</option>
+                </select>
+              </label>
+              {editForm.rol === "VENDEDOR" && (
+                <label style={lbl}>
+                  Vincular a Vendedor
+                  <select style={inp} value={editForm.vendedorId} onChange={(e) => setEditForm({ ...editForm, vendedorId: e.target.value })}>
+                    <option value="">Sin vincular</option>
+                    {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+              <button onClick={() => setEditUsuario(null)} style={{ padding: "10px 20px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 14 }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => editarMutation.mutate({ ...editForm, id: editUsuario.id })}
+                disabled={editarMutation.isPending || !editForm.nombre || !editForm.email}
+                style={{ padding: "10px 20px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14 }}
+              >
+                {editarMutation.isPending ? "Guardando..." : "Guardar Cambios"}
               </button>
             </div>
           </div>
