@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { clientesApi, productosApi, listasApi, cotizacionesApi } from "../api/endpoints";
-import { Search, Trash2, ArrowLeft, FileText, TrendingUp, Truck } from "lucide-react";
+import { Search, Trash2, ArrowLeft, FileText, Truck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Linea {
@@ -379,10 +379,6 @@ export default function NuevaCotizacion() {
           background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14,
           boxShadow: "0 8px 30px rgba(0,0,0,0.13)", padding: "14px 16px", width: 230,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 5 }}>
-            <TrendingUp size={12} /> Ganancia estimada
-          </div>
-
           {ganancia.costoFlete > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
               <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Costo Flete</div>
@@ -391,7 +387,7 @@ export default function NuevaCotizacion() {
           )}
 
           {ganancia.gananciaVendedor > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
               <div>
                 <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Ganancia Vendedor</div>
                 {ganancia.labelVendedor && <div style={{ fontSize: 10, color: "#94a3b8" }}>{ganancia.labelVendedor}</div>}
@@ -399,11 +395,6 @@ export default function NuevaCotizacion() {
               <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.gananciaVendedor.toFixed(2)}</span>
             </div>
           )}
-
-          <div style={{ borderTop: "1.5px solid #dcfce7", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#166534" }}>Total Ganancia</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${ganancia.total.toFixed(2)}</span>
-          </div>
         </div>
       )}
     </div>

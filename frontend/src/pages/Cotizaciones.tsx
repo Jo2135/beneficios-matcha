@@ -211,9 +211,6 @@ export default function Cotizaciones() {
 
               return (
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 5 }}>
-                    <TrendingUp size={12} /> Ganancia Interna · No aparece en PDF del cliente
-                  </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {costoFlete > 0 && (
                       <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -230,9 +227,6 @@ export default function Cotizaciones() {
                         <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${gananciaVendedor.toFixed(2)}</span>
                       </div>
                     )}
-                  </div>
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #bbf7d0", display: "flex", justifyContent: "flex-end" }}>
-                    <span style={{ fontSize: 14, color: "#166534", fontWeight: 700 }}>Ganancia Total: ${totalGanancia.toFixed(2)}</span>
                   </div>
                 </div>
               );

@@ -683,11 +683,13 @@ export function pdfCotizacionGanancia(cot: any) {
   // Ganancia breakdown box
   const bY = fy + 46;
   if (bY < 250) {
+    const boxRows = (costoFlete > 0 ? 1 : 0) + (gananciaVendedor > 0 ? 1 : 0);
+    const boxH = 14 + boxRows * 10;
     doc.setFillColor(240, 253, 244);
-    doc.roundedRect(14, bY, 182, (costoFlete > 0 && gananciaVendedor > 0) ? 54 : 36, 3, 3, "F");
+    doc.roundedRect(14, bY, 182, boxH, 3, 3, "F");
     doc.setDrawColor(134, 239, 172);
     doc.setLineWidth(0.5);
-    doc.roundedRect(14, bY, 182, (costoFlete > 0 && gananciaVendedor > 0) ? 54 : 36, 3, 3, "D");
+    doc.roundedRect(14, bY, 182, boxH, 3, 3, "D");
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
@@ -723,18 +725,7 @@ export function pdfCotizacionGanancia(cot: any) {
       const vendLabel = labelVendedor ? `Ganancia Vendedor  (${labelVendedor})` : "Ganancia Vendedor";
       doc.text(vendLabel, col1, rowY);
       doc.text(usd(gananciaVendedor), col2, rowY, { align: "right" });
-      rowY += 6;
     }
-
-    // Totals row
-    doc.setDrawColor(134, 239, 172);
-    doc.line(14, rowY, 196, rowY);
-    rowY += 5;
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(22, 101, 52);
-    doc.text("GANANCIA TOTAL:", col1, rowY);
-    doc.setFontSize(10);
-    doc.text(usd(totalGanancia), col2, rowY, { align: "right" });
     doc.setTextColor(0, 0, 0);
   }
 
