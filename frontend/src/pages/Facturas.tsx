@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2 } from "lucide-react";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X } from "lucide-react";
 import { pdfFactura } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -35,6 +35,9 @@ export default function Facturas() {
   const qc = useQueryClient();
   const { esMaster } = useAuth();
   const [filtro, setFiltro] = useState("TODAS");
+  const [busqueda, setBusqueda] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
   const [facturaId, setFacturaId] = useState<number | null>(null);
 
   const eliminarFac = useMutation({
@@ -55,14 +58,39 @@ export default function Facturas() {
   });
 
   const todas: any[] = balance?.facturas ?? [];
-  const facturas = filtro === "TODAS" ? todas : todas.filter((f: any) => f.estado === filtro);
+
+  const hayFiltros = busqueda || desde || hasta;
+  const limpiarFiltros = () => { setBusqueda(""); setDesde(""); setHasta(""); };
+
+  const facturas = useMemo(() => {
+    let lista = filtro === "TODAS" ? todas : todas.filter((f: any) => f.estado === filtro);
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      lista = lista.filter((f: any) =>
+        f.numero?.toLowerCase().includes(q) ||
+        f.cliente?.nombre?.toLowerCase().includes(q)
+      );
+    }
+    if (desde) {
+      const d = new Date(desde);
+      lista = lista.filter((f: any) => new Date(f.fechaEmision ?? f.creadoEn) >= d);
+    }
+    if (hasta) {
+      const h = new Date(hasta);
+      h.setHours(23, 59, 59);
+      lista = lista.filter((f: any) => new Date(f.fechaEmision ?? f.creadoEn) <= h);
+    }
+    return lista;
+  }, [todas, filtro, busqueda, desde, hasta]);
 
   return (
     <div style={{ padding: 24 }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Facturas</h1>
-        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>{todas.length} facturas emitidas</p>
+        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
+          {hayFiltros ? `${facturas.length} de ${todas.length}` : `${todas.length}`} facturas emitidas
+        </p>
       </div>
 
       {/* Resumen */}
@@ -82,6 +110,34 @@ export default function Facturas() {
           </div>
         </div>
       )}
+
+      {/* Barra de búsqueda y fechas */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 180 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por número o cliente..."
+            style={{ width: "100%", padding: "8px 10px 8px 32px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>Desde</span>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>Hasta</span>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        {hayFiltros && (
+          <button onClick={limpiarFiltros} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 12, color: "#64748b" }}>
+            <X size={12} /> Limpiar
+          </button>
+        )}
+      </div>
 
       {/* Filtros */}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
