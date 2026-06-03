@@ -76,6 +76,7 @@ router.get("/cotizaciones/:id", w(cotizaciones.obtener));
 router.post("/cotizaciones", w(cotizaciones.crear));
 router.patch("/cotizaciones/:id/estado", w(cotizaciones.cambiarEstado)); // controller valida permisos por rol
 router.post("/cotizaciones/:id/generar-factura", requireRol("MASTER", "ADMIN"), w(cotizaciones.generarFactura));
+router.delete("/cotizaciones/:id", requireRol("MASTER"), w(cotizaciones.eliminar));
 
 // ─── Facturas ─────────────────────────────────────────────────────────────
 router.get("/facturas", requireRol("MASTER", "ADMIN"), w(facturas.listar));
@@ -103,6 +104,7 @@ router.get("/despachos", w(despachos.listar));
 router.post("/despachos/desde-cotizacion/:cotizacionId", requireRol("MASTER", "ADMIN"), w(despachos.crearDesdeCotizacion));
 router.post("/despachos/:id/finalizar", requireRol("MASTER", "ADMIN"), w(despachos.finalizar));
 router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.actualizarLineas));
+router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));
 router.get("/despachos/:id", w(despachos.obtener));
 
 // ─── Reportes ─────────────────────────────────────────────────────────────

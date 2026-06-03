@@ -222,3 +222,16 @@ export async function finalizar(req: Request, res: Response) {
 
   res.json({ factura, estadoDespacho: algunoFalto ? "PARCIAL" : "ENTREGADO" });
 }
+
+
+export async function eliminar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const despacho = await prisma.ordenDespacho.findUnique({ where: { id }, select: { estado: true, numero: true } });
+  if (!despacho) return res.status(404).json({ error: "Despacho no encontrado" });
+  if (despacho.estado === "ENTREGADO") {
+    return res.status(400).json({ error: "No se puede eliminar un despacho ya entregado (tiene factura generada)" });
+  }
+  await prisma.despachoLinea.deleteMany({ where: { despachoId: id } });
+  await prisma.ordenDespacho.delete({ where: { id } });
+  res.json({ ok: true });
+}

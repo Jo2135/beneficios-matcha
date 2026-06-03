@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp } from "lucide-react";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2 } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -19,7 +19,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 export default function Cotizaciones() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { puedeEditar, esVendedor } = useAuth();
+  const { puedeEditar, esVendedor, esMaster } = useAuth();
   const [filtroEstado, setFiltroEstado] = useState("");
   const [detalle, setDetalle] = useState<any>(null);
   const [modalDespacho, setModalDespacho] = useState(false);
@@ -44,6 +44,12 @@ export default function Cotizaciones() {
       qc.invalidateQueries({ queryKey: ["cotizaciones"] });
       setDetalle(null);
     },
+  });
+
+  const eliminarCot = useMutation({
+    mutationFn: (id: number) => cotizacionesApi.eliminar(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cotizaciones"] }); setDetalle(null); },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al eliminar"),
   });
 
   const generarFactura = useMutation({
@@ -109,7 +115,24 @@ export default function Cotizaciones() {
                   </td>
                   <td style={tdStyle}>{c.fechaVencimiento ? new Date(c.fechaVencimiento).toLocaleDateString("es-VE") : "—"}</td>
                   <td style={tdStyle}><span style={{ fontSize: 12, color: "#94a3b8" }}>{c.empresa?.nombre ?? c.cliente?.empresaFactura}</span></td>
-                  <td style={tdStyle}><ArrowRight size={14} style={{ color: "#94a3b8" }} /></td>
+                  <td style={tdStyle}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <ArrowRight size={14} style={{ color: "#94a3b8" }} />
+                      {esMaster && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!window.confirm(`¿Eliminar ${c.numero}? Esta acción no se puede deshacer.`)) return;
+                            eliminarCot.mutate(c.id);
+                          }}
+                          style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", color: "#dc2626", display: "flex", alignItems: "center" }}
+                          title="Eliminar cotización"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -311,6 +334,21 @@ export default function Cotizaciones() {
                 </>
               )}
             </div>
+            {/* Eliminar — solo MASTER */}
+            {esMaster && !["EN_DESPACHO", "COMPLETADA"].includes(detalle.estado) && (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    if (!window.confirm(`¿Eliminar ${detalle.numero} permanentemente?`)) return;
+                    eliminarCot.mutate(detalle.id);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, background: "#fee2e2", color: "#991b1b", border: "none", padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                >
+                  <Trash2 size={14} /> Eliminar Cotización
+                </button>
+              </div>
+            )}
+
             {/* Botones PDF */}
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button

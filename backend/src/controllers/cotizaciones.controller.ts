@@ -255,6 +255,18 @@ export async function generarFactura(req: Request, res: Response) {
   res.status(201).json(factura);
 }
 
+export async function eliminar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const cot = await prisma.cotizacion.findUnique({ where: { id }, select: { estado: true, numero: true } });
+  if (!cot) return res.status(404).json({ error: "Cotización no encontrada" });
+  if (["EN_DESPACHO", "COMPLETADA"].includes(cot.estado)) {
+    return res.status(400).json({ error: `No se puede eliminar una cotización en estado ${cot.estado}` });
+  }
+  await prisma.cotizacionLinea.deleteMany({ where: { cotizacionId: id } });
+  await prisma.cotizacion.delete({ where: { id } });
+  res.json({ ok: true });
+}
+
 export async function reporteComisiones(req: Request, res: Response) {
   const { mes } = req.query;
 

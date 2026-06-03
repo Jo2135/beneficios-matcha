@@ -65,6 +65,7 @@ export const cotizacionesApi = {
   ordenProduccion: () => api.get("/cotizaciones/orden-produccion").then((r) => r.data),
   reporteComisiones: (mes?: string) =>
     api.get("/cotizaciones/reporte-comisiones", { params: mes ? { mes } : {} }).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/cotizaciones/${id}`).then((r) => r.data),
 };
 
 // Facturas
@@ -85,6 +86,7 @@ export const despachosApi = {
   actualizarLineas: (id: number, lineas: any[]) =>
     api.put(`/despachos/${id}/lineas`, lineas).then((r) => r.data),
   finalizar: (id: number) => api.post(`/despachos/${id}/finalizar`).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/despachos/${id}`).then((r) => r.data),
 };
 
 // Pagos

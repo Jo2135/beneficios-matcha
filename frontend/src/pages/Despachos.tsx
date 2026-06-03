@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { despachosApi } from "../api/endpoints";
-import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download } from "lucide-react";
+import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2 } from "lucide-react";
 import { pdfDespacho } from "../utils/pdf";
+import { useAuth } from "../contexts/AuthContext";
 
 const ESTADO_DESPACHO: Record<string, { label: string; color: string; icon: any }> = {
   PENDIENTE:  { label: "Pendiente",  color: "#6b7280", icon: Clock },
@@ -20,6 +21,7 @@ const ESTADO_LINEA: Record<string, { label: string; color: string }> = {
 
 export default function Despachos() {
   const qc = useQueryClient();
+  const { esMaster } = useAuth();
   const [despachoId, setDespachoId] = useState<number | null>(null);
   const [cantidades, setCantidades] = useState<Record<number, number>>({});
 
@@ -78,6 +80,12 @@ export default function Despachos() {
       cerrar();
     },
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al finalizar"),
+  });
+
+  const eliminarDesp = useMutation({
+    mutationFn: (id: number) => despachosApi.eliminar(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["despachos"] }); cerrar(); },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al eliminar"),
   });
 
   const hayEdits = Object.keys(cantidades).length > 0;
@@ -243,6 +251,21 @@ export default function Despachos() {
                 </tbody>
               </table>
             </div>
+
+            {/* Eliminar — solo MASTER, no si ya fue entregado */}
+            {esMaster && !yaFinalizado && (
+              <div style={{ marginTop: 14 }}>
+                <button
+                  onClick={() => {
+                    if (!window.confirm(`¿Eliminar ${despacho.numero} permanentemente?`)) return;
+                    eliminarDesp.mutate(despachoId!);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, background: "#fee2e2", color: "#991b1b", border: "none", padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                >
+                  <Trash2 size={14} /> Eliminar Despacho
+                </button>
+              </div>
+            )}
 
             {/* Acciones */}
             {!yaFinalizado && (
