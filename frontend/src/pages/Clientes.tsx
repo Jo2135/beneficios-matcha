@@ -37,6 +37,7 @@ export default function Clientes() {
       setModal({ abierto: false, datos: null });
       setForm({});
     },
+    onError: (e: any) => alert(e.response?.data?.error ?? e.message ?? "Error al guardar el cliente"),
   });
 
   const filtrados = clientes.filter((c: any) =>
