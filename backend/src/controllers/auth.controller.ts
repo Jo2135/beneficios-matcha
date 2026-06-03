@@ -151,7 +151,6 @@ export async function vincularVendedor(req: Request, res: Response) {
     select: { nombre: true, rol: true, vendedorId: true },
   });
   if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
-  if (usuario.rol !== "VENDEDOR") return res.status(400).json({ error: "Solo aplica para usuarios VENDEDOR" });
   if (usuario.vendedorId) return res.status(400).json({ error: "El usuario ya tiene un vendedor vinculado" });
 
   const vendedor = await prisma.vendedor.create({ data: { nombre: usuario.nombre } });

@@ -117,10 +117,14 @@ export async function crear(req: Request, res: Response) {
   const descuentoTotal = totalBruto - lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
   const totalNeto = lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
 
-  // VENDEDOR siempre usa su propio vendedorId
+  // Look up fresh vendedorId from DB so MASTER doesn't need to re-login after linking a vendor
+  const creadorDb = await prisma.usuario.findUnique({
+    where: { id: req.usuario!.id },
+    select: { vendedorId: true },
+  });
   const vendedorFinal = req.usuario!.rol === "VENDEDOR" && req.usuario!.vendedorId
     ? req.usuario!.vendedorId
-    : (vendedorId ?? cliente.vendedorId);
+    : (vendedorId ?? creadorDb?.vendedorId ?? cliente.vendedorId);
 
   const cotizacion = await prisma.cotizacion.create({
     data: {

@@ -144,7 +144,7 @@ export default function Usuarios() {
                     </span>
                   </td>
                   <td style={{ padding: "12px 16px" }}>
-                    {u.rol === "VENDEDOR" && (
+                    {(u.rol === "VENDEDOR" || (esMaster && esSelf)) && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         {u.vendedorId ? (
                           <>
@@ -167,7 +167,7 @@ export default function Usuarios() {
                             disabled={vincularMutation.isPending}
                             style={{ fontSize: 11, padding: "4px 10px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, cursor: "pointer", color: "#92400e", fontWeight: 600 }}
                           >
-                            Vincular
+                            {esSelf ? "Vincularme" : "Vincular"}
                           </button>
                         ) : (
                           <span style={{ fontSize: 12, color: "#94a3b8" }}>Sin vincular</span>
@@ -183,7 +183,7 @@ export default function Usuarios() {
                   </td>
                   <td style={{ padding: "12px 16px" }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      {esMaster && !esSelf && (
+                      {esMaster && (
                         <button
                           onClick={() => abrirEditar(u)}
                           style={{ background: "#f1f5f9", border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: "#475569", display: "flex", alignItems: "center" }}
@@ -264,21 +264,24 @@ export default function Usuarios() {
               </label>
               <label style={lbl}>
                 Rol
-                <select style={inp} value={editForm.rol} onChange={(e) => setEditForm({ ...editForm, rol: e.target.value as any, vendedorId: "" })}>
+                <select
+                  style={{ ...inp, opacity: editUsuario?.id === yo?.id ? 0.6 : 1 }}
+                  value={editForm.rol}
+                  disabled={editUsuario?.id === yo?.id}
+                  onChange={(e) => setEditForm({ ...editForm, rol: e.target.value as any, vendedorId: "" })}
+                >
                   <option value="MASTER">Master — Acceso total</option>
                   <option value="ADMIN">Admin — Precios, estadísticas, vendedores</option>
                   <option value="VENDEDOR">Vendedor — Cotizaciones y notas</option>
                 </select>
               </label>
-              {editForm.rol === "VENDEDOR" && (
-                <label style={lbl}>
-                  Vincular a Vendedor
-                  <select style={inp} value={editForm.vendedorId} onChange={(e) => setEditForm({ ...editForm, vendedorId: e.target.value })}>
-                    <option value="">Sin vincular</option>
-                    {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-                  </select>
-                </label>
-              )}
+              <label style={lbl}>
+                Vincular a Vendedor <span style={{ fontWeight: 400, color: "#94a3b8" }}>(para comisiones)</span>
+                <select style={inp} value={editForm.vendedorId} onChange={(e) => setEditForm({ ...editForm, vendedorId: e.target.value })}>
+                  <option value="">Sin vincular</option>
+                  {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                </select>
+              </label>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
               <button onClick={() => setEditUsuario(null)} style={{ padding: "10px 20px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 14 }}>
