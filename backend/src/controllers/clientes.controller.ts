@@ -56,29 +56,40 @@ export async function obtener(req: Request, res: Response) {
   res.json(cliente);
 }
 
-export async function crear(req: Request, res: Response) {
-  const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
-          fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-          condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
-  const cliente = await prisma.cliente.create({
-    data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+export async function actualizar(req: Request, res: Response) {
+  try {
+    const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-            condicionPago, observaciones, vendedorId, listaPrecioId },
-  });
-  res.status(201).json(cliente);
+            condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
+    console.log("[actualizar cliente]", req.params.id, { nombre, fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct });
+    const cliente = await prisma.cliente.update({
+      where: { id: Number(req.params.id) },
+      data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito: Number(diasCredito) || 0,
+              fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
+              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null },
+    });
+    res.json(cliente);
+  } catch (e: any) {
+    console.error("[error actualizar cliente]", e.message);
+    res.status(500).json({ error: e.message });
+  }
 }
 
-export async function actualizar(req: Request, res: Response) {
-  const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
-          fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-          condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
-  const cliente = await prisma.cliente.update({
-    where: { id: Number(req.params.id) },
-    data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+export async function crear(req: Request, res: Response) {
+  try {
+    const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-            condicionPago, observaciones, vendedorId, listaPrecioId },
-  });
-  res.json(cliente);
+            condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
+    const cliente = await prisma.cliente.create({
+      data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito: Number(diasCredito) || 0,
+              fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
+              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null },
+    });
+    res.status(201).json(cliente);
+  } catch (e: any) {
+    console.error("[error crear cliente]", e.message);
+    res.status(500).json({ error: e.message });
+  }
 }
 
 export async function eliminar(req: Request, res: Response) {
