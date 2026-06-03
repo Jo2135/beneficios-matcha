@@ -105,19 +105,21 @@ export default function NuevaCotizacion() {
       .filter((l) => esConexionExterna(l))
       .reduce((s, l) => s + l.precioUnitario * l.cantidad * (1 - l.descuentoPct / 100), 0);
 
-    const fleteTuberia = totalTuberia * ftPct / 100;
-    const fleteConexiones = totalConexiones * fcPct / 100;
-    const comisionTuberia = totalTuberia * ctPct / 100;
-    const comisionConexiones = totalConexiones * ccPct / 100;
+    // Extracción correcta del margen: total × pct / (100 + pct)
+    // El precio YA tiene el porcentaje incorporado como markup, no se puede calcular directo
+    const pctTub = ftPct + ctPct;
+    const pctCon = fcPct + ccPct;
+    const gananciaTuberia = pctTub > 0 ? totalTuberia * pctTub / (100 + pctTub) : 0;
+    const gananciaConexiones = pctCon > 0 ? totalConexiones * pctCon / (100 + pctCon) : 0;
 
     return {
       totalTuberia, totalConexiones,
       ftPct, fcPct, ctPct, ccPct,
-      fleteTuberia, fleteConexiones,
-      comisionTuberia, comisionConexiones,
-      totalFlete: fleteTuberia + fleteConexiones,
-      totalComision: comisionTuberia + comisionConexiones,
-      total: fleteTuberia + fleteConexiones + comisionTuberia + comisionConexiones,
+      fleteTuberia: 0, fleteConexiones: 0,
+      comisionTuberia: 0, comisionConexiones: 0,
+      totalFlete: 0, totalComision: 0,
+      gananciaTuberia, gananciaConexiones,
+      total: gananciaTuberia + gananciaConexiones,
     };
   }, [lineas, clienteSeleccionado]);
 
@@ -384,9 +386,9 @@ export default function NuevaCotizacion() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
               <div>
                 <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Tubería</div>
-                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.ftPct + ganancia.ctPct}% sobre ${ganancia.totalTuberia.toFixed(2)}</div>
+                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.ftPct + ganancia.ctPct}% markup · base ${(ganancia.totalTuberia - ganancia.gananciaTuberia).toFixed(2)}</div>
               </div>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${(ganancia.fleteTuberia + ganancia.comisionTuberia).toFixed(2)}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.gananciaTuberia.toFixed(2)}</span>
             </div>
           )}
 
@@ -394,9 +396,9 @@ export default function NuevaCotizacion() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
               <div>
                 <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Conexiones</div>
-                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.fcPct + ganancia.ccPct}% sobre ${ganancia.totalConexiones.toFixed(2)}</div>
+                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.fcPct + ganancia.ccPct}% markup · base ${(ganancia.totalConexiones - ganancia.gananciaConexiones).toFixed(2)}</div>
               </div>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${(ganancia.fleteConexiones + ganancia.comisionConexiones).toFixed(2)}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.gananciaConexiones.toFixed(2)}</span>
             </div>
           )}
 

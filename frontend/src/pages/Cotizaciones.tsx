@@ -197,11 +197,13 @@ export default function Cotizaciones() {
               const totalTub = lineas.filter((l) => !esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
               const totalCon = lineas.filter((l) => esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
 
-              const fleteTub = totalTub * ftPct / 100;
-              const fleteConx = totalCon * fcPct / 100;
-              const comTub = totalTub * ctPct / 100;
-              const comConx = totalCon * ccPct / 100;
-              const totalGanancia = fleteTub + fleteConx + comTub + comConx;
+              // Extracción correcta: precio ya tiene el markup, usar pct/(100+pct)
+              const pctTub = ftPct + ctPct;
+              const pctCon = fcPct + ccPct;
+              const ganTub = pctTub > 0 ? totalTub * pctTub / (100 + pctTub) : 0;
+              const ganCon = pctCon > 0 ? totalCon * pctCon / (100 + pctCon) : 0;
+              const totalGanancia = ganTub + ganCon;
+              const fleteTub = ganTub, fleteConx = ganCon, comTub = 0, comConx = 0;
 
               return (
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
@@ -213,18 +215,18 @@ export default function Cotizaciones() {
                       <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Tubería</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{ftPct + ctPct}% · base ${totalTub.toFixed(2)}</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{ftPct + ctPct}% markup · base ${(totalTub - ganTub).toFixed(2)}</div>
                         </div>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${(fleteTub + comTub).toFixed(2)}</span>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${ganTub.toFixed(2)}</span>
                       </div>
                     )}
                     {totalCon > 0 && (
                       <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Conexiones</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{fcPct + ccPct}% · base ${totalCon.toFixed(2)}</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{fcPct + ccPct}% markup · base ${(totalCon - ganCon).toFixed(2)}</div>
                         </div>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${(fleteConx + comConx).toFixed(2)}</span>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${ganCon.toFixed(2)}</span>
                       </div>
                     )}
                   </div>

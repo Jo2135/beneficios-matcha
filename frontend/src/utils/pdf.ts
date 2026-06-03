@@ -644,11 +644,12 @@ export function pdfCotizacionGanancia(cot: any) {
   const totalTub = lineasTub.reduce((s, l) => s + Number(l.totalLinea), 0);
   const totalCon = lineasCon.reduce((s, l) => s + Number(l.totalLinea), 0);
 
-  const fleteTub = totalTub * ftPct / 100;
-  const fleteConx = totalCon * fcPct / 100;
-  const comTub = totalTub * ctPct / 100;
-  const comConx = totalCon * ccPct / 100;
-  const totalGanancia = fleteTub + fleteConx + comTub + comConx;
+  // Extracción correcta: precio YA tiene el markup incorporado → pct/(100+pct)
+  const pctTub = ftPct + ctPct;
+  const pctCon = fcPct + ccPct;
+  const ganTub = pctTub > 0 ? totalTub * pctTub / (100 + pctTub) : 0;
+  const ganCon = pctCon > 0 ? totalCon * pctCon / (100 + pctCon) : 0;
+  const totalGanancia = ganTub + ganCon;
 
   // Same header as customer quote
   const startY =
@@ -710,17 +711,17 @@ export function pdfCotizacionGanancia(cot: any) {
     doc.setTextColor(0, 0, 0);
 
     if (totalTub > 0) {
-      doc.text(`Tubería  (${ftPct + ctPct}% sobre base)`, col1, rowY);
+      doc.text(`Tubería  (${pctTub}% markup · base ${usd(totalTub - ganTub)})`, col1, rowY);
       doc.text(usd(totalTub), col2, rowY, { align: "right" });
       doc.text("", col3, rowY, { align: "right" });
-      doc.text(usd(fleteTub + comTub), col4, rowY, { align: "right" });
+      doc.text(usd(ganTub), col4, rowY, { align: "right" });
       rowY += 6;
     }
     if (totalCon > 0) {
-      doc.text(`Conexiones  (${fcPct + ccPct}% sobre base)`, col1, rowY);
+      doc.text(`Conexiones  (${pctCon}% markup · base ${usd(totalCon - ganCon)})`, col1, rowY);
       doc.text(usd(totalCon), col2, rowY, { align: "right" });
       doc.text("", col3, rowY, { align: "right" });
-      doc.text(usd(fleteConx + comConx), col4, rowY, { align: "right" });
+      doc.text(usd(ganCon), col4, rowY, { align: "right" });
       rowY += 6;
     }
 
