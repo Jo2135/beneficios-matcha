@@ -254,3 +254,78 @@ export async function generarFactura(req: Request, res: Response) {
 
   res.status(201).json(factura);
 }
+
+export async function reporteComisiones(req: Request, res: Response) {
+  const { mes } = req.query;
+
+  const where: any = { estado: { in: ["APROBADA", "COMPLETADA"] } };
+
+  if (mes) {
+    const [year, month] = (mes as string).split("-").map(Number);
+    where.creadoEn = {
+      gte: new Date(year, month - 1, 1),
+      lt: new Date(year, month, 1),
+    };
+  }
+
+  const cotizaciones = await prisma.cotizacion.findMany({
+    where,
+    include: {
+      cliente: true,
+      vendedor: true,
+      lineas: { include: { producto: true } },
+    },
+    orderBy: { creadoEn: "desc" },
+  });
+
+  const esConexion = (l: any) =>
+    (l.producto?.origen ?? "INTERNO") === "EXTERNO" &&
+    !(l.producto?.nombre ?? "").toLowerCase().includes("manguera");
+
+  const vendedorMap = new Map<number, any>();
+
+  for (const cot of cotizaciones) {
+    if (!cot.vendedorId || !cot.vendedor) continue;
+
+    const c = cot.cliente;
+    const ctPct = Number(c.comisionTuberiaPct ?? 0);
+    const ccPct = Number(c.comisionConexionesPct ?? 0);
+
+    const totalTub = cot.lineas
+      .filter((l) => !esConexion(l))
+      .reduce((s, l) => s + Number(l.totalLinea), 0);
+    const totalCon = cot.lineas
+      .filter((l) => esConexion(l))
+      .reduce((s, l) => s + Number(l.totalLinea), 0);
+
+    const comision =
+      (ctPct > 0 ? totalTub * ctPct / (100 + ctPct) : 0) +
+      (ccPct > 0 ? totalCon * ccPct / (100 + ccPct) : 0);
+
+    if (!vendedorMap.has(cot.vendedorId)) {
+      vendedorMap.set(cot.vendedorId, {
+        vendedor: { id: cot.vendedor.id, nombre: cot.vendedor.nombre },
+        totalCotizaciones: 0,
+        totalVentas: 0,
+        comision: 0,
+        detalle: [],
+      });
+    }
+
+    const v = vendedorMap.get(cot.vendedorId)!;
+    v.totalCotizaciones++;
+    v.totalVentas += Number(cot.totalNeto);
+    v.comision += comision;
+    v.detalle.push({
+      id: cot.id,
+      numero: cot.numero,
+      cliente: c.nombre,
+      totalNeto: Number(cot.totalNeto),
+      comision,
+      estado: cot.estado,
+      fecha: cot.creadoEn,
+    });
+  }
+
+  res.json(Array.from(vendedorMap.values()));
+}

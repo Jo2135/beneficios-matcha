@@ -63,6 +63,8 @@ export const cotizacionesApi = {
   generarFactura: (id: number) =>
     api.post(`/cotizaciones/${id}/generar-factura`).then((r) => r.data),
   ordenProduccion: () => api.get("/cotizaciones/orden-produccion").then((r) => r.data),
+  reporteComisiones: (mes?: string) =>
+    api.get("/cotizaciones/reporte-comisiones", { params: mes ? { mes } : {} }).then((r) => r.data),
 };
 
 // Facturas

@@ -14,6 +14,7 @@ import Pagos from "./pages/Pagos";
 import Facturas from "./pages/Facturas";
 import Usuarios from "./pages/Usuarios";
 import OrdenDespachos from "./pages/OrdenDespachos";
+import ReporteComisiones from "./pages/ReporteComisiones";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -71,7 +72,7 @@ function AppRoutes() {
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
         {puedeEditar && <Route path="/facturas" element={<Facturas />} />}
         {puedeEditar && <Route path="/pagos" element={<Pagos />} />}
-        {puedeEditar && <Route path="/reportes" element={<Placeholder titulo="Reportes" desc="Balance de pagos, ventas por período, cobranzas por cliente y método de pago" />} />}
+        {puedeEditar && <Route path="/reportes" element={<ReporteComisiones />} />}
         {puedeEditar && <Route path="/usuarios" element={<Usuarios />} />}
 
         {/* Solo MASTER */}

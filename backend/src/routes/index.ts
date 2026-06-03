@@ -70,6 +70,7 @@ router.delete("/listas-precios/:id", requireRol("MASTER"), w(listaPrecios.elimin
 // ─── Cotizaciones ─────────────────────────────────────────────────────────
 router.get("/cotizaciones", w(cotizaciones.listar));
 router.get("/cotizaciones/orden-produccion", requireRol("MASTER", "ADMIN"), w(cotizaciones.ordenProduccion));
+router.get("/cotizaciones/reporte-comisiones", requireRol("MASTER", "ADMIN"), w(cotizaciones.reporteComisiones));
 router.get("/cotizaciones/:id", w(cotizaciones.obtener));
 router.post("/cotizaciones", w(cotizaciones.crear));
 router.patch("/cotizaciones/:id/estado", w(cotizaciones.cambiarEstado)); // controller valida permisos por rol
