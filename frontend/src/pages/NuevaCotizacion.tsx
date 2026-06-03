@@ -381,58 +381,28 @@ export default function NuevaCotizacion() {
           </div>
 
           {ganancia.totalTuberia > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 3, textTransform: "uppercase" }}>Tubería</div>
-              {ganancia.ftPct > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#92400e" }}>
-                  <span><Truck size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Flete {ganancia.ftPct}%</span>
-                  <span style={{ fontWeight: 600 }}>${ganancia.fleteTuberia.toFixed(2)}</span>
-                </div>
-              )}
-              {ganancia.ctPct > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#166534" }}>
-                  <span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Comisión {ganancia.ctPct}%</span>
-                  <span style={{ fontWeight: 600 }}>${ganancia.comisionTuberia.toFixed(2)}</span>
-                </div>
-              )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Tubería</div>
+                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.ftPct + ganancia.ctPct}% sobre ${ganancia.totalTuberia.toFixed(2)}</div>
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${(ganancia.fleteTuberia + ganancia.comisionTuberia).toFixed(2)}</span>
             </div>
           )}
 
           {ganancia.totalConexiones > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 3, textTransform: "uppercase" }}>Conexiones</div>
-              {ganancia.fcPct > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#92400e" }}>
-                  <span><Truck size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Flete {ganancia.fcPct}%</span>
-                  <span style={{ fontWeight: 600 }}>${ganancia.fleteConexiones.toFixed(2)}</span>
-                </div>
-              )}
-              {ganancia.ccPct > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#166534" }}>
-                  <span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Comisión {ganancia.ccPct}%</span>
-                  <span style={{ fontWeight: 600 }}>${ganancia.comisionConexiones.toFixed(2)}</span>
-                </div>
-              )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Conexiones</div>
+                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.fcPct + ganancia.ccPct}% sobre ${ganancia.totalConexiones.toFixed(2)}</div>
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${(ganancia.fleteConexiones + ganancia.comisionConexiones).toFixed(2)}</span>
             </div>
           )}
 
-          <div style={{ borderTop: "1.5px solid #dcfce7", paddingTop: 8, marginTop: 4 }}>
-            {ganancia.totalFlete > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#92400e", marginBottom: 3 }}>
-                <span style={{ fontWeight: 600 }}>Total Flete</span>
-                <span style={{ fontWeight: 700 }}>${ganancia.totalFlete.toFixed(2)}</span>
-              </div>
-            )}
-            {ganancia.totalComision > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#166534", marginBottom: 3 }}>
-                <span style={{ fontWeight: 600 }}>Total Comisión</span>
-                <span style={{ fontWeight: 700 }}>${ganancia.totalComision.toFixed(2)}</span>
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#166534", fontWeight: 700, marginTop: 4 }}>
-              <span>Ganancia Total</span>
-              <span>${ganancia.total.toFixed(2)}</span>
-            </div>
+          <div style={{ borderTop: "1.5px solid #dcfce7", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#166534" }}>Total Ganancia</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${ganancia.total.toFixed(2)}</span>
           </div>
         </div>
       )}

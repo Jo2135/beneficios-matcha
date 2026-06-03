@@ -208,26 +208,28 @@ export default function Cotizaciones() {
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 5 }}>
                     <TrendingUp size={12} /> Ganancia Interna · No aparece en PDF del cliente
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {totalTub > 0 && (
-                      <div style={{ background: "#fff", borderRadius: 7, padding: "8px 10px", border: "1px solid #dcfce7" }}>
-                        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 4, textTransform: "uppercase" }}>Tubería · ${totalTub.toFixed(2)}</div>
-                        {ftPct > 0 && <div style={{ fontSize: 12, color: "#92400e", display: "flex", justifyContent: "space-between" }}><span><Truck size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Flete {ftPct}%</span><strong>${fleteTub.toFixed(2)}</strong></div>}
-                        {ctPct > 0 && <div style={{ fontSize: 12, color: "#166534", display: "flex", justifyContent: "space-between" }}><span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Comisión {ctPct}%</span><strong>${comTub.toFixed(2)}</strong></div>}
+                      <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Tubería</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{ftPct + ctPct}% · base ${totalTub.toFixed(2)}</div>
+                        </div>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${(fleteTub + comTub).toFixed(2)}</span>
                       </div>
                     )}
                     {totalCon > 0 && (
-                      <div style={{ background: "#fff", borderRadius: 7, padding: "8px 10px", border: "1px solid #dcfce7" }}>
-                        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 4, textTransform: "uppercase" }}>Conexiones · ${totalCon.toFixed(2)}</div>
-                        {fcPct > 0 && <div style={{ fontSize: 12, color: "#92400e", display: "flex", justifyContent: "space-between" }}><span><Truck size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Flete {fcPct}%</span><strong>${fleteConx.toFixed(2)}</strong></div>}
-                        {ccPct > 0 && <div style={{ fontSize: 12, color: "#166534", display: "flex", justifyContent: "space-between" }}><span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Comisión {ccPct}%</span><strong>${comConx.toFixed(2)}</strong></div>}
+                      <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Conexiones</div>
+                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{fcPct + ccPct}% · base ${totalCon.toFixed(2)}</div>
+                        </div>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${(fleteConx + comConx).toFixed(2)}</span>
                       </div>
                     )}
                   </div>
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #bbf7d0", display: "flex", justifyContent: "flex-end", gap: 20 }}>
-                    {(fleteTub + fleteConx) > 0 && <span style={{ fontSize: 12, color: "#92400e" }}>Flete total: <strong>${(fleteTub + fleteConx).toFixed(2)}</strong></span>}
-                    {(comTub + comConx) > 0 && <span style={{ fontSize: 12, color: "#166534" }}>Comisión total: <strong>${(comTub + comConx).toFixed(2)}</strong></span>}
-                    <span style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>Ganancia: ${totalGanancia.toFixed(2)}</span>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #bbf7d0", display: "flex", justifyContent: "flex-end" }}>
+                    <span style={{ fontSize: 14, color: "#166534", fontWeight: 700 }}>Ganancia Total: ${totalGanancia.toFixed(2)}</span>
                   </div>
                 </div>
               );

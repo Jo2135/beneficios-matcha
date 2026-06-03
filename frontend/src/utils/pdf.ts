@@ -703,25 +703,24 @@ export function pdfCotizacionGanancia(cot: any) {
     doc.setTextColor(80, 80, 80);
     doc.text("Tipo", col1, rowY);
     doc.text("Base", col2, rowY, { align: "right" });
-    doc.text("Flete", col3, rowY, { align: "right" });
-    doc.text("Comisión", col4, rowY, { align: "right" });
+    doc.text("Ganancia", col4, rowY, { align: "right" });
     rowY += 6;
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
 
     if (totalTub > 0) {
-      doc.text(`Tubería (${ftPct}% flete · ${ctPct}% comisión)`, col1, rowY);
+      doc.text(`Tubería  (${ftPct + ctPct}% sobre base)`, col1, rowY);
       doc.text(usd(totalTub), col2, rowY, { align: "right" });
-      doc.text(usd(fleteTub), col3, rowY, { align: "right" });
-      doc.text(usd(comTub), col4, rowY, { align: "right" });
+      doc.text("", col3, rowY, { align: "right" });
+      doc.text(usd(fleteTub + comTub), col4, rowY, { align: "right" });
       rowY += 6;
     }
     if (totalCon > 0) {
-      doc.text(`Conexiones (${fcPct}% flete · ${ccPct}% comisión)`, col1, rowY);
+      doc.text(`Conexiones  (${fcPct + ccPct}% sobre base)`, col1, rowY);
       doc.text(usd(totalCon), col2, rowY, { align: "right" });
-      doc.text(usd(fleteConx), col3, rowY, { align: "right" });
-      doc.text(usd(comConx), col4, rowY, { align: "right" });
+      doc.text("", col3, rowY, { align: "right" });
+      doc.text(usd(fleteConx + comConx), col4, rowY, { align: "right" });
       rowY += 6;
     }
 
@@ -730,13 +729,10 @@ export function pdfCotizacionGanancia(cot: any) {
     doc.line(14, rowY, 196, rowY);
     rowY += 5;
     doc.setFont("helvetica", "bold");
-    doc.setFillColor(22, 101, 52);
     doc.setTextColor(22, 101, 52);
     doc.text("GANANCIA TOTAL:", col1, rowY);
-    doc.text(usd(fleteTub + fleteConx), col3, rowY, { align: "right" });
-    const gainLabel = usd(totalGanancia);
     doc.setFontSize(10);
-    doc.text(gainLabel, col4, rowY, { align: "right" });
+    doc.text(usd(totalGanancia), col4, rowY, { align: "right" });
     doc.setTextColor(0, 0, 0);
   }
 
