@@ -644,12 +644,17 @@ export function pdfCotizacionGanancia(cot: any) {
   const totalTub = lineasTub.reduce((s, l) => s + Number(l.totalLinea), 0);
   const totalCon = lineasCon.reduce((s, l) => s + Number(l.totalLinea), 0);
 
-  // Extracción correcta: precio YA tiene el markup incorporado → pct/(100+pct)
-  const pctTub = ftPct + ctPct;
-  const pctCon = fcPct + ccPct;
-  const ganTub = pctTub > 0 ? totalTub * pctTub / (100 + pctTub) : 0;
-  const ganCon = pctCon > 0 ? totalCon * pctCon / (100 + pctCon) : 0;
-  const totalGanancia = ganTub + ganCon;
+  const costoFlete =
+    (ftPct > 0 ? totalTub * ftPct / (100 + ftPct) : 0) +
+    (fcPct > 0 ? totalCon * fcPct / (100 + fcPct) : 0);
+  const gananciaVendedor =
+    (ctPct > 0 ? totalTub * ctPct / (100 + ctPct) : 0) +
+    (ccPct > 0 ? totalCon * ccPct / (100 + ccPct) : 0);
+  const labelVendedor = [
+    ctPct > 0 && totalTub > 0 ? `${ctPct}% tub` : "",
+    ccPct > 0 && totalCon > 0 ? `${ccPct}% con` : "",
+  ].filter(Boolean).join(" · ");
+  const totalGanancia = costoFlete + gananciaVendedor;
 
   // Same header as customer quote
   const startY =
@@ -679,10 +684,10 @@ export function pdfCotizacionGanancia(cot: any) {
   const bY = fy + 46;
   if (bY < 250) {
     doc.setFillColor(240, 253, 244);
-    doc.roundedRect(14, bY, 182, totalCon > 0 ? 54 : 36, 3, 3, "F");
+    doc.roundedRect(14, bY, 182, (costoFlete > 0 && gananciaVendedor > 0) ? 54 : 36, 3, 3, "F");
     doc.setDrawColor(134, 239, 172);
     doc.setLineWidth(0.5);
-    doc.roundedRect(14, bY, 182, totalCon > 0 ? 54 : 36, 3, 3, "D");
+    doc.roundedRect(14, bY, 182, (costoFlete > 0 && gananciaVendedor > 0) ? 54 : 36, 3, 3, "D");
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
@@ -697,31 +702,27 @@ export function pdfCotizacionGanancia(cot: any) {
     doc.setTextColor(0, 0, 0);
 
     let rowY = bY + 17;
-    const col1 = 20, col2 = 80, col3 = 130, col4 = 192;
+    const col1 = 20, col2 = 192;
 
     // Header row
     doc.setFont("helvetica", "bold");
     doc.setTextColor(80, 80, 80);
-    doc.text("Tipo", col1, rowY);
-    doc.text("Base", col2, rowY, { align: "right" });
-    doc.text("Ganancia", col4, rowY, { align: "right" });
+    doc.text("Concepto", col1, rowY);
+    doc.text("Monto", col2, rowY, { align: "right" });
     rowY += 6;
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
 
-    if (totalTub > 0) {
-      doc.text(`Tubería  (${pctTub}% markup · base ${usd(totalTub - ganTub)})`, col1, rowY);
-      doc.text(usd(totalTub), col2, rowY, { align: "right" });
-      doc.text("", col3, rowY, { align: "right" });
-      doc.text(usd(ganTub), col4, rowY, { align: "right" });
+    if (costoFlete > 0) {
+      doc.text("Costo Flete", col1, rowY);
+      doc.text(usd(costoFlete), col2, rowY, { align: "right" });
       rowY += 6;
     }
-    if (totalCon > 0) {
-      doc.text(`Conexiones  (${pctCon}% markup · base ${usd(totalCon - ganCon)})`, col1, rowY);
-      doc.text(usd(totalCon), col2, rowY, { align: "right" });
-      doc.text("", col3, rowY, { align: "right" });
-      doc.text(usd(ganCon), col4, rowY, { align: "right" });
+    if (gananciaVendedor > 0) {
+      const vendLabel = labelVendedor ? `Ganancia Vendedor  (${labelVendedor})` : "Ganancia Vendedor";
+      doc.text(vendLabel, col1, rowY);
+      doc.text(usd(gananciaVendedor), col2, rowY, { align: "right" });
       rowY += 6;
     }
 
@@ -733,7 +734,7 @@ export function pdfCotizacionGanancia(cot: any) {
     doc.setTextColor(22, 101, 52);
     doc.text("GANANCIA TOTAL:", col1, rowY);
     doc.setFontSize(10);
-    doc.text(usd(totalGanancia), col4, rowY, { align: "right" });
+    doc.text(usd(totalGanancia), col2, rowY, { align: "right" });
     doc.setTextColor(0, 0, 0);
   }
 

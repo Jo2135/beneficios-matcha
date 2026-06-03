@@ -105,21 +105,22 @@ export default function NuevaCotizacion() {
       .filter((l) => esConexionExterna(l))
       .reduce((s, l) => s + l.precioUnitario * l.cantidad * (1 - l.descuentoPct / 100), 0);
 
-    // Extracción correcta del margen: total × pct / (100 + pct)
-    // El precio YA tiene el porcentaje incorporado como markup, no se puede calcular directo
-    const pctTub = ftPct + ctPct;
-    const pctCon = fcPct + ccPct;
-    const gananciaTuberia = pctTub > 0 ? totalTuberia * pctTub / (100 + pctTub) : 0;
-    const gananciaConexiones = pctCon > 0 ? totalConexiones * pctCon / (100 + pctCon) : 0;
+    const costoFlete =
+      (ftPct > 0 ? totalTuberia * ftPct / (100 + ftPct) : 0) +
+      (fcPct > 0 ? totalConexiones * fcPct / (100 + fcPct) : 0);
+    const gananciaVendedor =
+      (ctPct > 0 ? totalTuberia * ctPct / (100 + ctPct) : 0) +
+      (ccPct > 0 ? totalConexiones * ccPct / (100 + ccPct) : 0);
+    const labelVendedor = [
+      ctPct > 0 && totalTuberia > 0 ? `${ctPct}% tub` : "",
+      ccPct > 0 && totalConexiones > 0 ? `${ccPct}% con` : "",
+    ].filter(Boolean).join(" · ");
 
     return {
       totalTuberia, totalConexiones,
       ftPct, fcPct, ctPct, ccPct,
-      fleteTuberia: 0, fleteConexiones: 0,
-      comisionTuberia: 0, comisionConexiones: 0,
-      totalFlete: 0, totalComision: 0,
-      gananciaTuberia, gananciaConexiones,
-      total: gananciaTuberia + gananciaConexiones,
+      costoFlete, gananciaVendedor, labelVendedor,
+      total: costoFlete + gananciaVendedor,
     };
   }, [lineas, clienteSeleccionado]);
 
@@ -382,23 +383,20 @@ export default function NuevaCotizacion() {
             <TrendingUp size={12} /> Ganancia estimada
           </div>
 
-          {ganancia.totalTuberia > 0 && (
+          {ganancia.costoFlete > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
-              <div>
-                <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Tubería</div>
-                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.ftPct + ganancia.ctPct}% markup · base ${(ganancia.totalTuberia - ganancia.gananciaTuberia).toFixed(2)}</div>
-              </div>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.gananciaTuberia.toFixed(2)}</span>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Costo Flete</div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.costoFlete.toFixed(2)}</span>
             </div>
           )}
 
-          {ganancia.totalConexiones > 0 && (
+          {ganancia.gananciaVendedor > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "6px 8px", background: "#f0fdf4", borderRadius: 7 }}>
               <div>
-                <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Conexiones</div>
-                <div style={{ fontSize: 10, color: "#64748b" }}>{ganancia.fcPct + ganancia.ccPct}% markup · base ${(ganancia.totalConexiones - ganancia.gananciaConexiones).toFixed(2)}</div>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Ganancia Vendedor</div>
+                {ganancia.labelVendedor && <div style={{ fontSize: 10, color: "#94a3b8" }}>{ganancia.labelVendedor}</div>}
               </div>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.gananciaConexiones.toFixed(2)}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#166534" }}>${ganancia.gananciaVendedor.toFixed(2)}</span>
             </div>
           )}
 

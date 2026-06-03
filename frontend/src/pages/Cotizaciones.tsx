@@ -197,13 +197,17 @@ export default function Cotizaciones() {
               const totalTub = lineas.filter((l) => !esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
               const totalCon = lineas.filter((l) => esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
 
-              // Extracción correcta: precio ya tiene el markup, usar pct/(100+pct)
-              const pctTub = ftPct + ctPct;
-              const pctCon = fcPct + ccPct;
-              const ganTub = pctTub > 0 ? totalTub * pctTub / (100 + pctTub) : 0;
-              const ganCon = pctCon > 0 ? totalCon * pctCon / (100 + pctCon) : 0;
-              const totalGanancia = ganTub + ganCon;
-              const fleteTub = ganTub, fleteConx = ganCon, comTub = 0, comConx = 0;
+              const costoFlete =
+                (ftPct > 0 ? totalTub * ftPct / (100 + ftPct) : 0) +
+                (fcPct > 0 ? totalCon * fcPct / (100 + fcPct) : 0);
+              const gananciaVendedor =
+                (ctPct > 0 ? totalTub * ctPct / (100 + ctPct) : 0) +
+                (ccPct > 0 ? totalCon * ccPct / (100 + ccPct) : 0);
+              const labelVendedor = [
+                ctPct > 0 && totalTub > 0 ? `${ctPct}% tub` : "",
+                ccPct > 0 && totalCon > 0 ? `${ccPct}% con` : "",
+              ].filter(Boolean).join(" · ");
+              const totalGanancia = costoFlete + gananciaVendedor;
 
               return (
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
@@ -211,22 +215,19 @@ export default function Cotizaciones() {
                     <TrendingUp size={12} /> Ganancia Interna · No aparece en PDF del cliente
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {totalTub > 0 && (
+                    {costoFlete > 0 && (
                       <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Tubería</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{ftPct + ctPct}% markup · base ${(totalTub - ganTub).toFixed(2)}</div>
-                        </div>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${ganTub.toFixed(2)}</span>
+                        <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Costo Flete</div>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${costoFlete.toFixed(2)}</span>
                       </div>
                     )}
-                    {totalCon > 0 && (
+                    {gananciaVendedor > 0 && (
                       <div style={{ flex: 1, minWidth: 140, background: "#fff", borderRadius: 7, padding: "8px 12px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
-                          <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Conexiones</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8" }}>{fcPct + ccPct}% markup · base ${(totalCon - ganCon).toFixed(2)}</div>
+                          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Ganancia Vendedor</div>
+                          {labelVendedor && <div style={{ fontSize: 10, color: "#94a3b8" }}>{labelVendedor}</div>}
                         </div>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${ganCon.toFixed(2)}</span>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#166534" }}>${gananciaVendedor.toFixed(2)}</span>
                       </div>
                     )}
                   </div>
