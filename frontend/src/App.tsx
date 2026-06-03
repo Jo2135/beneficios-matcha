@@ -15,6 +15,7 @@ import Facturas from "./pages/Facturas";
 import Usuarios from "./pages/Usuarios";
 import OrdenDespachos from "./pages/OrdenDespachos";
 import ReporteComisiones from "./pages/ReporteComisiones";
+import Configuracion from "./pages/Configuracion";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -76,7 +77,7 @@ function AppRoutes() {
         {puedeEditar && <Route path="/usuarios" element={<Usuarios />} />}
 
         {/* Solo MASTER */}
-        {esMaster && <Route path="/configuracion" element={<Placeholder titulo="Configuración" desc="Empresas, cuentas bancarias, porcentajes de costos y ganancias" />} />}
+        {esMaster && <Route path="/configuracion" element={<Configuracion />} />}
 
         {/* Cotizaciones para todos */}
         <Route path="/cotizaciones" element={<Cotizaciones />} />

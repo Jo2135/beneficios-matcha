@@ -75,7 +75,17 @@ export const facturasApi = {
   balance: () => api.get("/facturas/balance").then((r) => r.data),
   resumenCliente: (clienteId: number) =>
     api.get(`/facturas/cliente/${clienteId}/resumen`).then((r) => r.data),
+  actualizarNotas: (id: number, notas: string) =>
+    api.patch(`/facturas/${id}/notas`, { notas }).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/facturas/${id}`).then((r) => r.data),
+};
+
+// Empresas
+export const empresasApi = {
+  listar: () => api.get("/empresas").then((r) => r.data),
+  crear: (data: { nombre: string; rif: string }) => api.post("/empresas", data).then((r) => r.data),
+  actualizar: (id: number, data: { nombre: string; rif: string }) => api.put(`/empresas/${id}`, data).then((r) => r.data),
+  toggleActiva: (id: number, activa: boolean) => api.patch(`/empresas/${id}/activa`, { activa }).then((r) => r.data),
 };
 
 // Despachos

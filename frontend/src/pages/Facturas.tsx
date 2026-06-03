@@ -40,6 +40,19 @@ export default function Facturas() {
   const [hasta, setHasta] = useState("");
   const [facturaId, setFacturaId] = useState<number | null>(null);
 
+  const [editNotas, setEditNotas] = useState(false);
+  const [notasValue, setNotasValue] = useState("");
+
+  const guardarNotas = useMutation({
+    mutationFn: ({ id, notas }: { id: number; notas: string }) =>
+      facturasApi.actualizarNotas(id, notas),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["factura", facturaId] });
+      setEditNotas(false);
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al guardar notas"),
+  });
+
   const eliminarFac = useMutation({
     mutationFn: (id: number) => facturasApi.eliminar(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["facturas-balance"] }); setFacturaId(null); },
@@ -256,7 +269,7 @@ export default function Facturas() {
                     <Trash2 size={13} /> Eliminar
                   </button>
                 )}
-                <button onClick={() => setFacturaId(null)} style={btnClose}>✕</button>
+                <button onClick={() => { setFacturaId(null); setEditNotas(false); }} style={btnClose}>✕</button>
               </div>
             </div>
 
@@ -332,6 +345,48 @@ export default function Facturas() {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Notas internas */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Notas internas</div>
+                {!editNotas && (
+                  <button
+                    onClick={() => { setNotasValue(factura.notas ?? ""); setEditNotas(true); }}
+                    style={{ fontSize: 12, padding: "4px 10px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc", cursor: "pointer", color: "#64748b" }}
+                  >
+                    {factura.notas ? "Editar" : "+ Agregar nota"}
+                  </button>
+                )}
+              </div>
+              {editNotas ? (
+                <div>
+                  <textarea
+                    value={notasValue}
+                    onChange={(e) => setNotasValue(e.target.value)}
+                    rows={3}
+                    placeholder="Acuerdos de pago, observaciones, referencias..."
+                    style={{ width: "100%", padding: "9px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, resize: "vertical", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => setEditNotas(false)} style={{ ...btnAction, background: "#f1f5f9", color: "#64748b" }}>Cancelar</button>
+                    <button
+                      onClick={() => guardarNotas.mutate({ id: factura.id, notas: notasValue })}
+                      disabled={guardarNotas.isPending}
+                      style={{ ...btnAction, background: "#2563eb", color: "#fff" }}
+                    >
+                      {guardarNotas.isPending ? "Guardando..." : "Guardar"}
+                    </button>
+                  </div>
+                </div>
+              ) : factura.notas ? (
+                <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#374151", whiteSpace: "pre-wrap" }}>
+                  {factura.notas}
+                </div>
+              ) : (
+                <div style={{ color: "#94a3b8", fontSize: 13 }}>Sin notas</div>
+              )}
             </div>
 
             {/* Pagos registrados */}

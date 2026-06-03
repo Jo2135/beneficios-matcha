@@ -9,6 +9,7 @@ import * as despachos from "../controllers/despachos.controller";
 import * as auth from "../controllers/auth.controller";
 import * as cuentas from "../controllers/cuentas.controller";
 import * as reportes from "../controllers/reportes.controller";
+import * as empresas from "../controllers/empresas.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -112,6 +113,12 @@ router.get("/despachos/:id", w(despachos.obtener));
 router.get("/reportes/ventas-producto", requireRol("MASTER", "ADMIN"), w(reportes.ventasProducto));
 router.get("/reportes/estado-cuenta/:clienteId", requireRol("MASTER", "ADMIN"), w(reportes.estadoCuenta));
 router.get("/reportes/cuentas-cobrar", requireRol("MASTER", "ADMIN"), w(reportes.cuentasCobrar));
+
+// ─── Empresas ─────────────────────────────────────────────────────────────
+router.get("/empresas", w(empresas.listar));
+router.post("/empresas", requireRol("MASTER"), w(empresas.crear));
+router.put("/empresas/:id", requireRol("MASTER"), w(empresas.actualizar));
+router.patch("/empresas/:id/activa", requireRol("MASTER"), w(empresas.toggleActiva));
 
 // ─── Categorías y seed ────────────────────────────────────────────────────
 router.use("/categorias", categoriasRouter);
