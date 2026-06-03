@@ -110,9 +110,13 @@ model Cliente {
   vendedor       Vendedor?    @relation(fields: [vendedorId], references: [id])
   listaPrecioId  Int?
   listaPrecio    ListaPrecio? @relation("ListaPredeterminada", fields: [listaPrecioId], references: [id])
-  empresaFactura String       @default("ECOPLAST F.P.")
-  fletePct       Decimal      @db.Decimal(5, 2) @default(0)
-  diasCredito    Int          @default(0)
+  empresaFactura        String       @default("ECOPLAST F.P.")
+  fletePct              Decimal      @db.Decimal(5, 2) @default(0)
+  fleteTuberiaPct       Decimal      @db.Decimal(5, 2) @default(0)
+  fleteConexionesPct    Decimal      @db.Decimal(5, 2) @default(0)
+  comisionTuberiaPct    Decimal      @db.Decimal(5, 2) @default(0)
+  comisionConexionesPct Decimal      @db.Decimal(5, 2) @default(0)
+  diasCredito           Int          @default(0)
   condicionPago  String?
   observaciones  String?
   activo         Boolean      @default(true)

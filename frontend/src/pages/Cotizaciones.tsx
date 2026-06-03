@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
 import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp } from "lucide-react";
-import { pdfCotizacion, pdfHojaProduccion } from "../utils/pdf";
+import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
@@ -180,26 +180,55 @@ export default function Cotizaciones() {
               <Stat label="Total Neto" value={`$${Number(detalle.totalNeto).toFixed(2)}`} bold />
             </div>
 
-            {/* Panel de flete y comisión — nunca en PDF */}
+            {/* Panel de flete y comisión — solo visible internamente, nunca en PDF del cliente */}
             {cotizacionDetallada && (() => {
-              const fletePct = Number(cotizacionDetallada.cliente?.fletePct ?? 0);
-              const comisionPct = Number(cotizacionDetallada.vendedor?.comisionPct ?? 0);
-              const base = Number(cotizacionDetallada.totalNeto);
-              if (fletePct <= 0 && comisionPct <= 0) return null;
+              const c = cotizacionDetallada.cliente ?? {};
+              const lineas: any[] = cotizacionDetallada.lineas ?? [];
+              const ftPct = Number(c.fleteTuberiaPct ?? 0);
+              const fcPct = Number(c.fleteConexionesPct ?? 0);
+              const ctPct = Number(c.comisionTuberiaPct ?? 0);
+              const ccPct = Number(c.comisionConexionesPct ?? 0);
+              if (ftPct + fcPct + ctPct + ccPct === 0) return null;
+
+              const esConexion = (l: any) =>
+                (l.producto?.origen ?? "INTERNO") === "EXTERNO" &&
+                !(l.producto?.nombre ?? "").toLowerCase().includes("manguera");
+
+              const totalTub = lineas.filter((l) => !esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
+              const totalCon = lineas.filter((l) => esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
+
+              const fleteTub = totalTub * ftPct / 100;
+              const fleteConx = totalCon * fcPct / 100;
+              const comTub = totalTub * ctPct / 100;
+              const comConx = totalCon * ccPct / 100;
+              const totalGanancia = fleteTub + fleteConx + comTub + comConx;
+
               return (
-                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-                  {fletePct > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: 13, color: "#92400e", fontWeight: 600 }}>
-                      <Truck size={13} />
-                      Flete {fletePct}%: ${(base * fletePct / 100).toFixed(2)}
-                    </div>
-                  )}
-                  {comisionPct > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: 13, color: "#166534", fontWeight: 600 }}>
-                      <TrendingUp size={13} />
-                      Comisión {cotizacionDetallada.vendedor?.nombre} {comisionPct}%: ${(base * comisionPct / 100).toFixed(2)}
-                    </div>
-                  )}
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 5 }}>
+                    <TrendingUp size={12} /> Ganancia Interna · No aparece en PDF del cliente
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {totalTub > 0 && (
+                      <div style={{ background: "#fff", borderRadius: 7, padding: "8px 10px", border: "1px solid #dcfce7" }}>
+                        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 4, textTransform: "uppercase" }}>Tubería · ${totalTub.toFixed(2)}</div>
+                        {ftPct > 0 && <div style={{ fontSize: 12, color: "#92400e", display: "flex", justifyContent: "space-between" }}><span><Truck size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Flete {ftPct}%</span><strong>${fleteTub.toFixed(2)}</strong></div>}
+                        {ctPct > 0 && <div style={{ fontSize: 12, color: "#166534", display: "flex", justifyContent: "space-between" }}><span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Comisión {ctPct}%</span><strong>${comTub.toFixed(2)}</strong></div>}
+                      </div>
+                    )}
+                    {totalCon > 0 && (
+                      <div style={{ background: "#fff", borderRadius: 7, padding: "8px 10px", border: "1px solid #dcfce7" }}>
+                        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 4, textTransform: "uppercase" }}>Conexiones · ${totalCon.toFixed(2)}</div>
+                        {fcPct > 0 && <div style={{ fontSize: 12, color: "#92400e", display: "flex", justifyContent: "space-between" }}><span><Truck size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Flete {fcPct}%</span><strong>${fleteConx.toFixed(2)}</strong></div>}
+                        {ccPct > 0 && <div style={{ fontSize: 12, color: "#166534", display: "flex", justifyContent: "space-between" }}><span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle" }} /> Comisión {ccPct}%</span><strong>${comConx.toFixed(2)}</strong></div>}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #bbf7d0", display: "flex", justifyContent: "flex-end", gap: 20 }}>
+                    {(fleteTub + fleteConx) > 0 && <span style={{ fontSize: 12, color: "#92400e" }}>Flete total: <strong>${(fleteTub + fleteConx).toFixed(2)}</strong></span>}
+                    {(comTub + comConx) > 0 && <span style={{ fontSize: 12, color: "#166534" }}>Comisión total: <strong>${(comTub + comConx).toFixed(2)}</strong></span>}
+                    <span style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>Ganancia: ${totalGanancia.toFixed(2)}</span>
+                  </div>
                 </div>
               );
             })()}
@@ -283,14 +312,21 @@ export default function Cotizaciones() {
                 </>
               )}
             </div>
-            {/* Botón PDF siempre visible */}
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+            {/* Botones PDF */}
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button
                 onClick={() => cotizacionDetallada && pdfCotizacion(cotizacionDetallada)}
                 disabled={!cotizacionDetallada}
                 style={{ ...btnAction, background: "#f1f5f9", color: "#475569", opacity: cotizacionDetallada ? 1 : 0.5 }}
               >
-                <Download size={14} /> Descargar PDF
+                <Download size={14} /> PDF Cliente
+              </button>
+              <button
+                onClick={() => cotizacionDetallada && pdfCotizacionGanancia(cotizacionDetallada)}
+                disabled={!cotizacionDetallada}
+                style={{ ...btnAction, background: "#dcfce7", color: "#166534", opacity: cotizacionDetallada ? 1 : 0.5 }}
+              >
+                <TrendingUp size={14} /> PDF con Ganancia
               </button>
             </div>
           </div>

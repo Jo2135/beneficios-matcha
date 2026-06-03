@@ -44,7 +44,7 @@ export default function Clientes() {
   );
 
   const abrir = (cliente?: any) => {
-    setForm(cliente ?? { empresaFactura: "ECOPLAST F.P.", diasCredito: 0, fletePct: 0 });
+    setForm(cliente ?? { empresaFactura: "ECOPLAST F.P.", diasCredito: 0, fleteTuberiaPct: 0, fleteConexionesPct: 0, comisionTuberiaPct: 0, comisionConexionesPct: 0 });
     setModal({ abierto: true, datos: cliente ?? null });
   };
 
@@ -176,9 +176,28 @@ export default function Clientes() {
                 <label style={labelStyle}>Días de Crédito</label>
                 <input type="number" style={inputStyle} value={form.diasCredito || 0} onChange={(e) => setForm({ ...form, diasCredito: Number(e.target.value) })} />
               </div>
-              <div>
-                <label style={labelStyle}>Flete %</label>
-                <input type="number" style={inputStyle} value={form.fletePct || 0} step="0.5" onChange={(e) => setForm({ ...form, fletePct: Number(e.target.value) })} />
+              <div style={{ gridColumn: "1/-1" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
+                  Flete (transporte) y Comisión del Vendedor — se calculan sobre el Total Neto, no aparecen en el PDF del cliente
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Flete Tubería %</label>
+                    <input type="number" style={inputStyle} value={form.fleteTuberiaPct ?? 0} step="0.5" min="0" max="100" onChange={(e) => setForm({ ...form, fleteTuberiaPct: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Flete Conexiones %</label>
+                    <input type="number" style={inputStyle} value={form.fleteConexionesPct ?? 0} step="0.5" min="0" max="100" onChange={(e) => setForm({ ...form, fleteConexionesPct: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Comisión Tubería %</label>
+                    <input type="number" style={inputStyle} value={form.comisionTuberiaPct ?? 0} step="0.5" min="0" max="100" onChange={(e) => setForm({ ...form, comisionTuberiaPct: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Comisión Conexiones %</label>
+                    <input type="number" style={inputStyle} value={form.comisionConexionesPct ?? 0} step="0.5" min="0" max="100" onChange={(e) => setForm({ ...form, comisionConexionesPct: Number(e.target.value) })} />
+                  </div>
+                </div>
               </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>Condición de Pago</label>

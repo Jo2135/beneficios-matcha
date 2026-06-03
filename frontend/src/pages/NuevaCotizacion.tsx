@@ -9,10 +9,15 @@ interface Linea {
   productoId: number;
   nombre: string;
   medida: string;
+  origen: string;
   precioUnitario: number;
   cantidad: number;
   descuentoPct: number;
   notaCantidad: string;
+}
+
+function esConexionExterna(linea: Linea): boolean {
+  return linea.origen === "EXTERNO" && !linea.nombre.toLowerCase().includes("manguera");
 }
 
 export default function NuevaCotizacion() {
@@ -69,7 +74,7 @@ export default function NuevaCotizacion() {
       if (existe) {
         return prev.map((l) => l.productoId === p.id ? { ...l, cantidad: l.cantidad + 1 } : l);
       }
-      return [...prev, { productoId: p.id, nombre: p.nombre, medida: p.medida ?? "", precioUnitario: precio, cantidad: 1, descuentoPct: 0, notaCantidad: "" }];
+      return [...prev, { productoId: p.id, nombre: p.nombre, medida: p.medida ?? "", origen: p.origen ?? "INTERNO", precioUnitario: precio, cantidad: 1, descuentoPct: 0, notaCantidad: "" }];
     });
     setBusqueda("");
     setDropdownAbierto(false);
@@ -84,6 +89,37 @@ export default function NuevaCotizacion() {
     const neto = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (1 - l.descuentoPct / 100), 0);
     return { bruto, descuento: bruto - neto, neto };
   }, [lineas]);
+
+  const ganancia = useMemo(() => {
+    if (!clienteSeleccionado) return null;
+    const ftPct = Number(clienteSeleccionado.fleteTuberiaPct ?? 0);
+    const fcPct = Number(clienteSeleccionado.fleteConexionesPct ?? 0);
+    const ctPct = Number(clienteSeleccionado.comisionTuberiaPct ?? 0);
+    const ccPct = Number(clienteSeleccionado.comisionConexionesPct ?? 0);
+    if (ftPct + fcPct + ctPct + ccPct === 0) return null;
+
+    const totalTuberia = lineas
+      .filter((l) => !esConexionExterna(l))
+      .reduce((s, l) => s + l.precioUnitario * l.cantidad * (1 - l.descuentoPct / 100), 0);
+    const totalConexiones = lineas
+      .filter((l) => esConexionExterna(l))
+      .reduce((s, l) => s + l.precioUnitario * l.cantidad * (1 - l.descuentoPct / 100), 0);
+
+    const fleteTuberia = totalTuberia * ftPct / 100;
+    const fleteConexiones = totalConexiones * fcPct / 100;
+    const comisionTuberia = totalTuberia * ctPct / 100;
+    const comisionConexiones = totalConexiones * ccPct / 100;
+
+    return {
+      totalTuberia, totalConexiones,
+      ftPct, fcPct, ctPct, ccPct,
+      fleteTuberia, fleteConexiones,
+      comisionTuberia, comisionConexiones,
+      totalFlete: fleteTuberia + fleteConexiones,
+      totalComision: comisionTuberia + comisionConexiones,
+      total: fleteTuberia + fleteConexiones + comisionTuberia + comisionConexiones,
+    };
+  }, [lineas, clienteSeleccionado]);
 
   const crear = useMutation({
     mutationFn: () =>
@@ -330,33 +366,74 @@ export default function NuevaCotizacion() {
             </div>
           </div>
 
-          {/* Flete y comisión */}
-          {clienteSeleccionado && (Number(clienteSeleccionado.fletePct) > 0 || (esVendedor && Number(usuario?.vendedor?.comisionPct) > 0)) && (
-            <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid #f1f5f9" }}>
-              {Number(clienteSeleccionado.fletePct) > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "#fef3c7", borderRadius: 8 }}>
-                  <Truck size={14} color="#92400e" />
-                  <div>
-                    <div style={{ fontSize: 11, color: "#92400e", fontWeight: 500 }}>Flete ({clienteSeleccionado.fletePct}%)</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#78350f" }}>
-                      ${(totales.neto * Number(clienteSeleccionado.fletePct) / 100).toFixed(2)}
-                    </div>
-                  </div>
+          {/* espacio reservado — ganancia se muestra en panel flotante */}
+        </div>
+      )}
+      {/* Panel flotante de ganancia — top-right, visible mientras se construye la cotización */}
+      {ganancia && lineas.length > 0 && (
+        <div style={{
+          position: "fixed", top: 76, right: 20, zIndex: 300,
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.13)", padding: "14px 16px", width: 230,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 5 }}>
+            <TrendingUp size={12} /> Ganancia estimada
+          </div>
+
+          {ganancia.totalTuberia > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 3, textTransform: "uppercase" }}>Tubería</div>
+              {ganancia.ftPct > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#92400e" }}>
+                  <span><Truck size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Flete {ganancia.ftPct}%</span>
+                  <span style={{ fontWeight: 600 }}>${ganancia.fleteTuberia.toFixed(2)}</span>
                 </div>
               )}
-              {esVendedor && Number(usuario?.vendedor?.comisionPct) > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "#dcfce7", borderRadius: 8 }}>
-                  <TrendingUp size={14} color="#166534" />
-                  <div>
-                    <div style={{ fontSize: 11, color: "#166534", fontWeight: 500 }}>Tu comisión ({usuario?.vendedor?.comisionPct}%)</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#14532d" }}>
-                      ${(totales.neto * Number(usuario?.vendedor?.comisionPct) / 100).toFixed(2)}
-                    </div>
-                  </div>
+              {ganancia.ctPct > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#166534" }}>
+                  <span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Comisión {ganancia.ctPct}%</span>
+                  <span style={{ fontWeight: 600 }}>${ganancia.comisionTuberia.toFixed(2)}</span>
                 </div>
               )}
             </div>
           )}
+
+          {ganancia.totalConexiones > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 3, textTransform: "uppercase" }}>Conexiones</div>
+              {ganancia.fcPct > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#92400e" }}>
+                  <span><Truck size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Flete {ganancia.fcPct}%</span>
+                  <span style={{ fontWeight: 600 }}>${ganancia.fleteConexiones.toFixed(2)}</span>
+                </div>
+              )}
+              {ganancia.ccPct > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#166534" }}>
+                  <span><TrendingUp size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />Comisión {ganancia.ccPct}%</span>
+                  <span style={{ fontWeight: 600 }}>${ganancia.comisionConexiones.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ borderTop: "1.5px solid #dcfce7", paddingTop: 8, marginTop: 4 }}>
+            {ganancia.totalFlete > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#92400e", marginBottom: 3 }}>
+                <span style={{ fontWeight: 600 }}>Total Flete</span>
+                <span style={{ fontWeight: 700 }}>${ganancia.totalFlete.toFixed(2)}</span>
+              </div>
+            )}
+            {ganancia.totalComision > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#166534", marginBottom: 3 }}>
+                <span style={{ fontWeight: 600 }}>Total Comisión</span>
+                <span style={{ fontWeight: 700 }}>${ganancia.totalComision.toFixed(2)}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#166534", fontWeight: 700, marginTop: 4 }}>
+              <span>Ganancia Total</span>
+              <span>${ganancia.total.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

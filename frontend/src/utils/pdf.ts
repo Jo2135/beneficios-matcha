@@ -621,6 +621,129 @@ export function pdfCotizacion(cot: any) {
   doc.save(`${cot.numero}.pdf`);
 }
 
+// ─── PDF COTIZACIÓN CON GANANCIA (COPIA INTERNA) ───────────────────────────────
+
+export function pdfCotizacionGanancia(cot: any) {
+  const doc = new jsPDF();
+  const tema = detectarTema(cot);
+  const cliente = cot.cliente ?? {};
+  const fechaDoc = fechaStr(cot.creadoEn);
+  const lineas: any[] = cot.lineas ?? [];
+
+  const ftPct = Number(cliente.fleteTuberiaPct ?? 0);
+  const fcPct = Number(cliente.fleteConexionesPct ?? 0);
+  const ctPct = Number(cliente.comisionTuberiaPct ?? 0);
+  const ccPct = Number(cliente.comisionConexionesPct ?? 0);
+
+  const esConexion = (l: any) =>
+    (l.producto?.origen ?? "INTERNO") === "EXTERNO" &&
+    !(l.producto?.nombre ?? "").toLowerCase().includes("manguera");
+
+  const lineasTub = lineas.filter((l) => !esConexion(l));
+  const lineasCon = lineas.filter((l) => esConexion(l));
+  const totalTub = lineasTub.reduce((s, l) => s + Number(l.totalLinea), 0);
+  const totalCon = lineasCon.reduce((s, l) => s + Number(l.totalLinea), 0);
+
+  const fleteTub = totalTub * ftPct / 100;
+  const fleteConx = totalCon * fcPct / 100;
+  const comTub = totalTub * ctPct / 100;
+  const comConx = totalCon * ccPct / 100;
+  const totalGanancia = fleteTub + fleteConx + comTub + comConx;
+
+  // Same header as customer quote
+  const startY =
+    tema.tipo === "ECOPLAST"
+      ? cabeceraEcoplast(doc, tema, "COTIZACIÓN", cot.numero, cliente, fechaDoc)
+      : cabeceraMaxplastic(doc, tema, "COTIZACIÓN", cot.numero, cliente, fechaDoc);
+
+  // "COPIA INTERNA" watermark strip
+  const [r, g, b] = tema.primary;
+  doc.setFillColor(220, 252, 231);
+  doc.rect(14, startY - 6, 182, 7, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(22, 101, 52);
+  doc.text("★  COPIA INTERNA — COTIZACIÓN CON GANANCIA — NO ENVIAR AL CLIENTE  ★", 105, startY - 1.5, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+
+  const config =
+    tema.tipo === "ECOPLAST"
+      ? tablaEcoplast(lineas, "cot")
+      : tablaMaxplastic(lineas, "cot");
+
+  const fy = drawTable(doc, tema, startY + 2, config);
+  drawTotalsBox(doc, tema, fy, Number(cot.totalBruto), Number(cot.descuentoTotal), Number(cot.totalNeto));
+
+  // Ganancia breakdown box
+  const bY = fy + 46;
+  if (bY < 250) {
+    doc.setFillColor(240, 253, 244);
+    doc.roundedRect(14, bY, 182, totalCon > 0 ? 54 : 36, 3, 3, "F");
+    doc.setDrawColor(134, 239, 172);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, bY, 182, totalCon > 0 ? 54 : 36, 3, 3, "D");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(22, 101, 52);
+    doc.text("DESGLOSE DE GANANCIA INTERNA", 105, bY + 7, { align: "center" });
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(134, 239, 172);
+    doc.line(14, bY + 10, 196, bY + 10);
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+
+    let rowY = bY + 17;
+    const col1 = 20, col2 = 80, col3 = 130, col4 = 192;
+
+    // Header row
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(80, 80, 80);
+    doc.text("Tipo", col1, rowY);
+    doc.text("Base", col2, rowY, { align: "right" });
+    doc.text("Flete", col3, rowY, { align: "right" });
+    doc.text("Comisión", col4, rowY, { align: "right" });
+    rowY += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+
+    if (totalTub > 0) {
+      doc.text(`Tubería (${ftPct}% flete · ${ctPct}% comisión)`, col1, rowY);
+      doc.text(usd(totalTub), col2, rowY, { align: "right" });
+      doc.text(usd(fleteTub), col3, rowY, { align: "right" });
+      doc.text(usd(comTub), col4, rowY, { align: "right" });
+      rowY += 6;
+    }
+    if (totalCon > 0) {
+      doc.text(`Conexiones (${fcPct}% flete · ${ccPct}% comisión)`, col1, rowY);
+      doc.text(usd(totalCon), col2, rowY, { align: "right" });
+      doc.text(usd(fleteConx), col3, rowY, { align: "right" });
+      doc.text(usd(comConx), col4, rowY, { align: "right" });
+      rowY += 6;
+    }
+
+    // Totals row
+    doc.setDrawColor(134, 239, 172);
+    doc.line(14, rowY, 196, rowY);
+    rowY += 5;
+    doc.setFont("helvetica", "bold");
+    doc.setFillColor(22, 101, 52);
+    doc.setTextColor(22, 101, 52);
+    doc.text("GANANCIA TOTAL:", col1, rowY);
+    doc.text(usd(fleteTub + fleteConx), col3, rowY, { align: "right" });
+    const gainLabel = usd(totalGanancia);
+    doc.setFontSize(10);
+    doc.text(gainLabel, col4, rowY, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  addFooters(doc);
+  doc.save(`${cot.numero}-ganancia.pdf`);
+}
+
 // ─── PDF FACTURA ───────────────────────────────────────────────────────────────
 
 export function pdfFactura(fac: any) {
