@@ -57,14 +57,22 @@ export async function obtener(req: Request, res: Response) {
 }
 
 export async function crear(req: Request, res: Response) {
-  const cliente = await prisma.cliente.create({ data: req.body });
+  const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+          fletePct, condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
+  const cliente = await prisma.cliente.create({
+    data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+            fletePct, condicionPago, observaciones, vendedorId, listaPrecioId },
+  });
   res.status(201).json(cliente);
 }
 
 export async function actualizar(req: Request, res: Response) {
+  const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+          fletePct, condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
   const cliente = await prisma.cliente.update({
     where: { id: Number(req.params.id) },
-    data: req.body,
+    data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+            fletePct, condicionPago, observaciones, vendedorId, listaPrecioId },
   });
   res.json(cliente);
 }
