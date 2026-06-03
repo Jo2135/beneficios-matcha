@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle } from "lucide-react";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2 } from "lucide-react";
 import { pdfFactura } from "../utils/pdf";
+import { useAuth } from "../contexts/AuthContext";
 
 const ESTADO: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   EMITIDA:         { label: "Emitida",       color: "#475569", bg: "#f1f5f9", icon: FileText },
@@ -31,8 +32,16 @@ function fecha(raw: any) {
 }
 
 export default function Facturas() {
+  const qc = useQueryClient();
+  const { esMaster } = useAuth();
   const [filtro, setFiltro] = useState("TODAS");
   const [facturaId, setFacturaId] = useState<number | null>(null);
+
+  const eliminarFac = useMutation({
+    mutationFn: (id: number) => facturasApi.eliminar(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["facturas-balance"] }); setFacturaId(null); },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al eliminar"),
+  });
 
   const { data: balance } = useQuery({
     queryKey: ["facturas-balance"],
@@ -180,6 +189,17 @@ export default function Facturas() {
                 >
                   <Download size={13} /> Descargar PDF
                 </button>
+                {esMaster && (
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`¿Eliminar ${factura.numero} permanentemente?`)) return;
+                      eliminarFac.mutate(factura.id);
+                    }}
+                    style={{ ...btnAction, background: "#fee2e2", color: "#991b1b", display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Trash2 size={13} /> Eliminar
+                  </button>
+                )}
                 <button onClick={() => setFacturaId(null)} style={btnClose}>✕</button>
               </div>
             </div>

@@ -84,6 +84,7 @@ router.get("/facturas/balance", requireRol("MASTER", "ADMIN"), w(facturas.balanc
 router.get("/facturas/cliente/:clienteId/resumen", requireRol("MASTER", "ADMIN"), w(facturas.resumenCliente));
 router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));
+router.delete("/facturas/:id", requireRol("MASTER"), w(facturas.eliminar));
 
 // ─── Cuentas bancarias ────────────────────────────────────────────────────
 router.get("/cuentas", w(cuentas.listar));

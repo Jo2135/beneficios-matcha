@@ -90,3 +90,15 @@ export async function balanceGeneral(_req: Request, res: Response) {
 
   res.json({ facturas, totalEmitido, totalCobrado, totalPendiente });
 }
+
+export async function eliminar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const factura = await prisma.factura.findUnique({ where: { id }, select: { numero: true, totalPagado: true } });
+  if (!factura) return res.status(404).json({ error: "Factura no encontrada" });
+  if (Number(factura.totalPagado) > 0) {
+    return res.status(400).json({ error: "No se puede eliminar una factura con pagos registrados" });
+  }
+  await prisma.facturaLinea.deleteMany({ where: { facturaId: id } });
+  await prisma.factura.delete({ where: { id } });
+  res.json({ ok: true });
+}

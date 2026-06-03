@@ -75,6 +75,7 @@ export const facturasApi = {
   balance: () => api.get("/facturas/balance").then((r) => r.data),
   resumenCliente: (clienteId: number) =>
     api.get(`/facturas/cliente/${clienteId}/resumen`).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/facturas/${id}`).then((r) => r.data),
 };
 
 // Despachos
