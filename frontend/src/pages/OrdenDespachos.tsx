@@ -5,6 +5,55 @@ import { useAuth } from "../contexts/AuthContext";
 import { Factory, ChevronLeft, ChevronRight, FileDown, X, RotateCcw } from "lucide-react";
 import { pdfOrdenDespachos } from "../utils/pdf";
 
+// Product family priority order (name-based pattern matching)
+const FAMILIAS = [
+  { patron: /manguera.*(riego|agr|3\/4|1[\s-]3)/i, prio: 1, label: "Manguera Riego" },
+  { patron: /tubo azul agua blanca/i, prio: 2, label: "Tubo Azul Agua Blanca" },
+  { patron: /tubo gris pead/i, prio: 3, label: "Tubo Gris PEAD" },
+  { patron: /tubo el[eé]ctrico negro|tubería agua negra gris/i, prio: 4, label: "Tubo Negro" },
+  { patron: /tubo el[eé]ctrico blanco/i, prio: 5, label: "Tubo Eléctrico Blanco" },
+  { patron: /tuber[ií]a agua negra amarilla|pead.*amarill/i, prio: 6, label: "Tubería Amarilla PEAD" },
+  { patron: /tubo naranja pvc|tubo amarillo pvc/i, prio: 7, label: "Tubo PVC Amarillo/Naranja" },
+  { patron: /tubo gris agua blanca pvc/i, prio: 8, label: "Tubo Gris Agua Blanca PVC" },
+  { patron: /manguera verde|manguera gas/i, prio: 9, label: "Manguera Verde/Gas" },
+  { patron: /curva el[eé]ctrica/i, prio: 10, label: "Curva Eléctrica" },
+  { patron: /niple azul/i, prio: 11, label: "Niple Azul" },
+  { patron: /codo pvc/i, prio: 12, label: "Codo PVC (fabricado)" },
+];
+
+function familiaProd(nombre: string): { prio: number; label: string } {
+  for (const f of FAMILIAS) {
+    if (f.patron.test(nombre)) return f;
+  }
+  return { prio: 99, label: "Otros" };
+}
+
+function medidaOrdinal(m: string): number {
+  if (!m) return 9999;
+  // Handle mixed fractions like "1½" or "1 1/2"
+  const mixed = m.match(/^(\d+)\s*[½⅓⅔¼¾]|^(\d+)\s+(\d+)\/(\d+)/);
+  if (mixed) {
+    const whole = Number(mixed[1] ?? mixed[2]);
+    return whole + 0.5;
+  }
+  // Handle plain fractions like "1/2", "3/4"
+  const frac = m.match(/^(\d+)\/(\d+)/);
+  if (frac) return Number(frac[1]) / Number(frac[2]);
+  // Handle decimal/integer
+  const num = parseFloat(m);
+  return isNaN(num) ? 9999 : num;
+}
+
+function esConexionExterna(p: any): boolean {
+  const origen = (p?.origen ?? "INTERNO").toUpperCase();
+  const nombre = (p?.nombre ?? "").toLowerCase();
+  return origen === "EXTERNO" && !nombre.includes("manguera");
+}
+
+type RowItem =
+  | { type: "header"; label: string }
+  | { type: "product"; p: any };
+
 export default function OrdenDespachos() {
   const { puedeEditar } = useAuth();
   const [orden, setOrden] = useState<number[]>([]);
@@ -14,14 +63,12 @@ export default function OrdenDespachos() {
     queryFn: cotizacionesApi.ordenProduccion,
   });
 
-  // Initialize column order once data loads
   useEffect(() => {
     if ((cotizaciones as any[]).length > 0 && orden.length === 0) {
       setOrden((cotizaciones as any[]).map((c: any) => c.id));
     }
   }, [cotizaciones]);
 
-  // Build ordered list of cotizaciones based on orden state
   const cotOrdenadas = useMemo(() => {
     if (orden.length === 0) return cotizaciones as any[];
     return orden
@@ -29,29 +76,49 @@ export default function OrdenDespachos() {
       .filter(Boolean) as any[];
   }, [cotizaciones, orden]);
 
-  // Collect unique products across all approved quotes
+  // Collect unique NON-connection products, sorted by family priority then medida
   const productos = useMemo(() => {
     const map = new Map<number, any>();
     for (const cot of cotOrdenadas) {
       for (const l of cot.lineas ?? []) {
         if (!map.has(l.productoId)) {
-          map.set(l.productoId, {
+          const prod = {
             id: l.productoId,
             nombre: l.producto?.nombre ?? "—",
             medida: l.producto?.medida ?? "—",
+            origen: l.producto?.origen ?? "INTERNO",
             categoria: l.producto?.categoria?.nombre ?? "",
-          });
+          };
+          if (!esConexionExterna(prod)) {
+            map.set(l.productoId, prod);
+          }
         }
       }
     }
     return Array.from(map.values()).sort((a, b) => {
-      const c = a.categoria.localeCompare(b.categoria);
-      if (c !== 0) return c;
-      const n = a.nombre.localeCompare(b.nombre);
-      if (n !== 0) return n;
-      return a.medida.localeCompare(b.medida);
+      const fa = familiaProd(a.nombre);
+      const fb = familiaProd(b.nombre);
+      if (fa.prio !== fb.prio) return fa.prio - fb.prio;
+      const ma = medidaOrdinal(a.medida);
+      const mb = medidaOrdinal(b.medida);
+      return ma - mb;
     });
   }, [cotOrdenadas]);
+
+  // Flat list with group header rows intercalated
+  const filas = useMemo((): RowItem[] => {
+    const result: RowItem[] = [];
+    let lastLabel = "";
+    for (const p of productos) {
+      const { label } = familiaProd(p.nombre);
+      if (label !== lastLabel) {
+        result.push({ type: "header", label });
+        lastLabel = label;
+      }
+      result.push({ type: "product", p });
+    }
+    return result;
+  }, [productos]);
 
   // Build quantity lookup: productId → cotId → quantity
   const lookup = useMemo(() => {
@@ -90,6 +157,8 @@ export default function OrdenDespachos() {
       </div>
     );
   }
+
+  const colCount = cotOrdenadas.length + 3; // Producto + Medida + cots + TOTAL
 
   return (
     <div style={{ padding: 24 }}>
@@ -185,7 +254,31 @@ export default function OrdenDespachos() {
                 </tr>
               </thead>
               <tbody>
-                {productos.map((p: any, rowIdx: number) => {
+                {filas.map((fila, i) => {
+                  if (fila.type === "header") {
+                    return (
+                      <tr key={`h-${i}`}>
+                        <td
+                          colSpan={colCount}
+                          style={{
+                            padding: "6px 14px",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: "#166534",
+                            background: "#f0fdf4",
+                            borderTop: i === 0 ? undefined : "2px solid #86efac",
+                            borderBottom: "1px solid #bbf7d0",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                          }}
+                        >
+                          {fila.label}
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const { p } = fila;
                   const qtMap = lookup.get(p.id);
                   const total = cotOrdenadas.reduce(
                     (s: number, c: any) => s + (qtMap?.get(c.id) ?? 0),
@@ -196,16 +289,11 @@ export default function OrdenDespachos() {
                       key={p.id}
                       style={{
                         borderBottom: "1px solid #f1f5f9",
-                        background: rowIdx % 2 === 0 ? "#fff" : "#f8fafc",
+                        background: "#fff",
                       }}
                     >
                       <td style={{ ...tdStyle, fontWeight: 600, color: "#1e293b" }}>
                         {p.nombre}
-                        {p.categoria && (
-                          <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: 5, fontWeight: 400 }}>
-                            {p.categoria}
-                          </span>
-                        )}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "center" }}>
                         <span style={tagStyle}>{p.medida}</span>

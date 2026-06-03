@@ -58,6 +58,45 @@ const fechaStr = (raw: any): string => {
   } catch { return String(raw); }
 };
 
+// ─── PRODUCT FAMILY HELPERS ────────────────────────────────────────────────────
+
+const FAMILIAS_PDF = [
+  { patron: /manguera.*(riego|agr|3\/4|1[\s-]3)/i, prio: 1, label: "Manguera Riego" },
+  { patron: /tubo azul agua blanca/i, prio: 2, label: "Tubo Azul Agua Blanca" },
+  { patron: /tubo gris pead/i, prio: 3, label: "Tubo Gris PEAD" },
+  { patron: /tubo el[eé]ctrico negro|tuber[ií]a agua negra gris/i, prio: 4, label: "Tubo Negro" },
+  { patron: /tubo el[eé]ctrico blanco/i, prio: 5, label: "Tubo Eléctrico Blanco" },
+  { patron: /tuber[ií]a agua negra amarilla|pead.*amarill/i, prio: 6, label: "Tubería Amarilla PEAD" },
+  { patron: /tubo naranja pvc|tubo amarillo pvc/i, prio: 7, label: "Tubo PVC Amarillo/Naranja" },
+  { patron: /tubo gris agua blanca pvc/i, prio: 8, label: "Tubo Gris Agua Blanca PVC" },
+  { patron: /manguera verde|manguera gas/i, prio: 9, label: "Manguera Verde/Gas" },
+  { patron: /curva el[eé]ctrica/i, prio: 10, label: "Curva Eléctrica" },
+  { patron: /niple azul/i, prio: 11, label: "Niple Azul" },
+  { patron: /codo pvc/i, prio: 12, label: "Codo PVC (fabricado)" },
+];
+
+function familiaPdf(nombre: string): { prio: number; label: string } {
+  for (const f of FAMILIAS_PDF) {
+    if (f.patron.test(nombre)) return f;
+  }
+  return { prio: 99, label: "Otros" };
+}
+
+function medidaOrdinalPdf(m: string): number {
+  if (!m) return 9999;
+  const mixed = m.match(/^(\d+)\s*[½⅓⅔¼¾]|^(\d+)\s+(\d+)\/(\d+)/);
+  if (mixed) return Number(mixed[1] ?? mixed[2]) + 0.5;
+  const frac = m.match(/^(\d+)\/(\d+)/);
+  if (frac) return Number(frac[1]) / Number(frac[2]);
+  const num = parseFloat(m);
+  return isNaN(num) ? 9999 : num;
+}
+
+function esConexionExternaPdf(prod: { nombre: string; origen?: string }): boolean {
+  return (prod.origen ?? "INTERNO").toUpperCase() === "EXTERNO" &&
+    !prod.nombre.toLowerCase().includes("manguera");
+}
+
 // ─── EMPRESA THEME ─────────────────────────────────────────────────────────────
 
 type EmpresaTipo = "ECOPLAST" | "MAXPLASTIC";
@@ -694,17 +733,39 @@ export function pdfHojaProduccion(cot: any) {
     doc.setTextColor(0, 0, 0);
   }
 
-  // Product table
-  autoTable(doc, {
-    startY: infoY + 32,
-    head: [["Descripción del Producto", "Medida", "Cantidad Pedida", "Fabricado", "Faltante"]],
-    body: lineas.map((l: any) => [
+  // Sort lineas by family priority + medida
+  const lineasSorted = [...lineas].sort((a: any, b: any) => {
+    const fa = familiaPdf(a.producto?.nombre ?? "");
+    const fb = familiaPdf(b.producto?.nombre ?? "");
+    if (fa.prio !== fb.prio) return fa.prio - fb.prio;
+    return medidaOrdinalPdf(a.producto?.medida ?? "") - medidaOrdinalPdf(b.producto?.medida ?? "");
+  });
+
+  // Build rows with group separator rows
+  const prodRows: any[][] = [];
+  const prodHeaderRows = new Set<number>();
+  let lastFamLabel = "";
+  for (const l of lineasSorted) {
+    const fam = familiaPdf(l.producto?.nombre ?? "");
+    if (fam.label !== lastFamLabel) {
+      prodRows.push(["__HEADER__", fam.label, "", "", ""]);
+      prodHeaderRows.add(prodRows.length - 1);
+      lastFamLabel = fam.label;
+    }
+    prodRows.push([
       l.producto?.nombre ?? "—",
       l.producto?.medida ?? "—",
       l.notaCantidad ? `${qty(l.cantidad)} (${l.notaCantidad})` : qty(l.cantidad),
       "",
       "",
-    ]),
+    ]);
+  }
+
+  // Product table
+  autoTable(doc, {
+    startY: infoY + 32,
+    head: [["Descripción del Producto", "Medida", "Cantidad Pedida", "Fabricado", "Faltante"]],
+    body: prodRows,
     headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 9 },
     styles: { fontSize: 9.5, cellPadding: [4, 3], minCellHeight: 11 },
     columnStyles: {
@@ -716,12 +777,18 @@ export function pdfHojaProduccion(cot: any) {
     },
     margin: { left: 14, right: 14 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    didDrawCell: (data) => {
-      // Draw vertical lines for Fabricado and Faltante columns to make them visually distinct
-      if (data.section === "body" && (data.column.index === 3 || data.column.index === 4)) {
-        const doc2 = data.doc;
-        doc2.setDrawColor(200, 200, 200);
-        doc2.setLineWidth(0.3);
+    didParseCell: (data) => {
+      if (data.section === "body" && prodHeaderRows.has(data.row.index)) {
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.fillColor = [220, 252, 231];
+        data.cell.styles.textColor = [22, 101, 52];
+        data.cell.styles.fontSize = 8;
+        // Show label only in first column, clear others
+        if (data.column.index === 0) {
+          data.cell.text = [data.row.raw[1] as string];
+        } else {
+          data.cell.text = [""];
+        }
       }
     },
   });
@@ -755,27 +822,29 @@ export function pdfOrdenDespachos(cotizaciones: any[], orden: number[]) {
     ? orden.map((id) => cotizaciones.find((c: any) => c.id === id)).filter(Boolean) as any[]
     : cotizaciones as any[];
 
-  // Build unique products map
-  const productMap = new Map<number, { nombre: string; medida: string; categoria: string }>();
+  // Build unique products map (exclude external connections)
+  const productMap = new Map<number, { nombre: string; medida: string; origen: string }>();
   for (const cot of ordered) {
     for (const l of cot.lineas ?? []) {
       if (!productMap.has(l.productoId)) {
-        productMap.set(l.productoId, {
+        const prod = {
           nombre: l.producto?.nombre ?? "—",
           medida: l.producto?.medida ?? "—",
-          categoria: l.producto?.categoria?.nombre ?? "",
-        });
+          origen: l.producto?.origen ?? "INTERNO",
+        };
+        if (!esConexionExternaPdf(prod)) {
+          productMap.set(l.productoId, prod);
+        }
       }
     }
   }
 
-  // Sort products by category → name → medida
+  // Sort products by family priority + medida ordinal
   const products = Array.from(productMap.entries()).sort((a, b) => {
-    const catCmp = a[1].categoria.localeCompare(b[1].categoria);
-    if (catCmp !== 0) return catCmp;
-    const nameCmp = a[1].nombre.localeCompare(b[1].nombre);
-    if (nameCmp !== 0) return nameCmp;
-    return a[1].medida.localeCompare(b[1].medida);
+    const fa = familiaPdf(a[1].nombre);
+    const fb = familiaPdf(b[1].nombre);
+    if (fa.prio !== fb.prio) return fa.prio - fb.prio;
+    return medidaOrdinalPdf(a[1].medida) - medidaOrdinalPdf(b[1].medida);
   });
 
   // Build lookup: productId → cotId → quantity
@@ -800,7 +869,7 @@ export function pdfOrdenDespachos(cotizaciones: any[], orden: number[]) {
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 100, 100);
   doc.text(
-    `Generado: ${new Date().toLocaleDateString("es-VE")}   ·   ${ordered.length} cotizaciones aprobadas   ·   ${products.length} productos`,
+    `Generado: ${new Date().toLocaleDateString("es-VE")}   ·   ${ordered.length} cotizaciones aprobadas   ·   ${products.length} productos a fabricar`,
     148.5, 24, { align: "center" }
   );
 
@@ -808,7 +877,7 @@ export function pdfOrdenDespachos(cotizaciones: any[], orden: number[]) {
   doc.setLineWidth(0.5);
   doc.line(14, 27, 283, 27);
 
-  // Build table headers and rows
+  // Build table headers and rows (with group separator rows)
   const headers = [
     "Descripción Producto",
     "Medida",
@@ -816,18 +885,29 @@ export function pdfOrdenDespachos(cotizaciones: any[], orden: number[]) {
     "TOTAL",
   ];
 
-  const rows = products.map(([productId, p]) => {
+  const totalCols = 2 + ordered.length + 1;
+  const rows: any[][] = [];
+  const groupHeaderRows = new Set<number>();
+  let lastFamLabel = "";
+
+  for (const [productId, p] of products) {
+    const fam = familiaPdf(p.nombre);
+    if (fam.label !== lastFamLabel) {
+      // Separator row spanning all columns
+      rows.push(["__HEADER__", fam.label, ...Array(totalCols - 2).fill("")]);
+      groupHeaderRows.add(rows.length - 1);
+      lastFamLabel = fam.label;
+    }
     const qtMap = lookup.get(productId);
     const qtys = ordered.map((c: any) => {
       const q = qtMap?.get(c.id);
       return q ? qty(q) : "";
     });
     const total = ordered.reduce((s: number, c: any) => s + (qtMap?.get(c.id) ?? 0), 0);
-    return [p.nombre, p.medida, ...qtys, total > 0 ? qty(total) : ""];
-  });
+    rows.push([p.nombre, p.medida, ...qtys, total > 0 ? qty(total) : ""]);
+  }
 
   // Column widths
-  const totalCols = 2 + ordered.length + 1;
   const pageW = 297 - 28;
   const fixedW = 78 + 24;
   const dynColW = Math.max(18, Math.min(32, (pageW - fixedW - 24) / Math.max(ordered.length, 1)));
@@ -853,6 +933,17 @@ export function pdfOrdenDespachos(cotizaciones: any[], orden: number[]) {
     didParseCell: (data) => {
       if (data.section === "head" && data.column.index >= 2 && data.column.index < totalCols - 1) {
         data.cell.styles.fontSize = 6.5;
+      }
+      if (data.section === "body" && groupHeaderRows.has(data.row.index)) {
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.fillColor = [220, 252, 231];
+        data.cell.styles.textColor = [22, 101, 52];
+        data.cell.styles.fontSize = 7;
+        if (data.column.index === 0) {
+          data.cell.text = [data.row.raw[1] as string];
+        } else {
+          data.cell.text = [""];
+        }
       }
     },
   });
