@@ -184,7 +184,7 @@ export async function ordenProduccion(req: Request, res: Response) {
         include: {
           producto: {
             select: {
-              id: true, nombre: true, medida: true,
+              id: true, nombre: true, medida: true, origen: true,
               categoria: { select: { nombre: true } },
             },
           },
