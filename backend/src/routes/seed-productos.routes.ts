@@ -17,6 +17,43 @@ seedProductosRouter.post("/", async (_req, res) => {
     return res.status(403).json({ error: "No disponible en producción" });
   }
 
+  try {
+    // Aplica la columna codigo si no existe (idempotente)
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "Producto" ADD COLUMN IF NOT EXISTS "codigo" TEXT;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "Producto_codigo_key" ON "Producto"("codigo");
+    `);
+  } catch {
+    // Ignorar si ya existe
+  }
+
+  // Asegurar que las categorías base existan
+  const categoriasDef = [
+    { nombre: "Manguera_3/4", factorCostoKg: 1.083, gananciaKg: 0.125 },
+    { nombre: "Manguera_1-3", factorCostoKg: 1.09,  gananciaKg: 0.200 },
+    { nombre: "Azul",         factorCostoKg: 1.58,  gananciaKg: 0.190 },
+    { nombre: "Negro",        factorCostoKg: 1.28,  gananciaKg: 0.180 },
+    { nombre: "Blanco",       factorCostoKg: 1.58,  gananciaKg: 0.370 },
+    { nombre: "Amarillo_PEAD",factorCostoKg: 1.59,  gananciaKg: 0.490 },
+    { nombre: "Externo",      factorCostoKg: 0,     gananciaKg: 0     },
+  ];
+  for (const cat of categoriasDef) {
+    await prisma.categoriaCosto.upsert({
+      where: { nombre: cat.nombre },
+      update: {},
+      create: cat,
+    });
+  }
+
+  // Asegurar que las listas base existan (IDs 1-3)
+  await prisma.listaPrecio.upsert({ where: { id: 1 }, update: {}, create: { id: 1, nombre: "Lista Hermanos M" } });
+  await prisma.listaPrecio.upsert({ where: { id: 2 }, update: {}, create: { id: 2, nombre: "Lista Gandica" } });
+  await prisma.listaPrecio.upsert({ where: { id: 3 }, update: {}, create: { id: 3, nombre: "Lista Ferretería Infinito" } });
+
+  try {
+
   const cats = await prisma.categoriaCosto.findMany();
   const catId = (nombre: string) => {
     const c = cats.find((c) => c.nombre === nombre);
@@ -447,4 +484,8 @@ seedProductosRouter.post("/", async (_req, res) => {
     preciosGandica: listaGandica ? preciosMadreCount : 0,
     listaMadreId: lmId,
   });
+  } catch (err: any) {
+    console.error("[seed-productos]", err);
+    return res.status(500).json({ error: err?.message ?? "Error desconocido en seed" });
+  }
 });

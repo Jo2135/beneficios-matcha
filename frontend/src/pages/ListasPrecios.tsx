@@ -83,6 +83,7 @@ export default function ListasPrecios() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["listas-precios"] });
       qc.invalidateQueries({ queryKey: ["lista-detalle", seleccionada] });
+      qc.invalidateQueries({ queryKey: ["productos"] });
       setSeedResult(
         `✓ Listo: ${data.productosCreados} productos nuevos, ${data.productosActualizados} actualizados, ` +
         `${data.preciosListaMadre} precios en Lista Madre, ${data.preciosGandica ?? 0} en Lista Gandica.`
