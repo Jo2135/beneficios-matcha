@@ -20,9 +20,10 @@ function esConexionExterna(linea: Linea): boolean {
   return linea.origen === "EXTERNO" && !linea.nombre.toLowerCase().includes("manguera");
 }
 
-// Redondeo hacia arriba a 2 decimales, excepto Curvas que usan 4 decimales
+// Redondeo hacia arriba: Curvas → 3 decimales, resto → 2 decimales
 function redondearPrecio(precio: number, nombreProducto: string): number {
-  if (nombreProducto.toLowerCase().includes("curva")) return precio;
+  if (nombreProducto.toLowerCase().includes("curva"))
+    return Math.ceil(precio * 1000) / 1000;
   return Math.ceil(precio * 100) / 100;
 }
 
