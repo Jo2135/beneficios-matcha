@@ -138,6 +138,34 @@ export async function actualizarLineas(req: Request, res: Response) {
 export async function finalizar(req: Request, res: Response) {
   const despachoId = Number(req.params.id);
 
+  // Atomically save quantities if provided in body before finalizing
+  const lineasBody: { id: number; cantidadDespachada: number }[] | undefined =
+    Array.isArray(req.body?.lineas) && req.body.lineas.length > 0 ? req.body.lineas : undefined;
+
+  if (lineasBody) {
+    const despachoPrev = await prisma.ordenDespacho.findUnique({
+      where: { id: despachoId },
+      include: { lineas: true },
+    });
+    if (despachoPrev) {
+      await Promise.all(lineasBody.map(async (entrada) => {
+        const linea = despachoPrev.lineas.find((l) => l.id === Number(entrada.id));
+        if (!linea) return;
+        const cantPedida = Number(linea.cantidadPedida);
+        const cantDesp = Math.max(0, Number(entrada.cantidadDespachada));
+        const cantFaltante = Math.max(0, cantPedida - cantDesp);
+        let estadoLinea: "PENDIENTE" | "DESPACHADO" | "FALTO" | "PARCIAL" = "PENDIENTE";
+        if (cantDesp === 0) estadoLinea = "FALTO";
+        else if (cantDesp >= cantPedida) estadoLinea = "DESPACHADO";
+        else estadoLinea = "PARCIAL";
+        await prisma.despachoLinea.update({
+          where: { id: Number(entrada.id) },
+          data: { cantidadDespachada: cantDesp, cantidadFaltante: cantFaltante, estado: estadoLinea },
+        });
+      }));
+    }
+  }
+
   const despacho = await prisma.ordenDespacho.findUnique({
     where: { id: despachoId },
     include: {

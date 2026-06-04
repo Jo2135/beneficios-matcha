@@ -1370,7 +1370,10 @@ export function pdfDespachoGandica(params: {
     const cl = (l.cotizacion?.lineas ?? []).find((cl: any) => Number(cl.productoId) === Number(l.productoId));
     return cl ? Number(cl.precioFinal ?? cl.precioUnitarioAplicado ?? 0) : 0;
   };
-  const getCant = (l: any) => Number(l.cantidadDespachada ?? l.cantidad ?? 0);
+  const getCant = (l: any) => {
+    const d = Number(l.cantidadDespachada ?? 0);
+    return d > 0 ? d : Number(l.cantidadPedida ?? l.cantidad ?? 0);
+  };
   const esConex = (l: any) => esConexionExternaPdf(l.producto ?? {});
 
   const lineasTub = lineas.filter(l => !esConex(l));
@@ -1379,36 +1382,49 @@ export function pdfDespachoGandica(params: {
   const totalCon = lineasCon.reduce((s, l) => s + getPrecio(l) * getCant(l), 0);
   const totalFactura = totalTub + totalCon + (prestamo > 0 ? prestamo : 0) + (comision > 0 ? comision : 0);
 
-  // ── Header ──
-  const logoW = 40, boxH = 34, boxX = M, boxY = 10;
+  // ── Header — 5-row table (matches reference format) ──
+  const logoW = 42, boxX = M, boxY = 10;
+  const rowH = 8, rowCount = 5;
+  const boxH = rowH * rowCount;
   const boxW = W - M * 2 - logoW - 4;
-  const midX = boxX + boxW / 2, midY = boxY + boxH / 2;
+  const labelW = 26;
+  const fechaHeader = fecha ?? new Date().toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const headerLabels = ["Cliente", "RIF", "Direccion", "Vendedor", "Fecha"];
+  const headerValues = [
+    cliente?.nombre ?? "—",
+    cliente?.rif ?? "—",
+    cliente?.direccion ?? "—",
+    cliente?.vendedor?.nombre ?? "—",
+    fechaHeader,
+  ];
 
+  // Outer border
   doc.setDrawColor(r, g, b);
   doc.setLineWidth(0.4);
   doc.rect(boxX, boxY, boxW, boxH);
-  doc.line(midX, boxY, midX, boxY + boxH);
-  doc.line(boxX, midY, boxX + boxW, midY);
-
-  const cellW = boxW / 2 - 3;
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(r, g, b);
-  doc.text("Cliente:", boxX + 2, boxY + 4.5);
-  doc.text("RIF:", boxX + 2, midY + 4.5);
-  doc.text("Dirección:", midX + 2, boxY + 4.5);
-  doc.text("Fecha:", midX + 2, midY + 4.5);
-
+  // Label/value separator
+  doc.line(boxX + labelW, boxY, boxX + labelW, boxY + boxH);
+  // Row separators
+  for (let i = 1; i < rowCount; i++) {
+    doc.line(boxX, boxY + rowH * i, boxX + boxW, boxY + rowH * i);
+  }
+  // Labels (green bg + white text)
+  for (let i = 0; i < rowCount; i++) {
+    doc.setFillColor(r, g, b);
+    doc.rect(boxX, boxY + rowH * i, labelW, rowH, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text(headerLabels[i], boxX + 2, boxY + rowH * i + rowH * 0.65);
+  }
+  // Values
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(0, 0, 0);
   doc.setFontSize(8);
-  const cnLines = doc.splitTextToSize(cliente?.nombre ?? "—", cellW);
-  doc.text((cnLines as string[]).slice(0, 2), boxX + 2, boxY + 9.5);
-  doc.text(cliente?.rif ?? "—", boxX + 2, midY + 9.5);
-  const dirLines = doc.splitTextToSize(cliente?.direccion ?? "—", cellW);
-  doc.text((dirLines as string[]).slice(0, 2), midX + 2, boxY + 9.5);
-  const fechaHeader = fecha ?? new Date().toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  doc.text(fechaHeader, midX + 2, midY + 9.5);
+  doc.setTextColor(0, 0, 0);
+  for (let i = 0; i < rowCount; i++) {
+    const vLines = doc.splitTextToSize(headerValues[i], boxW - labelW - 3);
+    doc.text((vLines as string[]).slice(0, 1), boxX + labelW + 2, boxY + rowH * i + rowH * 0.65);
+  }
 
   drawLogo(doc, tema, W - M - logoW, boxY, logoW, boxH);
 
@@ -1485,7 +1501,8 @@ export function pdfDespachoGandica(params: {
     startY += bh + 8;
   }
 
-  // ── RECIBI CONFORME ──
+  // ── RECIBI CONFORME — add new page if not enough room ──
+  if (startY + 20 > 275) { doc.addPage(); startY = 20; }
   const sigLineY = startY + 4;
   doc.setDrawColor(80);
   doc.setLineWidth(0.4);

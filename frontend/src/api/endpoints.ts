@@ -120,7 +120,8 @@ export const despachosApi = {
     api.post(`/despachos/desde-cotizacion/${cotizacionId}`, data).then((r) => r.data),
   actualizarLineas: (id: number, lineas: any[]) =>
     api.put(`/despachos/${id}/lineas`, lineas).then((r) => r.data),
-  finalizar: (id: number) => api.post(`/despachos/${id}/finalizar`).then((r) => r.data),
+  finalizar: (id: number, lineas?: { id: number; cantidadDespachada: number }[]) =>
+    api.post(`/despachos/${id}/finalizar`, lineas ? { lineas } : {}).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/despachos/${id}`).then((r) => r.data),
 };
 

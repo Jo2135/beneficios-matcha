@@ -106,7 +106,13 @@ export default function Despachos() {
   });
 
   const finalizar = useMutation({
-    mutationFn: () => despachosApi.finalizar(despachoId!),
+    mutationFn: () => {
+      const lineas = (despacho?.lineas ?? []).map((l: any) => ({
+        id: l.id,
+        cantidadDespachada: getCantidad(l),
+      }));
+      return despachosApi.finalizar(despachoId!, lineas);
+    },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["despachos"] });
       qc.invalidateQueries({ queryKey: ["despacho", despachoId] });
@@ -447,19 +453,14 @@ export default function Despachos() {
                     {guardarLineas.isPending ? "Guardando..." : "Guardar Cambios"}
                   </button>
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       if (!window.confirm("¿Finalizar el despacho y generar la factura con las cantidades despachadas?")) return;
-                      try {
-                        await guardarLineas.mutateAsync();
-                        finalizar.mutate();
-                      } catch {
-                        alert("Error al guardar las cantidades antes de finalizar");
-                      }
+                      finalizar.mutate();
                     }}
-                    disabled={finalizar.isPending || guardarLineas.isPending}
+                    disabled={finalizar.isPending}
                     style={{ ...btnAction, background: "#16a34a", color: "#fff" }}
                   >
-                    {(finalizar.isPending || guardarLineas.isPending) ? "Finalizando..." : "Finalizar Despacho →"}
+                    {finalizar.isPending ? "Finalizando..." : "Finalizar Despacho →"}
                   </button>
                 </div>
               </div>
