@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listasApi, productosApi, cuentasApi } from "../api/endpoints";
 import { Plus, ChevronRight, Save, DollarSign, Upload, FileText, RefreshCw } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import * as XLSX from "xlsx";
 
 export default function ListasPrecios() {
   const qc = useQueryClient();
@@ -109,9 +110,28 @@ export default function ListasPrecios() {
   function onArchivoSeleccionado(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setCsvTexto(ev.target?.result as string ?? "");
-    reader.readAsText(file, "utf-8");
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        // Convertir a TSV para reusar el parser existente
+        const tsv = rows
+          .filter((r) => r.length >= 3 && r[0] && r[2])
+          .map((r) => `${String(r[0]).trim()}\t${String(r[1]).trim()}\t${String(r[2]).trim()}`)
+          .join("\n");
+        setCsvTexto(tsv);
+        setImportResult(null);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => { setCsvTexto(ev.target?.result as string ?? ""); setImportResult(null); };
+      reader.readAsText(file, "utf-8");
+    }
     e.target.value = "";
   }
 
@@ -212,7 +232,7 @@ export default function ListasPrecios() {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={abrirImport} style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                  <Upload size={13} /> Importar CSV
+                  <Upload size={13} /> Importar Excel / CSV
                 </button>
                 {hayCambios && (
                   <button onClick={() => guardarPrecios.mutate()} disabled={guardarPrecios.isPending} style={{ ...btnPrimary, gap: 6 }}>
@@ -287,25 +307,26 @@ export default function ListasPrecios() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setModalImport(false)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "min(580px,96vw)", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Importar Precios desde CSV</h2>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Importar Precios desde Excel / CSV</h2>
               <button onClick={() => setModalImport(false)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>✕</button>
             </div>
 
             <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
               <div style={{ fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><FileText size={13} /> Formato esperado (3 columnas):</div>
               <code style={{ display: "block", background: "#fff", borderRadius: 4, padding: "6px 10px", fontSize: 12, color: "#166534" }}>
-                Producto{"[tab o coma]"}Medida{"[tab o coma]"}Precio{"\n"}
-                Tubería Agua Negra Amarilla PEAD{"	"}2" x 3mts{"	"}5.92{"\n"}
-                Niple Azul{"	"}1/2" x 20cm{"	"}0.85
+                Col A: Nombre del producto &nbsp;|&nbsp; Col B: Medida &nbsp;|&nbsp; Col C: Precio USD
               </code>
-              <div style={{ marginTop: 6, color: "#166534" }}>✓ Puedes copiar directamente desde Excel y pegar aquí · Se ignora la fila de encabezado automáticamente</div>
+              <div style={{ marginTop: 6, color: "#166534" }}>
+                ✓ Excel (.xlsx/.xls): se lee la primera hoja, columnas A-B-C automáticamente<br/>
+                ✓ CSV/TXT: separado por tab, coma o punto y coma · Se ignora la fila de encabezado
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <button onClick={() => fileRef.current?.click()} style={{ ...btnSecondary, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                <Upload size={13} /> Seleccionar archivo .csv
+                <Upload size={13} /> Seleccionar archivo (.xlsx, .csv)
               </button>
-              <input ref={fileRef} type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={onArchivoSeleccionado} />
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.txt" style={{ display: "none" }} onChange={onArchivoSeleccionado} />
               {csvTexto && <span style={{ fontSize: 12, color: "#16a34a", alignSelf: "center" }}>✓ Archivo cargado ({csvTexto.split("\n").length} líneas)</span>}
             </div>
 
