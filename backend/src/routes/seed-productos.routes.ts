@@ -225,19 +225,26 @@ seedProductosRouter.post("/", async (_req, res) => {
       where: { nombre: p.nombre, medida: p.medida },
     });
     if (existente) {
-      if (!existente.codigo && p.codigo) {
-        await prisma.producto.update({
-          where: { id: existente.id },
-          data: { codigo: p.codigo, pesoUnitarioKg: p.peso ?? existente.pesoUnitarioKg },
-        });
-        actualizados++;
+      if (p.codigo) {
+        // Leer codigo via SQL directo (no requiere prisma generate)
+        const rows = await prisma.$queryRawUnsafe<{ codigo: string | null }[]>(
+          `SELECT "codigo" FROM "Producto" WHERE id = $1`, existente.id
+        );
+        if (!rows[0]?.codigo) {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "Producto" SET "codigo" = $1, "pesoUnitarioKg" = COALESCE($2::numeric, "pesoUnitarioKg") WHERE id = $3`,
+            p.codigo, p.peso ?? null, existente.id
+          );
+          actualizados++;
+        } else {
+          omitidos++;
+        }
       } else {
         omitidos++;
       }
     } else {
-      await prisma.producto.create({
+      const nuevo = await prisma.producto.create({
         data: {
-          codigo: p.codigo,
           nombre: p.nombre,
           medida: p.medida,
           origen: p.origen as any,
@@ -245,6 +252,11 @@ seedProductosRouter.post("/", async (_req, res) => {
           pesoUnitarioKg: p.peso,
         },
       });
+      if (p.codigo) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "Producto" SET "codigo" = $1 WHERE id = $2`, p.codigo, nuevo.id
+        );
+      }
       creados++;
     }
   }
@@ -452,22 +464,22 @@ seedProductosRouter.post("/", async (_req, res) => {
 
   let preciosMadreCount = 0;
   for (const pm of preciosMadre) {
-    const producto = await prisma.producto.findFirst({
-      where: { codigo: pm.codigo },
-    });
-    if (producto) {
-      // Carga en Lista Madre 2026
+    // Buscar por codigo via SQL directo (no requiere prisma generate)
+    const rows = await prisma.$queryRawUnsafe<{ id: number }[]>(
+      `SELECT id FROM "Producto" WHERE "codigo" = $1`, pm.codigo
+    );
+    const productoId = rows[0]?.id;
+    if (productoId) {
       await prisma.listaPrecioDetalle.upsert({
-        where: { listaPrecioId_productoId: { listaPrecioId: lmId, productoId: producto.id } },
+        where: { listaPrecioId_productoId: { listaPrecioId: lmId, productoId } },
         update: { precioUnitario: pm.precio },
-        create: { listaPrecioId: lmId, productoId: producto.id, precioUnitario: pm.precio },
+        create: { listaPrecioId: lmId, productoId, precioUnitario: pm.precio },
       });
-      // También carga en Lista Gandica (mismos precios "Primo Gato")
       if (listaGandica) {
         await prisma.listaPrecioDetalle.upsert({
-          where: { listaPrecioId_productoId: { listaPrecioId: listaGandica.id, productoId: producto.id } },
+          where: { listaPrecioId_productoId: { listaPrecioId: listaGandica.id, productoId } },
           update: { precioUnitario: pm.precio },
-          create: { listaPrecioId: listaGandica.id, productoId: producto.id, precioUnitario: pm.precio },
+          create: { listaPrecioId: listaGandica.id, productoId, precioUnitario: pm.precio },
         });
       }
       preciosMadreCount++;
