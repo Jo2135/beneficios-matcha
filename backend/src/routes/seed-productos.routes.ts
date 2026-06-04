@@ -407,17 +407,32 @@ seedProductosRouter.post("/", async (_req, res) => {
     { codigo: "MGR-4-150",    precio: 604.3950 },
   ];
 
+  // Lista Gandica = lista predeterminada del cliente Gato Gandica
+  // Buscarla por nombre para no hardcodear el ID
+  const listaGandica = await prisma.listaPrecio.findFirst({
+    where: { nombre: { contains: "Gandica", mode: "insensitive" } },
+  });
+
   let preciosMadreCount = 0;
   for (const pm of preciosMadre) {
     const producto = await prisma.producto.findFirst({
       where: { codigo: pm.codigo },
     });
     if (producto) {
+      // Carga en Lista Madre 2026
       await prisma.listaPrecioDetalle.upsert({
         where: { listaPrecioId_productoId: { listaPrecioId: lmId, productoId: producto.id } },
         update: { precioUnitario: pm.precio },
         create: { listaPrecioId: lmId, productoId: producto.id, precioUnitario: pm.precio },
       });
+      // También carga en Lista Gandica (mismos precios "Primo Gato")
+      if (listaGandica) {
+        await prisma.listaPrecioDetalle.upsert({
+          where: { listaPrecioId_productoId: { listaPrecioId: listaGandica.id, productoId: producto.id } },
+          update: { precioUnitario: pm.precio },
+          create: { listaPrecioId: listaGandica.id, productoId: producto.id, precioUnitario: pm.precio },
+        });
+      }
       preciosMadreCount++;
     }
   }
@@ -429,6 +444,7 @@ seedProductosRouter.post("/", async (_req, res) => {
     productosOmitidos: omitidos,
     preciosFerreteria: preciosInfinitoCount,
     preciosListaMadre: preciosMadreCount,
+    preciosGandica: listaGandica ? preciosMadreCount : 0,
     listaMadreId: lmId,
   });
 });
