@@ -463,12 +463,14 @@ seedProductosRouter.post("/", async (_req, res) => {
   });
 
   let preciosMadreCount = 0;
+  let preciosSinProducto: string[] = [];
   for (const pm of preciosMadre) {
     // Buscar por codigo via SQL directo (no requiere prisma generate)
-    const rows = await prisma.$queryRawUnsafe<{ id: number }[]>(
+    const rows = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(
       `SELECT id FROM "Producto" WHERE "codigo" = $1`, pm.codigo
     );
-    const productoId = rows[0]?.id;
+    // PostgreSQL devuelve BigInt en raw queries — convertir a number
+    const productoId = rows[0]?.id ? Number(rows[0].id) : null;
     if (productoId) {
       await prisma.listaPrecioDetalle.upsert({
         where: { listaPrecioId_productoId: { listaPrecioId: lmId, productoId } },
@@ -483,6 +485,8 @@ seedProductosRouter.post("/", async (_req, res) => {
         });
       }
       preciosMadreCount++;
+    } else {
+      preciosSinProducto.push(pm.codigo);
     }
   }
 
@@ -495,6 +499,7 @@ seedProductosRouter.post("/", async (_req, res) => {
     preciosListaMadre: preciosMadreCount,
     preciosGandica: listaGandica ? preciosMadreCount : 0,
     listaMadreId: lmId,
+    codigosSinProducto: preciosSinProducto,
   });
   } catch (err: any) {
     console.error("[seed-productos]", err);

@@ -85,9 +85,12 @@ export default function ListasPrecios() {
       qc.invalidateQueries({ queryKey: ["listas-precios"] });
       qc.invalidateQueries({ queryKey: ["lista-detalle", seleccionada] });
       qc.invalidateQueries({ queryKey: ["productos"] });
+      const sinProducto = data.codigosSinProducto?.length
+        ? ` | Sin producto: ${data.codigosSinProducto.length} (${data.codigosSinProducto.slice(0,3).join(", ")}...)`
+        : "";
       setSeedResult(
         `✓ Listo: ${data.productosCreados} productos nuevos, ${data.productosActualizados} actualizados, ` +
-        `${data.preciosListaMadre} precios en Lista Madre, ${data.preciosGandica ?? 0} en Lista Gandica.`
+        `${data.preciosListaMadre} precios en Lista Madre, ${data.preciosGandica ?? 0} en Lista Gandica.${sinProducto}`
       );
     },
     onError: (e: any) => setSeedResult("✗ Error: " + (e.response?.data?.error ?? e.message)),
