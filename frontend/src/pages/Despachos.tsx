@@ -447,18 +447,19 @@ export default function Despachos() {
                     {guardarLineas.isPending ? "Guardando..." : "Guardar Cambios"}
                   </button>
                   <button
-                    onClick={() => {
-                      if (hayEdits) {
-                        const ok = window.confirm("Hay cambios sin guardar. ¿Finalizar de todas formas?\n(Se usarán los valores guardados)");
-                        if (!ok) return;
-                      }
+                    onClick={async () => {
                       if (!window.confirm("¿Finalizar el despacho y generar la factura con las cantidades despachadas?")) return;
-                      finalizar.mutate();
+                      try {
+                        await guardarLineas.mutateAsync();
+                        finalizar.mutate();
+                      } catch {
+                        alert("Error al guardar las cantidades antes de finalizar");
+                      }
                     }}
-                    disabled={finalizar.isPending}
+                    disabled={finalizar.isPending || guardarLineas.isPending}
                     style={{ ...btnAction, background: "#16a34a", color: "#fff" }}
                   >
-                    {finalizar.isPending ? "Finalizando..." : "Finalizar Despacho →"}
+                    {(finalizar.isPending || guardarLineas.isPending) ? "Finalizando..." : "Finalizar Despacho →"}
                   </button>
                 </div>
               </div>

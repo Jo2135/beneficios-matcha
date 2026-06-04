@@ -1127,24 +1127,25 @@ export function pdfDespacho(des: any) {
     drawTotalsBox(doc, tema, fy, totalDesp, 0, totalDesp);
   }
 
-  // "RECIBI CONFORME" signature
-  const sigY = Math.min(fy + (hasPrices ? 50 : 20), 265);
-  if (sigY < 270) {
-    doc.setDrawColor(120);
-    doc.setLineWidth(0.4);
-    doc.line(14, sigY, 84, sigY);
-    doc.line(120, sigY, 196, sigY);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("RECIBI CONFORME", 158, sigY - 3, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(100);
-    doc.text(des.chofer ? `Chofer: ${des.chofer}` : "Chofer: ___________", 49, sigY + 4, { align: "center" });
-    doc.text("Firma / Sello", 158, sigY + 4, { align: "center" });
-    doc.setTextColor(0);
-  }
+  // "RECIBI CONFORME" signature — add new page if table is too close to page bottom
+  const sigOffset = hasPrices ? 50 : 20;
+  const needsNewPage = fy + sigOffset + 15 > 275;
+  if (needsNewPage) doc.addPage();
+  const sigY = needsNewPage ? 30 : fy + sigOffset;
+  doc.setDrawColor(120);
+  doc.setLineWidth(0.4);
+  doc.line(14, sigY, 84, sigY);
+  doc.line(120, sigY, 196, sigY);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text("RECIBI CONFORME", 158, sigY - 3, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(100);
+  doc.text(des.chofer ? `Chofer: ${des.chofer}` : "Chofer: ___________", 49, sigY + 4, { align: "center" });
+  doc.text("Firma / Sello", 158, sigY + 4, { align: "center" });
+  doc.setTextColor(0);
 
   if (des.notas) {
     const notaY = sigY + 14;
