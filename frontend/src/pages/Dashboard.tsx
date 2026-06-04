@@ -136,17 +136,23 @@ export default function Dashboard() {
             <div style={{ maxHeight: 280, overflow: "auto" }}>
               {vencidas.length === 0 ? (
                 <div style={{ padding: 20, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Sin facturas vencidas</div>
-              ) : vencidas.map((f: any) => (
-                <div key={f.id} style={{ padding: "10px 18px", borderBottom: "1px solid #f8fafc", display: "flex", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{f.numero}</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{f.cliente?.nombre}</div>
+              ) : vencidas.map((f: any) => {
+                const diasVencida = Math.floor((Date.now() - new Date(f.creadoEn).getTime()) / 86400000);
+                return (
+                  <div key={f.id} style={{ padding: "10px 18px", borderBottom: "1px solid #f8fafc", display: "flex", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{f.numero}</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>{f.cliente?.nombre}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2, color: diasVencida > 30 ? "#dc2626" : "#f59e0b" }}>
+                        hace {diasVencida} día{diasVencida !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, color: "#dc2626", fontSize: 13 }}>${Number(f.saldoPendiente).toFixed(2)}</div>
+                    </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, color: "#dc2626", fontSize: 13 }}>${Number(f.saldoPendiente).toFixed(2)}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

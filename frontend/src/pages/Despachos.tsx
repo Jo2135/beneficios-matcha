@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { despachosApi } from "../api/endpoints";
-import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2 } from "lucide-react";
+import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X } from "lucide-react";
 import { pdfDespacho } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -24,12 +24,38 @@ export default function Despachos() {
   const { esMaster } = useAuth();
   const [despachoId, setDespachoId] = useState<number | null>(null);
   const [cantidades, setCantidades] = useState<Record<number, number>>({});
+  const [busqueda, setBusqueda] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
 
 
   const { data: despachos = [] } = useQuery({
     queryKey: ["despachos"],
     queryFn: despachosApi.listar,
   });
+
+  const hayFiltros = busqueda || desde || hasta;
+  const despachosFiltrados = useMemo(() => {
+    let lista = despachos as any[];
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      lista = lista.filter((d) =>
+        d.numero?.toLowerCase().includes(q) ||
+        d.chofer?.toLowerCase().includes(q) ||
+        d.lineas?.[0]?.cotizacion?.cliente?.nombre?.toLowerCase().includes(q)
+      );
+    }
+    if (desde) {
+      const d = new Date(desde);
+      lista = lista.filter((d2) => new Date(d2.creadoEn ?? d2.fechaCreacion ?? 0) >= d);
+    }
+    if (hasta) {
+      const h = new Date(hasta);
+      h.setHours(23, 59, 59);
+      lista = lista.filter((d2) => new Date(d2.creadoEn ?? d2.fechaCreacion ?? 0) <= h);
+    }
+    return lista;
+  }, [despachos, busqueda, desde, hasta]);
 
   const { data: despacho } = useQuery({
     queryKey: ["despacho", despachoId],
@@ -98,7 +124,37 @@ export default function Despachos() {
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Despachos</h1>
-        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>{despachos.length} órdenes registradas</p>
+        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
+          {hayFiltros ? `${despachosFiltrados.length} de ${(despachos as any[]).length}` : `${(despachos as any[]).length}`} órdenes registradas
+        </p>
+      </div>
+
+      {/* Filtros */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 180 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por número, chofer o cliente..."
+            style={{ width: "100%", padding: "8px 10px 8px 32px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box" as const, background: "#fff" }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" as const }}>Desde</span>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" as const }}>Hasta</span>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        {hayFiltros && (
+          <button onClick={() => { setBusqueda(""); setDesde(""); setHasta(""); }} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 12, color: "#64748b" }}>
+            <X size={12} /> Limpiar
+          </button>
+        )}
       </div>
 
       {/* Tabla */}
@@ -120,7 +176,7 @@ export default function Despachos() {
                 </td>
               </tr>
             )}
-            {(despachos as any[]).map((d) => {
+            {despachosFiltrados.map((d) => {
               const est = ESTADO_DESPACHO[d.estado];
               const EstIcon = est?.icon;
               const cliente = d.lineas?.[0]?.cotizacion?.cliente?.nombre ?? "—";

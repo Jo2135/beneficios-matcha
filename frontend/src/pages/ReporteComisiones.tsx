@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cotizacionesApi, clientesApi, reportesApi } from "../api/endpoints";
-import { TrendingUp, Package, User, Receipt, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { TrendingUp, Package, User, Receipt, ChevronDown, ChevronRight, Search, Download } from "lucide-react";
+
+function descargarCSV(nombre: string, cabeceras: string[], filas: (string | number)[][]) {
+  const contenido = [cabeceras, ...filas]
+    .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob(["﻿" + contenido], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${nombre}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
 
 type Tab = "ventas" | "cuenta" | "cobrar" | "comisiones";
 
@@ -109,10 +120,13 @@ function TabVentas() {
 
       {(lineas as any[]).length > 0 && (
         <>
-          <div style={{ display: "flex", gap: 14, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 14, marginBottom: 16, alignItems: "flex-end" }}>
             <SummaryCard label="Líneas encontradas" value={String((lineas as any[]).length)} />
             <SummaryCard label="Total unidades"     value={String(totalUnidades)} />
             <SummaryCard label="Monto total"        value={`$${totalMonto.toFixed(2)}`} accent />
+            <button onClick={() => descargarCSV("ventas-producto", ["Producto","Medida","Categoría","Cliente","N° Cot.","Fecha","Estado","Cant.","Total"],
+              (lineas as any[]).map((l: any) => [l.producto?.nombre, l.producto?.medida ?? "", l.producto?.categoria?.nombre ?? "", l.cotizacion?.cliente?.nombre, l.cotizacion?.numero, new Date(l.cotizacion?.creadoEn).toLocaleDateString("es-VE"), l.cotizacion?.estado, Number(l.cantidad), Number(l.totalLinea).toFixed(2)])
+            )} style={btnCsv}><Download size={13} /> CSV</button>
           </div>
           <div style={tableCard}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -301,10 +315,13 @@ function TabCuentasCobrar() {
 
       {(facturas as any[]).length > 0 && (
         <>
-          <div style={{ display: "flex", gap: 14, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 14, marginBottom: 16, alignItems: "flex-end" }}>
             <SummaryCard label="Clientes con deuda" value={String(new Set((facturas as any[]).map((f: any) => f.clienteId)).size)} />
             <SummaryCard label="Facturas pendientes" value={String((facturas as any[]).length)} />
             <SummaryCard label="Total por cobrar" value={`$${totalPendiente.toFixed(2)}`} accent warn />
+            <button onClick={() => descargarCSV("cuentas-cobrar", ["Cliente","RIF","Factura","Fecha","Total","Pagado","Saldo"],
+              (facturas as any[]).map((f: any) => [f.cliente?.nombre, f.cliente?.rif ?? "", f.numero, new Date(f.creadoEn).toLocaleDateString("es-VE"), Number(f.totalNeto).toFixed(2), (Number(f.totalNeto)-Number(f.saldoPendiente)).toFixed(2), Number(f.saldoPendiente).toFixed(2)])
+            )} style={btnCsv}><Download size={13} /> CSV</button>
           </div>
           <div style={tableCard}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -373,10 +390,13 @@ function TabComisiones() {
 
       {(data as any[]).length > 0 && (
         <>
-          <div style={{ display: "flex", gap: 14, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 14, marginBottom: 16, alignItems: "flex-end" }}>
             <SummaryCard label="Vendedores"     value={String((data as any[]).length)} />
             <SummaryCard label="Total ventas"   value={`$${totalVentas.toFixed(2)}`} />
             <SummaryCard label="Total comisión" value={`$${totalComision.toFixed(2)}`} accent />
+            <button onClick={() => descargarCSV(`comisiones-${mes}`, ["Vendedor","N° Cot.","Cliente","Fecha","Estado","Total Venta","Comisión"],
+              (data as any[]).flatMap((v: any) => v.detalle.map((d: any) => [v.vendedor.nombre, d.numero, d.cliente, new Date(d.fecha).toLocaleDateString("es-VE"), d.estado, d.totalNeto.toFixed(2), d.comision.toFixed(2)]))
+            )} style={btnCsv}><Download size={13} /> CSV</button>
           </div>
           {(data as any[]).map((v: any) => (
             <div key={v.vendedor.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
@@ -472,3 +492,4 @@ const inp: React.CSSProperties = { width: "100%", padding: "8px 12px", border: "
 const btnBuscar: React.CSSProperties = { background: "#2563eb", color: "#fff", border: "none", padding: "9px 20px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" };
 const th: React.CSSProperties = { padding: "9px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase" };
 const td: React.CSSProperties = { padding: "10px 12px", fontSize: 13, color: "#374151" };
+const btnCsv: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 14px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#475569", whiteSpace: "nowrap" };

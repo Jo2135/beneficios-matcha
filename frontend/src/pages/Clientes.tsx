@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientesApi, listasApi, authApi } from "../api/endpoints";
+import { clientesApi, listasApi, authApi, cotizacionesApi, facturasApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { Plus, Search, Edit2, MapPin, User } from "lucide-react";
+import { Plus, Search, Edit2, MapPin, User, History, X } from "lucide-react";
 
 const EMPRESAS = ["ECOPLAST F.P.", "MAXPLASTIC F.P."];
 
@@ -12,6 +12,8 @@ export default function Clientes() {
   const [busqueda, setBusqueda] = useState("");
   const [modal, setModal] = useState<{ abierto: boolean; datos: any }>({ abierto: false, datos: null });
   const [form, setForm] = useState<any>({});
+  const [historialId, setHistorialId] = useState<number | null>(null);
+  const [historialNombre, setHistorialNombre] = useState("");
 
   const { data: clientes = [] } = useQuery({
     queryKey: ["clientes"],
@@ -27,6 +29,17 @@ export default function Clientes() {
     queryKey: ["vendedores"],
     queryFn: authApi.listarVendedores,
     enabled: puedeEditar,
+  });
+
+  const { data: histCotizaciones = [] } = useQuery({
+    queryKey: ["historial-cots", historialId],
+    queryFn: () => cotizacionesApi.listar({ clienteId: historialId }),
+    enabled: historialId !== null,
+  });
+  const { data: histFacturas } = useQuery({
+    queryKey: ["historial-facts", historialId],
+    queryFn: () => facturasApi.resumenCliente(historialId!),
+    enabled: historialId !== null && puedeEditar,
   });
 
   const guardar = useMutation({
@@ -115,8 +128,19 @@ export default function Clientes() {
                 <td style={tdStyle}>
                   <span style={{ fontSize: 13, color: "#475569" }}>{c.diasCredito} días</span>
                 </td>
-                <td style={{ ...tdStyle, width: 40 }}>
-                  {puedeEditar && <button onClick={() => abrir(c)} style={btnIcon}><Edit2 size={14} /></button>}
+                <td style={{ ...tdStyle, width: 80 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => { setHistorialId(c.id); setHistorialNombre(c.nombre); }}
+                      style={{ ...btnIcon, color: "#7c3aed" }}
+                      title="Ver historial"
+                    >
+                      <History size={14} />
+                    </button>
+                    {puedeEditar && (
+                      <button onClick={() => abrir(c)} style={btnIcon}><Edit2 size={14} /></button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -128,6 +152,95 @@ export default function Clientes() {
           </div>
         )}
       </div>
+
+      {/* Modal Historial de Cliente */}
+      {historialId !== null && (
+        <div style={modalOverlay} onClick={() => setHistorialId(null)}>
+          <div style={{ ...modalBox, width: "min(760px, 95vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1e293b" }}>Historial: {historialNombre}</h2>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>Cotizaciones y facturas del cliente</p>
+              </div>
+              <button onClick={() => setHistorialId(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+              <div style={{ background: "#f3e8ff", borderRadius: 10, padding: "12px 16px" }}>
+                <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Cotizaciones</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#1e293b" }}>{(histCotizaciones as any[]).length}</div>
+              </div>
+              <div style={{ background: "#dbeafe", borderRadius: 10, padding: "12px 16px" }}>
+                <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600, textTransform: "uppercase" }}>Facturas</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#1e293b" }}>{histFacturas ? (histFacturas as any).facturas.length : "—"}</div>
+              </div>
+              <div style={{ background: histFacturas && (histFacturas as any).totalDeuda > 0 ? "#fee2e2" : "#dcfce7", borderRadius: 10, padding: "12px 16px" }}>
+                <div style={{ fontSize: 11, color: histFacturas && (histFacturas as any).totalDeuda > 0 ? "#dc2626" : "#16a34a", fontWeight: 600, textTransform: "uppercase" }}>Saldo Pendiente</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#1e293b" }}>
+                  {histFacturas ? `$${Number((histFacturas as any).totalDeuda).toLocaleString("es-VE", { minimumFractionDigits: 2 })}` : "—"}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {/* Cotizaciones */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Cotizaciones recientes</div>
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", maxHeight: 280, overflowY: "auto" }}>
+                  {(histCotizaciones as any[]).length === 0 ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Sin cotizaciones</div>
+                  ) : (histCotizaciones as any[]).map((c: any) => (
+                    <div key={c.id} style={{ padding: "8px 12px", borderBottom: "1px solid #f8fafc", display: "flex", justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "#7c3aed" }}>{c.numero}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(c.creadoEn).toLocaleDateString("es-VE")}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{
+                          fontSize: 11, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
+                          background: c.estado === "APROBADA" ? "#dcfce7" : c.estado === "ENVIADA" ? "#dbeafe" : c.estado === "RECHAZADA" ? "#fee2e2" : "#f1f5f9",
+                          color: c.estado === "APROBADA" ? "#16a34a" : c.estado === "ENVIADA" ? "#1d4ed8" : c.estado === "RECHAZADA" ? "#dc2626" : "#64748b",
+                        }}>{c.estado}</span>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", marginTop: 2 }}>${Number(c.total).toLocaleString("es-VE", { minimumFractionDigits: 2 })}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Facturas */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Facturas</div>
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", maxHeight: 280, overflowY: "auto" }}>
+                  {!histFacturas ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Sin acceso</div>
+                  ) : (histFacturas as any).facturas.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Sin facturas</div>
+                  ) : (histFacturas as any).facturas.map((f: any) => (
+                    <div key={f.id} style={{ padding: "8px 12px", borderBottom: "1px solid #f8fafc", display: "flex", justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{f.numero}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(f.creadoEn).toLocaleDateString("es-VE")}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#0369a1" }}>${Number(f.saldoPendiente).toLocaleString("es-VE", { minimumFractionDigits: 2 })}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{f.estado}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={() => setHistorialId(null)} style={btnSecondary}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {modal.abierto && (

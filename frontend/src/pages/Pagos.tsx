@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pagosApi, facturasApi, clientesApi, cuentasApi } from "../api/endpoints";
-import { Plus, AlertCircle, CheckCircle, Clock, ArrowRight, Building2, Settings } from "lucide-react";
+import { Plus, AlertCircle, CheckCircle, Clock, ArrowRight, Building2, Settings, Search, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 const MONEDAS = ["USD", "USDT", "BS", "COP"];
@@ -32,6 +32,9 @@ export default function Pagos() {
   const [asignaciones, setAsignaciones] = useState<any[]>([]);
   const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: "", moneda: "USD", tipoCuenta: "Ahorro", numeroCuenta: "", cedula: "", propietario: "Empresa", comisionPct: "0" });
   const [editCuenta, setEditCuenta] = useState<any>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
 
   const { data: pagos = [] } = useQuery({ queryKey: ["pagos"], queryFn: () => pagosApi.listar() });
   const { data: pendientes = [] } = useQuery({ queryKey: ["pagos-pendientes"], queryFn: pagosApi.pendientes });
@@ -102,6 +105,29 @@ export default function Pagos() {
     },
   });
 
+  const hayFiltros = busqueda || desde || hasta;
+  const pagosFiltrados = useMemo(() => {
+    let lista = pagos as any[];
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      lista = lista.filter((p) =>
+        p.cliente?.nombre?.toLowerCase().includes(q) ||
+        p.cuenta?.nombre?.toLowerCase().includes(q) ||
+        p.origenFondos?.toLowerCase().includes(q)
+      );
+    }
+    if (desde) {
+      const d = new Date(desde);
+      lista = lista.filter((p) => new Date(p.fecha) >= d);
+    }
+    if (hasta) {
+      const h = new Date(hasta);
+      h.setHours(23, 59, 59);
+      lista = lista.filter((p) => new Date(p.fecha) <= h);
+    }
+    return lista;
+  }, [pagos, busqueda, desde, hasta]);
+
   const totalAsignado = asignaciones.reduce((s, a) => s + (a.montoAsignado || 0), 0);
   const disponible = modalAsignar ? Number(modalAsignar.monto) : 0;
 
@@ -113,6 +139,7 @@ export default function Pagos() {
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Pagos y Cobros</h1>
           <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
             {pendientes.length} pago{pendientes.length !== 1 ? "s" : ""} sin asignar
+          {hayFiltros && ` · ${pagosFiltrados.length} de ${(pagos as any[]).length} en historial`}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -158,9 +185,36 @@ export default function Pagos() {
       )}
 
       {/* Historial */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 180 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por cliente, cuenta u origen..."
+            style={{ width: "100%", padding: "8px 10px 8px 32px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box" as const, background: "#fff" }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" as const }}>Desde</span>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" as const }}>Hasta</span>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }} />
+        </div>
+        {hayFiltros && (
+          <button onClick={() => { setBusqueda(""); setDesde(""); setHasta(""); }} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 12, color: "#64748b" }}>
+            <X size={12} /> Limpiar
+          </button>
+        )}
+      </div>
+
       <div style={cardStyle}>
         <div style={{ padding: "14px 20px", borderBottom: "1px solid #e2e8f0", fontWeight: 600, fontSize: 15 }}>
-          Historial de Pagos
+          Historial de Pagos {hayFiltros && <span style={{ fontSize: 13, fontWeight: 400, color: "#94a3b8" }}>({pagosFiltrados.length} de {(pagos as any[]).length})</span>}
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
@@ -174,7 +228,7 @@ export default function Pagos() {
             {pagos.length === 0 && (
               <tr><td colSpan={8} style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8" }}>Sin pagos registrados</td></tr>
             )}
-            {pagos.map((p: any) => {
+            {pagosFiltrados.map((p: any) => {
               const Icon = ESTADO_ICON[p.estado] ?? Clock;
               return (
                 <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
