@@ -20,6 +20,12 @@ function esConexionExterna(linea: Linea): boolean {
   return linea.origen === "EXTERNO" && !linea.nombre.toLowerCase().includes("manguera");
 }
 
+// Redondeo hacia arriba a 2 decimales, excepto Curvas que usan 4 decimales
+function redondearPrecio(precio: number, nombreProducto: string): number {
+  if (nombreProducto.toLowerCase().includes("curva")) return precio;
+  return Math.ceil(precio * 100) / 100;
+}
+
 export default function NuevaCotizacion() {
   const navigate = useNavigate();
   const { id: editIdStr } = useParams<{ id?: string }>();
@@ -44,16 +50,19 @@ export default function NuevaCotizacion() {
     setClienteId(cotExistente.clienteId);
     setNotas(cotExistente.notas ?? "");
     setValidezDias(cotExistente.validezDias ?? 30);
-    setLineas((cotExistente.lineas ?? []).map((l: any) => ({
-      productoId: l.productoId,
-      nombre: l.producto?.nombre ?? "",
-      medida: l.producto?.medida ?? "",
-      origen: l.producto?.origen ?? "INTERNO",
-      precioUnitario: Number(l.precioUnitarioAplicado),
-      cantidad: Number(l.cantidad),
-      descuentoPct: Number(l.descuentoPct),
-      notaCantidad: l.notaCantidad ?? "",
-    })));
+    setLineas((cotExistente.lineas ?? []).map((l: any) => {
+      const nombre = l.producto?.nombre ?? "";
+      return {
+        productoId: l.productoId,
+        nombre,
+        medida: l.producto?.medida ?? "",
+        origen: l.producto?.origen ?? "INTERNO",
+        precioUnitario: redondearPrecio(Number(l.precioUnitarioAplicado), nombre),
+        cantidad: Number(l.cantidad),
+        descuentoPct: Number(l.descuentoPct),
+        notaCantidad: l.notaCantidad ?? "",
+      };
+    }));
   }, [cotExistente]);
 
   const { data: clientes = [] } = useQuery({
@@ -88,13 +97,14 @@ export default function NuevaCotizacion() {
   };
 
   const agregarProducto = (p: any) => {
-    const precio = getPrecio(p.id);
-    if (precio === null) {
+    const rawPrecio = getPrecio(p.id);
+    if (rawPrecio === null) {
       alert(`"${p.nombre} ${p.medida}" no tiene precio en la lista de este cliente.\n\nAgrégalo en Listas de Precios.`);
       setBusqueda("");
       setDropdownAbierto(false);
       return;
     }
+    const precio = redondearPrecio(rawPrecio, p.nombre);
     setLineas((prev) => {
       const existe = prev.find((l) => l.productoId === p.id);
       if (existe) {
