@@ -150,4 +150,5 @@ export const cuentasApi = {
   crear: (data: any) => api.post("/cuentas", data).then((r) => r.data),
   actualizar: (id: number, data: any) => api.put(`/cuentas/${id}`, data).then((r) => r.data),
   seedIniciales: () => api.post("/cuentas/seed").then((r) => r.data),
+  seedProductos: () => api.post("/seed-productos").then((r) => r.data),
 };

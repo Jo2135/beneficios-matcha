@@ -1,11 +1,14 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listasApi, productosApi } from "../api/endpoints";
-import { Plus, ChevronRight, Save, DollarSign, Upload, FileText } from "lucide-react";
+import { listasApi, productosApi, cuentasApi } from "../api/endpoints";
+import { Plus, ChevronRight, Save, DollarSign, Upload, FileText, RefreshCw } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function ListasPrecios() {
   const qc = useQueryClient();
+  const { esMaster } = useAuth();
   const [seleccionada, setSeleccionada] = useState<number | null>(null);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
   const [editandoPrecios, setEditandoPrecios] = useState<Record<number, string>>({});
   const [nuevaLista, setNuevaLista] = useState(false);
   const [nombreNueva, setNombreNueva] = useState("");
@@ -75,6 +78,19 @@ export default function ListasPrecios() {
     return resultado;
   }
 
+  const recargarSeed = useMutation({
+    mutationFn: () => cuentasApi.seedProductos(),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ["listas-precios"] });
+      qc.invalidateQueries({ queryKey: ["lista-detalle", seleccionada] });
+      setSeedResult(
+        `✓ Listo: ${data.productosCreados} productos nuevos, ${data.productosActualizados} actualizados, ` +
+        `${data.preciosListaMadre} precios en Lista Madre, ${data.preciosGandica ?? 0} en Lista Gandica.`
+      );
+    },
+    onError: (e: any) => setSeedResult("✗ Error: " + (e.response?.data?.error ?? e.message)),
+  });
+
   const importarMutation = useMutation({
     mutationFn: () => {
       const lineas = parsearCSV(csvTexto);
@@ -106,12 +122,33 @@ export default function ListasPrecios() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: seedResult ? 12 : 24 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Listas de Precios</h1>
           <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>Gestión de precios por cliente</p>
         </div>
+        {esMaster && (
+          <button
+            onClick={() => { setSeedResult(null); recargarSeed.mutate(); }}
+            disabled={recargarSeed.isPending}
+            style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6, fontSize: 13, borderColor: "#a5b4fc", color: "#4f46e5" }}
+            title="Recarga todos los precios base desde Lista Madre 2026 y Lista Gandica"
+          >
+            <RefreshCw size={14} style={{ animation: recargarSeed.isPending ? "spin 1s linear infinite" : "none" }} />
+            {recargarSeed.isPending ? "Recargando..." : "Recargar Precios Base"}
+          </button>
+        )}
       </div>
+      {seedResult && (
+        <div style={{
+          marginBottom: 16, padding: "10px 14px", borderRadius: 8, fontSize: 13,
+          background: seedResult.startsWith("✓") ? "#f0fdf4" : "#fef2f2",
+          border: `1px solid ${seedResult.startsWith("✓") ? "#86efac" : "#fca5a5"}`,
+          color: seedResult.startsWith("✓") ? "#166534" : "#dc2626",
+        }}>
+          {seedResult}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 }}>
         {/* Panel izquierdo: lista de listas */}
