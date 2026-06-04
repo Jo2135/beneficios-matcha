@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi, clientesApi, cuentasApi, empresasApi } from "../api/endpoints";
 import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus } from "lucide-react";
-import { pdfFactura } from "../utils/pdf";
+import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
 const ESTADO: Record<string, { label: string; color: string; bg: string; icon: any }> = {
@@ -42,6 +42,7 @@ export default function Facturas() {
 
   const [editNotas, setEditNotas] = useState(false);
   const [notasValue, setNotasValue] = useState("");
+  const [generandoBalance, setGenerandoBalance] = useState(false);
   const [modalManual, setModalManual] = useState(false);
   const [mForm, setMForm] = useState<any>({ pagos: [] });
 
@@ -396,12 +397,32 @@ export default function Facturas() {
                   {" · "}{fecha(factura.fechaEmision ?? factura.creadoEn)}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   onClick={() => pdfFactura(factura)}
                   style={{ ...btnAction, background: "#f1f5f9", color: "#475569", display: "flex", alignItems: "center", gap: 6 }}
                 >
-                  <Download size={13} /> Descargar PDF
+                  <Download size={13} /> PDF Factura
+                </button>
+                <button
+                  onClick={() => pdfEstadoCuenta({ cliente: factura.cliente, cotizaciones: [], facturas: [factura] })}
+                  style={{ ...btnAction, background: "#dbeafe", color: "#1d4ed8", display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <Download size={13} /> PDF Recibo
+                </button>
+                <button
+                  onClick={async () => {
+                    setGenerandoBalance(true);
+                    try {
+                      const todas = await facturasApi.listarConPagos(factura.clienteId);
+                      pdfEstadoCuenta({ cliente: factura.cliente, cotizaciones: [], facturas: todas });
+                    } catch { alert("Error al generar el balance"); }
+                    finally { setGenerandoBalance(false); }
+                  }}
+                  disabled={generandoBalance}
+                  style={{ ...btnAction, background: "#dcfce7", color: "#166534", display: "flex", alignItems: "center", gap: 6, opacity: generandoBalance ? 0.6 : 1 }}
+                >
+                  <Download size={13} /> {generandoBalance ? "Generando..." : "PDF Balance Cliente"}
                 </button>
                 {esMaster && (
                   <button
@@ -534,30 +555,73 @@ export default function Facturas() {
               )}
             </div>
 
-            {/* Pagos registrados */}
-            {factura.pagos?.length > 0 && (
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Pagos Recibidos</div>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc" }}>
-                      <th style={thStyle}>Fecha</th>
-                      <th style={thStyle}>Cuenta</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>Monto Asignado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {factura.pagos.map((pa: any) => (
-                      <tr key={pa.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={{ ...tdStyle, color: "#64748b" }}>{fecha(pa.fechaAsignacion)}</td>
-                        <td style={tdStyle}>{pa.pago?.cuenta?.nombre ?? "—"} <span style={{ color: "#94a3b8", fontSize: 11 }}>({pa.pago?.cuenta?.moneda})</span></td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: "#16a34a" }}>{usd(pa.montoAsignado)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Historial de Pagos — Resta/Abono */}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Historial de Pagos</div>
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+                {/* Total factura row (amber) */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "#FDB913" }}>
+                  <span style={{ fontWeight: 700, color: "#713f12", fontSize: 13 }}>Total Factura</span>
+                  <span style={{ fontWeight: 800, color: "#713f12", fontSize: 14 }}>{usd(factura.totalNeto)}</span>
+                </div>
+
+                {(!factura.pagos || factura.pagos.length === 0) && (
+                  <div style={{ padding: "12px 14px", color: "#94a3b8", fontSize: 13 }}>Sin pagos registrados</div>
+                )}
+
+                {(() => {
+                  const pagosOrdenados = [...(factura.pagos ?? [])].sort(
+                    (a: any, b: any) => new Date(a.fechaAsignacion).getTime() - new Date(b.fechaAsignacion).getTime()
+                  );
+                  let saldo = Number(factura.totalNeto);
+                  return pagosOrdenados.map((pa: any) => {
+                    const monto = Number(pa.montoAsignado);
+                    const cuentaNombre = pa.pago?.cuenta?.nombre ?? pa.pago?.origenFondos ?? "Abono";
+                    const moneda = pa.pago?.cuenta?.moneda ?? pa.pago?.moneda ?? "";
+                    const label = `${cuentaNombre}${moneda ? ` (${moneda})` : ""} · ${fecha(pa.fechaAsignacion)}`;
+                    saldo -= monto;
+                    return (
+                      <div key={pa.id}>
+                        {/* Abono row (white) */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 14px", background: "#fff", borderTop: "1px solid #f1f5f9" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, color: "#374151", fontSize: 13 }}>{label}</div>
+                            {pa.notas && (
+                              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, fontStyle: "italic" }}>{pa.notas}</div>
+                            )}
+                          </div>
+                          <span style={{ fontWeight: 700, color: "#16a34a", fontSize: 14, marginLeft: 12, flexShrink: 0 }}>{usd(monto)}</span>
+                        </div>
+                        {/* Resta row (amber) */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 14px", background: "#fef3c7", borderTop: "1px solid #fde68a" }}>
+                          <span style={{ fontWeight: 700, color: "#92400e", fontSize: 12 }}>Resta</span>
+                          <span style={{ fontWeight: 800, color: "#92400e", fontSize: 13 }}>{usd(Math.max(0, saldo))}</span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+
+                {/* Final status */}
+                {Number(factura.saldoPendiente) <= 0.005 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#16a34a", borderTop: "2px solid #15803d" }}>
+                    <span style={{ fontWeight: 800, color: "#fff", fontSize: 14 }}>✓ PAGADO TODO</span>
+                    {factura.pagos?.length > 0 && (
+                      <span style={{ fontWeight: 600, color: "#dcfce7", fontSize: 13 }}>
+                        {fecha((factura.pagos as any[]).reduce((latest: any, pa: any) =>
+                          new Date(pa.fechaAsignacion) > new Date(latest.fechaAsignacion) ? pa : latest
+                        ).fechaAsignacion)}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#dc2626", borderTop: "2px solid #b91c1c" }}>
+                    <span style={{ fontWeight: 800, color: "#fff", fontSize: 14 }}>SALDO PENDIENTE</span>
+                    <span style={{ fontWeight: 800, color: "#fff", fontSize: 14 }}>{usd(factura.saldoPendiente)}</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}

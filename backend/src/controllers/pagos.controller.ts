@@ -13,6 +13,7 @@ export async function listar(req: Request, res: Response) {
       cuenta: { select: { id: true, nombre: true, moneda: true } },
       asignaciones: {
         include: { factura: { select: { id: true, numero: true } } },
+        orderBy: { fechaAsignacion: "asc" },
       },
     },
     orderBy: { fecha: "desc" },

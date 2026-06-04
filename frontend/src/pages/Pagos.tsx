@@ -244,10 +244,15 @@ export default function Pagos() {
                       <Icon size={12} />{ESTADO_LABEL[p.estado] ?? p.estado}
                     </span>
                   </td>
-                  <td style={{ ...tdStyle, fontSize: 12, color: "#64748b", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <td style={{ ...tdStyle, fontSize: 12, color: "#64748b", maxWidth: 220 }}>
                     {p.origenFondos ? <div style={{ marginBottom: 2 }}>↓ {p.origenFondos}</div> : null}
                     {p.destinoUso ? <div>↑ {p.destinoUso}</div> : null}
-                    {!p.origenFondos && !p.destinoUso && "—"}
+                    {(p.asignaciones ?? []).filter((a: any) => a.notas).map((a: any) => (
+                      <div key={a.id} style={{ color: "#94a3b8", marginTop: 2 }}>
+                        📋 {a.factura?.numero}: {a.notas}
+                      </div>
+                    ))}
+                    {!p.origenFondos && !p.destinoUso && (p.asignaciones ?? []).every((a: any) => !a.notas) && "—"}
                   </td>
                   <td style={tdStyle}>
                     {p.estado !== "ASIGNADO" && puedeEditar && (
@@ -409,11 +414,23 @@ export default function Pagos() {
                                 if (val > 0) updated[idx] = { ...updated[idx], montoAsignado: val };
                                 else updated.splice(idx, 1);
                               } else if (val > 0) {
-                                updated.push({ facturaId: f.id, montoAsignado: val });
+                                updated.push({ facturaId: f.id, montoAsignado: val, notas: "" });
                               }
                               setAsignaciones(updated);
                             }}
                           />
+                          {idx >= 0 && (
+                            <input
+                              placeholder="Nota: destino del pago..."
+                              value={asignaciones[idx].notas ?? ""}
+                              style={{ ...inp, width: 240, padding: "5px 8px", marginTop: 5, fontSize: 12, color: "#64748b" }}
+                              onChange={(e) => {
+                                const updated = [...asignaciones];
+                                updated[idx] = { ...updated[idx], notas: e.target.value };
+                                setAsignaciones(updated);
+                              }}
+                            />
+                          )}
                         </td>
                       </tr>
                     );

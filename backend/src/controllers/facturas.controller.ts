@@ -151,6 +151,30 @@ export async function balanceGeneral(_req: Request, res: Response) {
   res.json({ facturas, totalEmitido, totalCobrado, totalPendiente });
 }
 
+export async function listarClienteConPagos(req: Request, res: Response) {
+  const facturas = await prisma.factura.findMany({
+    where: { clienteId: Number(req.params.clienteId), estado: { not: "ANULADA" } },
+    include: {
+      cliente: { include: { vendedor: true } },
+      empresa: true,
+      lineas: {
+        include: { producto: { include: { categoria: true } } },
+        orderBy: { orden: "asc" },
+      },
+      pagos: {
+        include: {
+          pago: {
+            include: { cuenta: { select: { nombre: true, moneda: true } } },
+          },
+        },
+        orderBy: { fechaAsignacion: "asc" },
+      },
+    },
+    orderBy: { creadoEn: "asc" },
+  });
+  res.json(facturas);
+}
+
 export async function eliminar(req: Request, res: Response) {
   const id = Number(req.params.id);
   const factura = await prisma.factura.findUnique({ where: { id }, select: { numero: true, totalPagado: true } });

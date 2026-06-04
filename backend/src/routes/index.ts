@@ -93,6 +93,7 @@ router.get("/seguimiento/pendientes", requireRol("MASTER", "ADMIN"), w(seguimien
 router.get("/facturas", requireRol("MASTER", "ADMIN"), w(facturas.listar));
 router.get("/facturas/balance", requireRol("MASTER", "ADMIN"), w(facturas.balanceGeneral));
 router.get("/facturas/cliente/:clienteId/resumen", requireRol("MASTER", "ADMIN"), w(facturas.resumenCliente));
+router.get("/facturas/cliente/:clienteId/con-pagos", requireRol("MASTER", "ADMIN"), w(facturas.listarClienteConPagos));
 router.post("/facturas/manual", requireRol("MASTER", "ADMIN"), w(facturas.crearManual));
 router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));

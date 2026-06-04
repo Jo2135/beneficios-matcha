@@ -81,6 +81,8 @@ export const facturasApi = {
     api.patch(`/facturas/${id}/notas`, { notas }).then((r) => r.data),
   crearManual: (data: any) => api.post("/facturas/manual", data).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/facturas/${id}`).then((r) => r.data),
+  listarConPagos: (clienteId: number) =>
+    api.get(`/facturas/cliente/${clienteId}/con-pagos`).then((r) => r.data),
 };
 
 // Empresas

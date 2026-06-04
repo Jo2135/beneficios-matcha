@@ -1249,14 +1249,14 @@ export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; factu
     );
 
     let saldo = Number(fac.totalNeto);
-    const ledgerRows: [string, string, string][] = []; // [label, amount, type: resta|abono]
+    const ledgerRows: [string, string, string, string?][] = []; // [label, amount, type: resta|abono, nota?]
 
     for (const pa of pagos) {
       const monto = Number(pa.montoAsignado ?? pa.monto ?? 0);
       const fechaPago = pa.fechaAsignacion ?? pa.pago?.fecha;
       const metodo = pa.pago?.cuenta?.nombre ?? pa.pago?.origenFondos ?? "Abono";
       const dia = fechaPago ? new Date(fechaPago).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit" }).replace(/\//g, "-") : "";
-      ledgerRows.push([`${metodo}  ${dia}`, monto.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), "abono"]);
+      ledgerRows.push([`${metodo}  ${dia}`, monto.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), "abono", pa.notas || undefined]);
       saldo -= monto;
       ledgerRows.push(["Resta", saldo.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), "resta"]);
     }
@@ -1277,7 +1277,7 @@ export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; factu
     doc.text(totalStr, W - M - 2, ly + 5, { align: "right" });
     ly += rowH;
 
-    for (const [label, amount, type] of ledgerRows) {
+    for (const [label, amount, type, nota] of ledgerRows) {
       if (ly > 282) { doc.addPage(); ly = 16; }
 
       if (type === "resta") {
@@ -1293,8 +1293,18 @@ export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; factu
         doc.setFontSize(8.5);
         doc.setTextColor(0, 0, 0);
         doc.text(label, M + colW + 3, ly + 5);
-        doc.setFont("helvetica", "normal");
         doc.text(amount, W - M - 2, ly + 5, { align: "right" });
+        if (nota) {
+          doc.setFontSize(7);
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(120, 120, 120);
+          const notaTxt = doc.splitTextToSize(nota, colW - 6) as string[];
+          doc.text(notaTxt[0], M + colW + 3, ly + 5 + rowH * 0.7);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8.5);
+          doc.setTextColor(0, 0, 0);
+          ly += 4;
+        }
       }
       ly += rowH;
     }
@@ -1315,9 +1325,11 @@ export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; factu
       doc.setFillColor(22, 163, 74);
       doc.roundedRect(M + colW, ly, colW, 10, 1.5, 1.5, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(255, 255, 255);
-      doc.text("✓ SALDADA", W / 2 + 3, ly + 7, { align: "center" });
+      const lastPago = pagos[pagos.length - 1];
+      const lastDate = lastPago ? ` · ${fechaStr(lastPago.fechaAsignacion ?? lastPago.pago?.fecha)}` : "";
+      doc.text(`✓ PAGADO TODO${lastDate}`, M + colW + 3, ly + 7);
       doc.setTextColor(0, 0, 0);
     }
   }
