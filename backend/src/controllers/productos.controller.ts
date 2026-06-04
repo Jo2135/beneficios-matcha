@@ -21,6 +21,7 @@ export async function buscar(req: Request, res: Response) {
     where: {
       activo: true,
       OR: [
+        { codigo: { contains: String(q || ""), mode: "insensitive" } },
         { nombre: { contains: String(q || ""), mode: "insensitive" } },
         { medida: { contains: String(q || ""), mode: "insensitive" } },
       ],

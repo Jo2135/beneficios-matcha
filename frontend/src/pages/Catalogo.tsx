@@ -56,6 +56,7 @@ export default function Catalogo() {
 
   const filtrados = productos.filter((p: any) => {
     const matchBusq =
+      (p.codigo?.toLowerCase() ?? "").includes(busqueda.toLowerCase()) ||
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.medida.toLowerCase().includes(busqueda.toLowerCase());
     const matchOrigen = !filtroOrigen || p.origen === filtroOrigen;
@@ -109,7 +110,7 @@ export default function Catalogo() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f1f5f9" }}>
-              {["", "Producto", "Medida", "Categoría", "Origen", "Peso/unid (kg)", "Factor Costo/kg", ""].map((h, i) => (
+              {["", "Código", "Producto", "Medida", "Categoría", "Origen", "Peso/unid (kg)", "Factor Costo/kg", ""].map((h, i) => (
                 <th key={i} style={thStyle}>{h}</th>
               ))}
             </tr>
@@ -129,6 +130,12 @@ export default function Catalogo() {
                       <ImagePlus size={14} color="#cbd5e1" />
                     </div>
                   )}
+                </td>
+                <td style={tdStyle}>
+                  {p.codigo
+                    ? <span style={codigoStyle}>{p.codigo}</span>
+                    : <span style={{ color: "#cbd5e1", fontSize: 12 }}>—</span>
+                  }
                 </td>
                 <td style={tdStyle}>
                   <div style={{ fontWeight: 500, color: "#1e293b" }}>{p.nombre}</div>
@@ -180,6 +187,10 @@ export default function Catalogo() {
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>Nombre del Producto *</label>
                 <input style={inputStyle} value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+              </div>
+              <div>
+                <label style={labelStyle}>Código</label>
+                <input style={{ ...inputStyle, fontFamily: "monospace", textTransform: "uppercase" }} value={form.codigo || ""} placeholder="Ej: TUAZ-1/2" onChange={(e) => setForm({ ...form, codigo: e.target.value.toUpperCase() || null })} />
               </div>
               <div>
                 <label style={labelStyle}>Medida *</label>
@@ -293,6 +304,7 @@ const thStyle: React.CSSProperties = { padding: "10px 16px", textAlign: "left", 
 const tdStyle: React.CSSProperties = { padding: "12px 16px", fontSize: 14, color: "#374151" };
 const tagStyle: React.CSSProperties = { display: "inline-block", padding: "2px 8px", background: "#f1f5f9", borderRadius: 4, fontSize: 12, color: "#475569" };
 const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" };
+const codigoStyle: React.CSSProperties = { display: "inline-block", padding: "2px 8px", background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, fontSize: 12, fontFamily: "monospace", fontWeight: 600 };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 };
 const modalOverlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 };
 const modalBox: React.CSSProperties = { background: "#fff", borderRadius: 16, padding: 28, width: "min(600px, 95vw)", maxHeight: "90vh", overflow: "auto" };

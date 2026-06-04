@@ -47,6 +47,7 @@ model CategoriaCosto {
 
 model Producto {
   id             Int            @id @default(autoincrement())
+  codigo         String?        @unique
   nombre         String
   medida         String
   descripcion    String?
