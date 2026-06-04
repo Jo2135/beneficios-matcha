@@ -86,7 +86,8 @@ export default function Despachos() {
   // Merge: saved DB values + local edits
   const getCantidad = (linea: any): number => {
     if (cantidades[linea.id] !== undefined) return cantidades[linea.id];
-    return Number(linea.cantidadDespachada);
+    const despachada = Number(linea.cantidadDespachada);
+    return despachada > 0 ? despachada : Number(linea.cantidadPedida);
   };
 
   const guardarLineas = useMutation({

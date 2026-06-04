@@ -451,7 +451,7 @@ function tablaEcoplast(lineas: any[], tipo: DocTipo): TableConfig {
     // Subtotal row (fills last column)
     const cols = esDespacho ? 6 : 5;
     const sub = Array(cols).fill("");
-    sub[0] = `Total ${cat}`;
+    sub[0] = `Total ${cat.split("_")[0]}`;
     sub[cols - 1] = usd(catTotal);
     rows.push(sub);
     subtotalRows.add(rows.length - 1);
@@ -669,7 +669,7 @@ export function pdfCotizacionGanancia(cot: any) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(22, 101, 52);
-  doc.text("★  COPIA INTERNA — COTIZACIÓN CON GANANCIA — NO ENVIAR AL CLIENTE  ★", 105, startY - 1.5, { align: "center" });
+  doc.text("*  COPIA INTERNA - COTIZACION CON GANANCIA - NO ENVIAR AL CLIENTE  *", 105, startY - 1.5, { align: "center" });
   doc.setTextColor(0, 0, 0);
 
   const config =
