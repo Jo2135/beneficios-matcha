@@ -138,22 +138,26 @@ export default function Despachos() {
 
   const generarPdfGandica = () => {
     if (!despacho) return;
-    const cliente = despacho.lineas?.[0]?.cotizacion?.cliente ?? {};
-    pdfDespachoGandica({
-      lineas: despacho.lineas ?? [],
-      cliente,
-      fecha: despacho.fechaSalida
-        ? new Date(despacho.fechaSalida).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" })
-        : undefined,
-      fechaRef: gFechaRef || "—",
-      mesDespacho: gMes || "—",
-      prestamo: gPrestamo ? Number(gPrestamo) : 0,
-      comision: gComision ? Number(gComision) : 0,
-      abonos: gAbonos
-        .filter(a => a.label && a.monto)
-        .map(a => ({ label: a.label, monto: Number(a.monto) })),
-    });
-    setGandicaModal(false);
+    try {
+      const cliente = despacho.lineas?.[0]?.cotizacion?.cliente ?? {};
+      pdfDespachoGandica({
+        lineas: despacho.lineas ?? [],
+        cliente,
+        fecha: despacho.fechaSalida
+          ? new Date(despacho.fechaSalida).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" })
+          : undefined,
+        fechaRef: gFechaRef || "—",
+        mesDespacho: gMes || "—",
+        prestamo: gPrestamo ? Number(gPrestamo) : 0,
+        comision: gComision ? Number(gComision) : 0,
+        abonos: gAbonos
+          .filter(a => a.label && a.monto)
+          .map(a => ({ label: a.label, monto: Number(a.monto) })),
+      });
+      setGandicaModal(false);
+    } catch (e: any) {
+      alert("Error al generar PDF: " + (e?.message ?? String(e)));
+    }
   };
 
   return (
@@ -244,9 +248,9 @@ export default function Despachos() {
         </table>
       </div>
 
-      {/* Modal PDF Gandica */}
+      {/* Modal PDF Gandica — zIndex 100 so it renders above the despacho modal */}
       {gandicaModal && (
-        <div style={modalOverlay} onClick={() => setGandicaModal(false)}>
+        <div style={{ ...modalOverlay, zIndex: 100 }} onClick={() => setGandicaModal(false)}>
           <div style={{ ...modalBox, width: "min(520px, 96vw)" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>PDF Despacho — Formato Gandica</h3>
