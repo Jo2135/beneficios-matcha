@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Users, Package, FileText, Truck, Receipt, Banknote,
   BarChart3, Settings, ChevronLeft, ChevronRight, DollarSign,
-  UserCog, LogOut, Shield, Briefcase, Factory,
+  UserCog, LogOut, Shield, Briefcase, Factory, Calendar,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -23,6 +23,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: "/catalogo",    label: "Catálogo",           icon: Package,   roles: ["MASTER","ADMIN","VENDEDOR"] },
     { path: "/precios",     label: "Listas de Precios",  icon: DollarSign,roles: ["MASTER","ADMIN"] },
     { path: "/cotizaciones",label: "Cotizaciones",        icon: FileText,  roles: ["MASTER","ADMIN","VENDEDOR"] },
+    { path: "/calendario",  label: "Calendario",          icon: Calendar,  roles: ["MASTER","ADMIN","VENDEDOR"] },
     { path: "/despachos",        label: "Despachos",         icon: Truck,    roles: ["MASTER","ADMIN"] },
     { path: "/orden-produccion", label: "Orden Producción",  icon: Factory,  roles: ["MASTER","ADMIN"] },
     { path: "/facturas",    label: "Facturas",            icon: Receipt,   roles: ["MASTER","ADMIN"] },

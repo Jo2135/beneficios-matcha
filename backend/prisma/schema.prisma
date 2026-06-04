@@ -151,6 +151,7 @@ model Cotizacion {
 
   lineas         CotizacionLinea[]
   despachoLineas DespachoLinea[]
+  seguimientos   SeguimientoCotizacion[]
 }
 
 enum EstadoCotizacion {
@@ -415,4 +416,39 @@ model Usuario {
   activo       Boolean    @default(true)
   creadoEn     DateTime   @default(now())
   ultimoAcceso DateTime?
+
+  seguimientos SeguimientoCotizacion[]
+}
+
+// ─── TASA DE CAMBIO ────────────────────────────────────────────────────────
+
+model TasaCambio {
+  id       Int      @id @default(autoincrement())
+  fecha    DateTime @default(now())
+  bsUSDT   Decimal  @db.Decimal(12, 4)
+  copUSDT  Decimal? @db.Decimal(12, 4)
+  notas    String?
+  creadoEn DateTime @default(now())
+}
+
+// ─── SEGUIMIENTO COTIZACIONES ──────────────────────────────────────────────
+
+model SeguimientoCotizacion {
+  id                   Int                  @id @default(autoincrement())
+  cotizacionId         Int
+  cotizacion           Cotizacion           @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  tipo                 TipoSeguimiento      @default(NOTA)
+  nota                 String
+  fechaProxSeguimiento DateTime?
+  creadoPorId          Int?
+  creadoPor            Usuario?             @relation(fields: [creadoPorId], references: [id])
+  creadoEn             DateTime             @default(now())
+}
+
+enum TipoSeguimiento {
+  NOTA
+  ENVIADA
+  SEGUIMIENTO
+  RECORDATORIO
+  MOTIVO_RECHAZO
 }

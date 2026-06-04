@@ -67,6 +67,7 @@ export const cotizacionesApi = {
   reporteComisiones: (mes?: string) =>
     api.get("/cotizaciones/reporte-comisiones", { params: mes ? { mes } : {} }).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/cotizaciones/${id}`).then((r) => r.data),
+  duplicar: (id: number) => api.post(`/cotizaciones/${id}/duplicar`).then((r) => r.data),
 };
 
 // Facturas
@@ -88,6 +89,25 @@ export const empresasApi = {
   crear: (data: { nombre: string; rif: string }) => api.post("/empresas", data).then((r) => r.data),
   actualizar: (id: number, data: { nombre: string; rif: string }) => api.put(`/empresas/${id}`, data).then((r) => r.data),
   toggleActiva: (id: number, activa: boolean) => api.patch(`/empresas/${id}/activa`, { activa }).then((r) => r.data),
+};
+
+// Tasa de Cambio
+export const tasaCambioApi = {
+  listar: () => api.get("/tasa-cambio").then((r) => r.data),
+  vigente: () => api.get("/tasa-cambio/vigente").then((r) => r.data),
+  upsertHoy: (data: { bsUSDT: number; copUSDT?: number; notas?: string }) =>
+    api.post("/tasa-cambio", data).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/tasa-cambio/${id}`).then((r) => r.data),
+};
+
+// Seguimiento de Cotizaciones
+export const seguimientoApi = {
+  listar: (cotizacionId: number) =>
+    api.get(`/cotizaciones/${cotizacionId}/seguimiento`).then((r) => r.data),
+  crear: (cotizacionId: number, data: { tipo: string; nota: string; fechaProxSeguimiento?: string }) =>
+    api.post(`/cotizaciones/${cotizacionId}/seguimiento`, data).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/seguimiento/${id}`).then((r) => r.data),
+  pendientes: () => api.get("/seguimiento/pendientes").then((r) => r.data),
 };
 
 // Despachos

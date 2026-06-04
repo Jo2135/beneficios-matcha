@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { empresasApi } from "../api/endpoints";
-import { Building2, Plus, Edit2, ToggleLeft, ToggleRight } from "lucide-react";
+import { empresasApi, tasaCambioApi } from "../api/endpoints";
+import { Building2, Plus, Edit2, ToggleLeft, ToggleRight, TrendingUp } from "lucide-react";
 
 interface Empresa { id: number; nombre: string; rif: string; activa: boolean }
 
@@ -14,6 +14,28 @@ export default function Configuracion() {
   const { data: empresas = [] } = useQuery<Empresa[]>({
     queryKey: ["empresas"],
     queryFn: empresasApi.listar,
+  });
+
+  const [tasaForm, setTasaForm] = useState({ bsUSDT: "", copUSDT: "", notas: "" });
+
+  const { data: tasas = [] } = useQuery({
+    queryKey: ["tasas-cambio"],
+    queryFn: tasaCambioApi.listar,
+  });
+
+  const { data: tasaVigente } = useQuery({
+    queryKey: ["tasa-vigente"],
+    queryFn: tasaCambioApi.vigente,
+  });
+
+  const guardarTasa = useMutation({
+    mutationFn: (data: { bsUSDT: number; copUSDT?: number; notas?: string }) =>
+      tasaCambioApi.upsertHoy(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasas-cambio"] });
+      qc.invalidateQueries({ queryKey: ["tasa-vigente"] });
+      setTasaForm({ bsUSDT: "", copUSDT: "", notas: "" });
+    },
   });
 
   const abrirCrear = () => { setForm({ nombre: "", rif: "" }); setError(""); setModal("crear"); };
@@ -119,6 +141,72 @@ export default function Configuracion() {
         )}
       </div>
 
+      {/* Sección Tasa de Cambio */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 8 }}>
+              <TrendingUp size={18} style={{ color: "#7c3aed" }} /> Tasa de Cambio
+            </h2>
+            <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: 13 }}>
+              Tasa vigente: {tasaVigente ? `Bs ${Number(tasaVigente.bsUSDT).toLocaleString("es-VE")} / USDT${tasaVigente.copUSDT ? ` · COP ${Number(tasaVigente.copUSDT).toLocaleString("es-VE")} / USDT` : ""}` : "Sin tasa registrada"}
+            </p>
+          </div>
+        </div>
+
+        {/* Form to set today's rate */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 16 }}>
+          <p style={{ margin: "0 0 12px", fontWeight: 600, fontSize: 13, color: "#374151" }}>Registrar Tasa de Hoy</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr auto", gap: 12, alignItems: "flex-end" }}>
+            <div>
+              <label style={labelSt}>Bs / USDT *</label>
+              <input type="number" step="0.01" min="0" style={inputSt} placeholder="Ej: 92.50" value={tasaForm.bsUSDT} onChange={(e) => setTasaForm({ ...tasaForm, bsUSDT: e.target.value })} />
+            </div>
+            <div>
+              <label style={labelSt}>COP / USDT</label>
+              <input type="number" step="1" min="0" style={inputSt} placeholder="Ej: 4350" value={tasaForm.copUSDT} onChange={(e) => setTasaForm({ ...tasaForm, copUSDT: e.target.value })} />
+            </div>
+            <div>
+              <label style={labelSt}>Notas</label>
+              <input style={inputSt} placeholder="Ej: Tasa BCV, Paralela..." value={tasaForm.notas} onChange={(e) => setTasaForm({ ...tasaForm, notas: e.target.value })} />
+            </div>
+            <button
+              onClick={() => guardarTasa.mutate({ bsUSDT: Number(tasaForm.bsUSDT), copUSDT: tasaForm.copUSDT ? Number(tasaForm.copUSDT) : undefined, notas: tasaForm.notas || undefined })}
+              disabled={!tasaForm.bsUSDT || guardarTasa.isPending}
+              style={{ ...btnPrimary, background: "#7c3aed", opacity: !tasaForm.bsUSDT ? 0.5 : 1 }}
+            >
+              {guardarTasa.isPending ? "Guardando..." : "Guardar"}
+            </button>
+          </div>
+        </div>
+
+        {/* History table */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["Fecha", "Bs / USDT", "COP / USDT", "Notas"].map((h) => (
+                  <th key={h} style={thSt}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(tasas as any[]).slice(0, 15).map((t: any) => (
+                <tr key={t.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <td style={tdSt}>{new Date(t.fecha).toLocaleDateString("es-VE")}</td>
+                  <td style={{ ...tdSt, fontWeight: 700, color: "#7c3aed" }}>Bs {Number(t.bsUSDT).toLocaleString("es-VE", { minimumFractionDigits: 2 })}</td>
+                  <td style={tdSt}>{t.copUSDT ? `COP ${Number(t.copUSDT).toLocaleString("es-VE")}` : "—"}</td>
+                  <td style={{ ...tdSt, color: "#64748b" }}>{t.notas ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {(tasas as any[]).length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Sin tasas registradas</div>
+          )}
+        </div>
+      </div>
+
       {/* Modal crear / editar */}
       {modal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={cerrar}>
@@ -174,3 +262,8 @@ const thStyle: React.CSSProperties = { padding: "9px 16px", textAlign: "left", f
 const tdStyle: React.CSSProperties = { padding: "12px 16px", fontSize: 13, color: "#374151", verticalAlign: "middle" };
 const lbl: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 5, fontSize: 13, fontWeight: 600, color: "#374151" };
 const inp: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, background: "#f8fafc", width: "100%", boxSizing: "border-box" };
+const btnPrimary: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, background: "#2563eb", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 };
+const labelSt: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 3 };
+const inputSt: React.CSSProperties = { width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 13, outline: "none", boxSizing: "border-box" };
+const thSt: React.CSSProperties = { padding: "9px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase" };
+const tdSt: React.CSSProperties = { padding: "10px 14px", fontSize: 13, color: "#374151" };

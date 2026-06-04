@@ -16,6 +16,7 @@ import Usuarios from "./pages/Usuarios";
 import OrdenDespachos from "./pages/OrdenDespachos";
 import ReporteComisiones from "./pages/ReporteComisiones";
 import Configuracion from "./pages/Configuracion";
+import CalendarioCobros from "./pages/CalendarioCobros";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -83,6 +84,9 @@ function AppRoutes() {
         <Route path="/cotizaciones" element={<Cotizaciones />} />
         <Route path="/cotizaciones/nueva" element={<NuevaCotizacion />} />
         <Route path="/cotizaciones/editar/:id" element={<NuevaCotizacion />} />
+
+        {/* Calendario para todos */}
+        <Route path="/calendario" element={<CalendarioCobros />} />
 
         {/* Redirigir rutas no permitidas */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

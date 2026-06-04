@@ -10,6 +10,8 @@ import * as auth from "../controllers/auth.controller";
 import * as cuentas from "../controllers/cuentas.controller";
 import * as reportes from "../controllers/reportes.controller";
 import * as empresas from "../controllers/empresas.controller";
+import * as tasaCambio from "../controllers/tasaCambio.controller";
+import * as seguimiento from "../controllers/seguimiento.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -78,7 +80,14 @@ router.post("/cotizaciones", w(cotizaciones.crear));
 router.put("/cotizaciones/:id", w(cotizaciones.actualizar));
 router.patch("/cotizaciones/:id/estado", w(cotizaciones.cambiarEstado)); // controller valida permisos por rol
 router.post("/cotizaciones/:id/generar-factura", requireRol("MASTER", "ADMIN"), w(cotizaciones.generarFactura));
+router.post("/cotizaciones/:id/duplicar", w(cotizaciones.duplicar));
 router.delete("/cotizaciones/:id", requireRol("MASTER"), w(cotizaciones.eliminar));
+
+// ─── Seguimiento Cotizaciones ─────────────────────────────────────────────
+router.get("/cotizaciones/:cotizacionId/seguimiento", requireRol("MASTER", "ADMIN"), w(seguimiento.listar));
+router.post("/cotizaciones/:cotizacionId/seguimiento", requireRol("MASTER", "ADMIN"), w(seguimiento.crear));
+router.delete("/seguimiento/:id", requireRol("MASTER", "ADMIN"), w(seguimiento.eliminar));
+router.get("/seguimiento/pendientes", requireRol("MASTER", "ADMIN"), w(seguimiento.pendientes));
 
 // ─── Facturas ─────────────────────────────────────────────────────────────
 router.get("/facturas", requireRol("MASTER", "ADMIN"), w(facturas.listar));
@@ -121,6 +130,12 @@ router.get("/empresas", w(empresas.listar));
 router.post("/empresas", requireRol("MASTER"), w(empresas.crear));
 router.put("/empresas/:id", requireRol("MASTER"), w(empresas.actualizar));
 router.patch("/empresas/:id/activa", requireRol("MASTER"), w(empresas.toggleActiva));
+
+// ─── Tasa de Cambio ───────────────────────────────────────────────────────
+router.get("/tasa-cambio", w(tasaCambio.listar));
+router.get("/tasa-cambio/vigente", w(tasaCambio.obtenerVigente));
+router.post("/tasa-cambio", requireRol("MASTER", "ADMIN"), w(tasaCambio.upsertHoy));
+router.delete("/tasa-cambio/:id", requireRol("MASTER"), w(tasaCambio.eliminar));
 
 // ─── Categorías y seed ────────────────────────────────────────────────────
 router.use("/categorias", categoriasRouter);

@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X, Edit2 } from "lucide-react";
+import { cotizacionesApi, despachosApi, seguimientoApi } from "../api/endpoints";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X, Edit2, Copy, MessageSquare, Clock } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -27,6 +27,7 @@ export default function Cotizaciones() {
   const [detalle, setDetalle] = useState<any>(null);
   const [modalDespacho, setModalDespacho] = useState(false);
   const [formDespacho, setFormDespacho] = useState({ chofer: "", vehiculo: "" });
+  const [seguimientoForm, setSeguimientoForm] = useState({ tipo: "NOTA", nota: "", fechaProxSeguimiento: "" });
 
   const { data: cotizaciones = [] } = useQuery({
     queryKey: ["cotizaciones", filtroEstado],
@@ -74,6 +75,24 @@ export default function Cotizaciones() {
       navigate("/despachos");
     },
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al crear despacho"),
+  });
+
+  const duplicar = useMutation({
+    mutationFn: (id: number) => cotizacionesApi.duplicar(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cotizaciones"] }); setDetalle(null); },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al duplicar"),
+  });
+
+  const { data: seguimientos = [], refetch: refetchSeg } = useQuery({
+    queryKey: ["seguimiento", detalle?.id],
+    queryFn: () => seguimientoApi.listar(detalle!.id),
+    enabled: !!detalle && puedeEditar,
+  });
+
+  const crearSeg = useMutation({
+    mutationFn: () => seguimientoApi.crear(detalle!.id, seguimientoForm),
+    onSuccess: () => { refetchSeg(); setSeguimientoForm({ tipo: "NOTA", nota: "", fechaProxSeguimiento: "" }); },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al guardar"),
   });
 
   const hayFiltros = busqueda || desde || hasta;
@@ -364,6 +383,9 @@ export default function Cotizaciones() {
                   <Edit2 size={14} /> Editar
                 </button>
               )}
+              <button onClick={() => duplicar.mutate(detalle.id)} disabled={duplicar.isPending} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
+                <Copy size={14} /> {duplicar.isPending ? "Duplicando..." : "Duplicar"}
+              </button>
               {detalle.estado === "BORRADOR" && (
                 <button onClick={() => cambiarEstado.mutate({ id: detalle.id, estado: "ENVIADA" })} style={{ ...btnAction, background: "#dbeafe", color: "#1d4ed8" }}>
                   <Send size={14} /> Enviar para Aprobación
@@ -437,6 +459,60 @@ export default function Cotizaciones() {
                 <TrendingUp size={14} /> PDF con Ganancia
               </button>
             </div>
+
+            {puedeEditar && (
+              <div style={{ marginTop: 16, borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                  <MessageSquare size={14} /> Seguimiento ({(seguimientos as any[]).length})
+                </div>
+
+                {/* Timeline */}
+                <div style={{ marginBottom: 12, maxHeight: 200, overflow: "auto" }}>
+                  {(seguimientos as any[]).length === 0 && (
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin seguimiento registrado</div>
+                  )}
+                  {(seguimientos as any[]).map((s: any) => (
+                    <div key={s.id} style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.tipo === "MOTIVO_RECHAZO" ? "#dc2626" : s.tipo === "ENVIADA" ? "#2563eb" : "#7c3aed", flexShrink: 0, marginTop: 5 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
+                          {s.tipo} · <span style={{ fontWeight: 400, color: "#64748b" }}>{s.creadoPor?.nombre ?? "—"}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "#475569" }}>{s.nota}</div>
+                        {s.fechaProxSeguimiento && (
+                          <div style={{ fontSize: 11, color: "#d97706", display: "flex", alignItems: "center", gap: 3 }}>
+                            <Clock size={10} /> Seguir: {new Date(s.fechaProxSeguimiento).toLocaleDateString("es-VE")}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{new Date(s.creadoEn).toLocaleString("es-VE")}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* New entry form */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <select style={inpSt} value={seguimientoForm.tipo} onChange={(e) => setSeguimientoForm({ ...seguimientoForm, tipo: e.target.value })}>
+                      <option value="NOTA">Nota</option>
+                      <option value="ENVIADA">Enviada</option>
+                      <option value="SEGUIMIENTO">Seguimiento</option>
+                      <option value="RECORDATORIO">Recordatorio</option>
+                      <option value="MOTIVO_RECHAZO">Motivo Rechazo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <input type="date" style={inpSt} value={seguimientoForm.fechaProxSeguimiento} onChange={(e) => setSeguimientoForm({ ...seguimientoForm, fechaProxSeguimiento: e.target.value })} placeholder="Próx. seguimiento" />
+                  </div>
+                  <div style={{ gridColumn: "1/-1", display: "flex", gap: 8 }}>
+                    <input style={{ ...inpSt, flex: 1 }} placeholder="Observación, acuerdo, motivo..." value={seguimientoForm.nota} onChange={(e) => setSeguimientoForm({ ...seguimientoForm, nota: e.target.value })} />
+                    <button onClick={() => crearSeg.mutate()} disabled={!seguimientoForm.nota || crearSeg.isPending} style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 7, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
+                      {crearSeg.isPending ? "..." : "+ Agregar"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -465,3 +541,5 @@ const tdStyle: React.CSSProperties = { padding: "11px 14px", fontSize: 13, color
 const tagStyle: React.CSSProperties = { display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600 };
 const modalOverlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 };
 const modalBox: React.CSSProperties = { background: "#fff", borderRadius: 16, padding: 28, maxHeight: "90vh", overflow: "auto" };
+const btnSec: React.CSSProperties = { background: "#fff", color: "#374151", border: "1px solid #d1d5db", padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13 };
+const inpSt: React.CSSProperties = { width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 12, outline: "none", boxSizing: "border-box" };

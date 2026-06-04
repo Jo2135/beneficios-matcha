@@ -1165,132 +1165,161 @@ export function pdfDespacho(des: any) {
 
 export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; facturas: any[] }) {
   const doc = new jsPDF();
-  const { cliente, cotizaciones, facturas } = data;
+  const { cliente, facturas } = data;
   const [r, g, b]: [number, number, number] = [22, 101, 52];
   const W = 210, M = 14;
 
-  // Header bar
-  doc.setFillColor(r, g, b);
-  doc.rect(0, 0, W, 10, "F");
+  // ── Pick factura with most recent activity that still has payments ──
+  // Show all facturas in the PDF, starting with those with pending balance
+  const facturasOrdenadas = [...facturas].sort((a, b) =>
+    Number(b.saldoPendiente) - Number(a.saldoPendiente)
+  );
 
-  // Title
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(r, g, b);
-  doc.text("ESTADO DE CUENTA", W / 2, 24, { align: "center" });
+  for (let fi = 0; fi < facturasOrdenadas.length; fi++) {
+    const fac = facturasOrdenadas[fi];
+    if (fi > 0) doc.addPage();
 
-  doc.setDrawColor(r, g, b);
-  doc.setLineWidth(0.5);
-  doc.line(M, 28, W - M, 28);
+    // ── Page header ──
+    const tema = TEMAS[cliente?.empresaFactura ?? "ECOPLAST F.P."] ?? TEMAS["ECOPLAST F.P."];
+    drawLogo(doc, tema, W - M - 40, 6, 40, 26);
 
-  // Client info box
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(M, 32, W - M * 2, 22, 2, 2, "F");
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text(cliente?.nombre ?? "—", M + 3, 39);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(80, 80, 80);
-  doc.text(`RIF: ${cliente?.rif ?? "—"}   ·   Crédito: ${cliente?.diasCredito ?? 0} días`, M + 3, 46);
-  doc.text(`Generado: ${new Date().toLocaleDateString("es-VE")}`, W - M - 3, 39, { align: "right" });
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(r, g, b);
+    const fields = [
+      ["Cliente", cliente?.nombre ?? "—"],
+      ["RIF", cliente?.rif ?? "—"],
+      ["Dirección", cliente?.direccion ?? "—"],
+      ["Vendedor", fac?.vendedor?.nombre ?? "—"],
+      ["Fecha", fechaStr(fac.fechaEmision ?? fac.creadoEn)],
+    ];
+    fields.forEach(([label, val], i) => {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(r, g, b);
+      doc.text(label, M, 12 + i * 5.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(0, 0, 0);
+      doc.text(val, M + 22, 12 + i * 5.5);
+    });
 
-  // Summary totals
-  const totalCotizado = cotizaciones.reduce((s, c) => s + Number(c.totalNeto), 0);
-  const totalFacturado = facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
-  const totalPendiente = facturas.reduce((s, f) => s + Number(f.saldoPendiente), 0);
-
-  const sumY = 62;
-  const boxes = [
-    { label: "Total Cotizado", value: usd(totalCotizado), color: [37, 99, 235] as [number,number,number] },
-    { label: "Total Facturado", value: usd(totalFacturado), color: [22, 101, 52] as [number,number,number] },
-    { label: "Saldo Pendiente", value: usd(totalPendiente), color: totalPendiente > 0 ? [220, 38, 38] as [number,number,number] : [22, 101, 52] as [number,number,number] },
-  ];
-  const bw = (W - M * 2 - 8) / 3;
-  boxes.forEach(({ label, value, color }, i) => {
-    const bx = M + i * (bw + 4);
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(bx, sumY, bw, 18, 2, 2, "F");
-    doc.setFontSize(7.5);
+    // ── Title ──
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Estado de Cuenta", W / 2, 42, { align: "center" });
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 100, 100);
-    doc.text(label, bx + bw / 2, sumY + 6, { align: "center" });
-    doc.setFontSize(11);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Factura N° ${fac.numero}`, W / 2, 48, { align: "center" });
+
+    doc.setDrawColor(r, g, b);
+    doc.setLineWidth(0.5);
+    doc.line(M, 52, W - M, 52);
+
+    let startY = 58;
+
+    // ── Product table (lineas) ──
+    if ((fac.lineas ?? []).length > 0) {
+      const config = tablaEcoplast(fac.lineas, "fac");
+      startY = drawTable(doc, tema, startY, config);
+    } else {
+      // No lineas (historical invoice) — just show total
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(80);
+      doc.text("(Factura importada — sin detalle de productos)", M, startY + 4);
+      startY += 10;
+    }
+
+    // Totals box
+    drawTotalsBox(doc, tema, startY, Number(fac.totalBruto), Number(fac.descuentoTotal), Number(fac.totalNeto));
+    startY = Math.min(startY + 52, 240);
+
+    // ── Payment ledger (Resta / Abono) ──
+    // Check if we need a new page
+    if (startY > 200) { doc.addPage(); startY = 20; }
+
+    doc.setDrawColor(r, g, b);
+    doc.setLineWidth(0.3);
+    doc.line(M, startY, W - M, startY);
+    startY += 6;
+
+    const pagos: any[] = (fac.pagos ?? []).sort(
+      (a: any, b: any) => new Date(a.fechaAsignacion).getTime() - new Date(b.fechaAsignacion).getTime()
+    );
+
+    let saldo = Number(fac.totalNeto);
+    const ledgerRows: [string, string, string][] = []; // [label, amount, type: resta|abono]
+
+    for (const pa of pagos) {
+      const monto = Number(pa.montoAsignado ?? pa.monto ?? 0);
+      const fechaPago = pa.fechaAsignacion ?? pa.pago?.fecha;
+      const metodo = pa.pago?.cuenta?.nombre ?? pa.pago?.origenFondos ?? "Abono";
+      const dia = fechaPago ? new Date(fechaPago).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit" }).replace(/\//g, "-") : "";
+      ledgerRows.push([`${metodo}  ${dia}`, monto.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), "abono"]);
+      saldo -= monto;
+      ledgerRows.push(["Resta", saldo.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), "resta"]);
+    }
+
+    const colW = (W - M * 2) / 2;
+    const rowH = 7;
+    let ly = startY;
+
+    // Initial Resta row (full invoice total)
+    const totalStr = Number(fac.totalNeto).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    // Draw first "Resta" = totalNeto (after initial efectivo if any)
+    doc.setFillColor(253, 185, 19);  // orange/amber
+    doc.rect(M + colW, ly, colW, rowH, "F");
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...color);
-    doc.text(value, bx + bw / 2, sumY + 14, { align: "center" });
-  });
-  doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.setTextColor(180, 80, 0);
+    doc.text("Resta", M + colW + 3, ly + 5);
+    doc.text(totalStr, W - M - 2, ly + 5, { align: "right" });
+    ly += rowH;
 
-  let y = sumY + 26;
+    for (const [label, amount, type] of ledgerRows) {
+      if (ly > 282) { doc.addPage(); ly = 16; }
 
-  // Cotizaciones table
-  if (cotizaciones.length > 0) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(r, g, b);
-    doc.text(`Cotizaciones (${cotizaciones.length})`, M, y);
-    y += 4;
+      if (type === "resta") {
+        doc.setFillColor(253, 185, 19);
+        doc.rect(M + colW, ly, colW, rowH, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(180, 80, 0);
+        doc.text("Resta", M + colW + 3, ly + 5);
+        doc.text(amount, W - M - 2, ly + 5, { align: "right" });
+      } else {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text(label, M + colW + 3, ly + 5);
+        doc.setFont("helvetica", "normal");
+        doc.text(amount, W - M - 2, ly + 5, { align: "right" });
+      }
+      ly += rowH;
+    }
 
-    autoTable(doc, {
-      startY: y,
-      head: [["N° Cotización", "Fecha", "Estado", "Vendedor", "Total"]],
-      body: cotizaciones.slice(0, 20).map((c) => [
-        c.numero,
-        fechaStr(c.creadoEn),
-        c.estado,
-        c.vendedor?.nombre ?? "—",
-        usd(c.totalNeto),
-      ]),
-      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: [2, 2] },
-      columnStyles: { 4: { halign: "right", fontStyle: "bold" } },
-      margin: { left: M, right: M },
-    });
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  // Add new page if needed
-  if (y > 230) { doc.addPage(); y = 20; }
-
-  // Facturas table
-  if (facturas.length > 0) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(r, g, b);
-    doc.text(`Facturas (${facturas.length})`, M, y);
-    y += 4;
-
-    autoTable(doc, {
-      startY: y,
-      head: [["N° Factura", "Fecha", "Total", "Cobrado", "Saldo Pendiente"]],
-      body: facturas.slice(0, 30).map((f) => {
-        const pagado = Number(f.totalNeto) - Number(f.saldoPendiente);
-        return [
-          f.numero,
-          fechaStr(f.creadoEn),
-          usd(f.totalNeto),
-          usd(pagado),
-          usd(f.saldoPendiente),
-        ];
-      }),
-      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: [2, 2] },
-      columnStyles: {
-        2: { halign: "right" },
-        3: { halign: "right", textColor: [22, 101, 52] },
-        4: { halign: "right", fontStyle: "bold", textColor: totalPendiente > 0 ? [220, 38, 38] : [22, 101, 52] },
-      },
-      margin: { left: M, right: M },
-      didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 4) {
-          const val = Number(String(data.cell.text[0]).replace(/[$,]/g, "").replace(",", "."));
-          if (val > 0) {
-            data.cell.styles.textColor = [220, 38, 38];
-          }
-        }
-      },
-    });
+    // Final saldo box
+    if (saldo > 0.005) {
+      ly += 2;
+      doc.setFillColor(r, g, b);
+      doc.roundedRect(M + colW, ly, colW, 10, 1.5, 1.5, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text("SALDO PENDIENTE", M + colW + 3, ly + 7);
+      doc.text(`$${saldo.toFixed(2)}`, W - M - 2, ly + 7, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+    } else {
+      ly += 2;
+      doc.setFillColor(22, 163, 74);
+      doc.roundedRect(M + colW, ly, colW, 10, 1.5, 1.5, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text("✓ SALDADA", W / 2 + 3, ly + 7, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
   }
 
   addFooters(doc);

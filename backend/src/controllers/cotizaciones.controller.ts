@@ -358,6 +358,55 @@ export async function eliminar(req: Request, res: Response) {
   res.json({ ok: true });
 }
 
+export async function duplicar(req: Request, res: Response) {
+  const original = await prisma.cotizacion.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { lineas: true },
+  });
+  if (!original) return res.status(404).json({ error: "Cotización no encontrada" });
+
+  const numero = await siguienteNumero("COT");
+
+  const nueva = await prisma.cotizacion.create({
+    data: {
+      numero,
+      clienteId: original.clienteId,
+      vendedorId: original.vendedorId ?? undefined,
+      empresaId: original.empresaId ?? undefined,
+      estado: "BORRADOR",
+      validezDias: original.validezDias,
+      totalBruto: original.totalBruto,
+      descuentoTotal: original.descuentoTotal,
+      totalNeto: original.totalNeto,
+      notas: original.notas ?? undefined,
+      lineas: {
+        create: original.lineas.map((l, idx) => ({
+          productoId: l.productoId,
+          cantidad: l.cantidad,
+          notaCantidad: l.notaCantidad ?? undefined,
+          precioUnitarioAplicado: l.precioUnitarioAplicado,
+          descuentoPct: l.descuentoPct,
+          precioFinal: l.precioFinal,
+          totalLinea: l.totalLinea,
+          listaPrecioOrigenId: l.listaPrecioOrigenId ?? undefined,
+          pesoTotalKg: l.pesoTotalKg ?? undefined,
+          orden: idx,
+        })),
+      },
+    },
+    include: {
+      cliente: { select: { id: true, nombre: true } },
+      vendedor: { select: { id: true, nombre: true } },
+      lineas: {
+        include: { producto: { include: { categoria: true } } },
+        orderBy: { orden: "asc" },
+      },
+    },
+  });
+
+  res.status(201).json(nueva);
+}
+
 export async function reporteComisiones(req: Request, res: Response) {
   const { mes } = req.query;
 
