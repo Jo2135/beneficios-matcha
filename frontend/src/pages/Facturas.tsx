@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { facturasApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X } from "lucide-react";
+import { facturasApi, clientesApi, cuentasApi, empresasApi } from "../api/endpoints";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus } from "lucide-react";
 import { pdfFactura } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -42,6 +42,26 @@ export default function Facturas() {
 
   const [editNotas, setEditNotas] = useState(false);
   const [notasValue, setNotasValue] = useState("");
+  const [modalManual, setModalManual] = useState(false);
+  const [mForm, setMForm] = useState<any>({ pagos: [] });
+
+  const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: clientesApi.listar });
+  const { data: cuentas = [] } = useQuery({ queryKey: ["cuentas-todas"], queryFn: cuentasApi.listarTodas });
+  const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: empresasApi.listar });
+
+  const sumaPagosManual = (mForm.pagos as any[]).reduce((s: number, p: any) => s + (Number(p.monto) || 0), 0);
+  const saldoManual = Math.max(0, (Number(mForm.totalNeto) || 0) - sumaPagosManual);
+  const estadoManual = saldoManual <= 0 ? "COBRADA" : sumaPagosManual > 0 ? "COBRADA_PARCIAL" : "EMITIDA";
+
+  const crearManual = useMutation({
+    mutationFn: () => facturasApi.crearManual({ ...mForm, pagosIniciales: mForm.pagos }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["facturas-balance"] });
+      setModalManual(false);
+      setMForm({ pagos: [] });
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al crear la factura"),
+  });
 
   const guardarNotas = useMutation({
     mutationFn: ({ id, notas }: { id: number; notas: string }) =>
@@ -99,11 +119,21 @@ export default function Facturas() {
   return (
     <div style={{ padding: 24 }}>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Facturas</h1>
-        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
-          {hayFiltros ? `${facturas.length} de ${todas.length}` : `${todas.length}`} facturas emitidas
-        </p>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Facturas</h1>
+          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
+            {hayFiltros ? `${facturas.length} de ${todas.length}` : `${todas.length}`} facturas emitidas
+          </p>
+        </div>
+        {esMaster && (
+          <button
+            onClick={() => { setMForm({ pagos: [] }); setModalManual(true); }}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "#7c3aed", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+          >
+            <Plus size={15} /> Importar Factura Histórica
+          </button>
+        )}
       </div>
 
       {/* Resumen */}
@@ -225,6 +255,121 @@ export default function Facturas() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal Importar Factura Histórica */}
+      {modalManual && (
+        <div style={overlayStyle} onClick={() => setModalManual(false)}>
+          <div style={{ ...modalStyle, width: "min(680px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1e293b" }}>Importar Factura Histórica</h2>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>Para registrar facturas pasadas con sus pagos ya realizados</p>
+              </div>
+              <button onClick={() => setModalManual(false)} style={btnClose}>✕</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+              <div style={{ gridColumn: "1/-1" }}>
+                <label style={lbSt}>Cliente *</label>
+                <select style={inSt} value={mForm.clienteId ?? ""} onChange={(e) => setMForm({ ...mForm, clienteId: Number(e.target.value) || undefined })}>
+                  <option value="">— Seleccionar —</option>
+                  {(clientes as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbSt}>Número de Factura *</label>
+                <input style={inSt} placeholder="Ej: 0001, FAC-2024-001" value={mForm.numero ?? ""} onChange={(e) => setMForm({ ...mForm, numero: e.target.value })} />
+              </div>
+              <div>
+                <label style={lbSt}>Fecha de Emisión *</label>
+                <input type="date" style={inSt} value={mForm.fechaEmision ?? ""} onChange={(e) => setMForm({ ...mForm, fechaEmision: e.target.value })} />
+              </div>
+              <div>
+                <label style={lbSt}>Total Neto (USD) *</label>
+                <input type="number" min="0" step="0.01" style={inSt} placeholder="0.00" value={mForm.totalNeto ?? ""} onChange={(e) => setMForm({ ...mForm, totalNeto: e.target.value })} />
+              </div>
+              <div>
+                <label style={lbSt}>Empresa emisora</label>
+                <select style={inSt} value={mForm.empresaId ?? ""} onChange={(e) => setMForm({ ...mForm, empresaId: Number(e.target.value) || undefined })}>
+                  <option value="">— Ninguna —</option>
+                  {(empresas as any[]).map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: "1/-1" }}>
+                <label style={lbSt}>Notas internas</label>
+                <textarea rows={2} style={{ ...inSt, resize: "vertical", height: 56, fontFamily: "inherit" }} placeholder="Observaciones, condiciones, referencias..." value={mForm.notas ?? ""} onChange={(e) => setMForm({ ...mForm, notas: e.target.value })} />
+              </div>
+            </div>
+
+            {/* Pagos ya realizados */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Pagos ya realizados</span>
+                <button
+                  onClick={() => setMForm({ ...mForm, pagos: [...(mForm.pagos ?? []), { monto: "", fecha: mForm.fechaEmision ?? "", cuentaId: "", moneda: "USD", origenFondos: "" }] })}
+                  style={{ display: "flex", alignItems: "center", gap: 4, background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, color: "#475569" }}
+                >
+                  <Plus size={12} /> Agregar pago
+                </button>
+              </div>
+              {(mForm.pagos as any[]).length === 0 && (
+                <div style={{ fontSize: 12, color: "#94a3b8", padding: "8px 0" }}>Sin pagos — la factura quedará como EMITIDA (pendiente de cobro)</div>
+              )}
+              {(mForm.pagos as any[]).map((p: any, i: number) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+                  <div>
+                    <label style={lbSt}>Monto (USD)</label>
+                    <input type="number" min="0" step="0.01" style={inSt} placeholder="0.00" value={p.monto} onChange={(e) => { const ps = [...mForm.pagos]; ps[i] = { ...ps[i], monto: e.target.value }; setMForm({ ...mForm, pagos: ps }); }} />
+                  </div>
+                  <div>
+                    <label style={lbSt}>Fecha del pago</label>
+                    <input type="date" style={inSt} value={p.fecha} onChange={(e) => { const ps = [...mForm.pagos]; ps[i] = { ...ps[i], fecha: e.target.value }; setMForm({ ...mForm, pagos: ps }); }} />
+                  </div>
+                  <div>
+                    <label style={lbSt}>Cuenta / Método</label>
+                    <select style={inSt} value={p.cuentaId} onChange={(e) => { const ps = [...mForm.pagos]; ps[i] = { ...ps[i], cuentaId: Number(e.target.value) || "" }; setMForm({ ...mForm, pagos: ps }); }}>
+                      <option value="">— Ninguna —</option>
+                      {(cuentas as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                    </select>
+                  </div>
+                  <button onClick={() => { const ps = [...mForm.pagos]; ps.splice(i, 1); setMForm({ ...mForm, pagos: ps }); }} style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "7px 9px", cursor: "pointer", color: "#dc2626", alignSelf: "flex-end" }}>
+                    <Minus size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Preview estado */}
+            {mForm.totalNeto && (
+              <div style={{ background: estadoManual === "COBRADA" ? "#f0fdf4" : estadoManual === "COBRADA_PARCIAL" ? "#fffbeb" : "#f8fafc", border: `1px solid ${estadoManual === "COBRADA" ? "#bbf7d0" : estadoManual === "COBRADA_PARCIAL" ? "#fde68a" : "#e2e8f0"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#64748b" }}>Total pagado:</span>
+                  <span style={{ fontWeight: 600, color: "#16a34a" }}>{usd(sumaPagosManual)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#64748b" }}>Saldo pendiente:</span>
+                  <span style={{ fontWeight: 700, color: saldoManual > 0 ? "#dc2626" : "#16a34a" }}>{usd(saldoManual)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ color: "#64748b" }}>Estado resultante:</span>
+                  <span style={{ fontWeight: 700, color: estadoManual === "COBRADA" ? "#16a34a" : estadoManual === "COBRADA_PARCIAL" ? "#d97706" : "#475569" }}>{estadoManual === "COBRADA" ? "✓ Cobrada" : estadoManual === "COBRADA_PARCIAL" ? "Cobro Parcial" : "Emitida (pendiente)"}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setModalManual(false)} style={{ ...btnAction, background: "#f1f5f9", color: "#64748b" }}>Cancelar</button>
+              <button
+                onClick={() => crearManual.mutate()}
+                disabled={!mForm.clienteId || !mForm.numero || !mForm.totalNeto || crearManual.isPending}
+                style={{ ...btnAction, background: "#7c3aed", color: "#fff", opacity: (!mForm.clienteId || !mForm.numero || !mForm.totalNeto) ? 0.5 : 1 }}
+              >
+                {crearManual.isPending ? "Guardando..." : "Crear Factura"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal detalle */}
       {facturaId && factura && (
@@ -429,3 +574,5 @@ const overlayStyle: React.CSSProperties = { position: "fixed", inset: 0, backgro
 const modalStyle: React.CSSProperties = { background: "#fff", borderRadius: 16, padding: 28, maxHeight: "92vh", overflow: "auto" };
 const btnAction: React.CSSProperties = { border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 };
 const btnClose: React.CSSProperties = { background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#64748b" };
+const lbSt: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 3 };
+const inSt: React.CSSProperties = { width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 13, outline: "none", boxSizing: "border-box" };

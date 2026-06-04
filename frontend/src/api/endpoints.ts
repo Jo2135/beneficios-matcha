@@ -78,6 +78,7 @@ export const facturasApi = {
     api.get(`/facturas/cliente/${clienteId}/resumen`).then((r) => r.data),
   actualizarNotas: (id: number, notas: string) =>
     api.patch(`/facturas/${id}/notas`, { notas }).then((r) => r.data),
+  crearManual: (data: any) => api.post("/facturas/manual", data).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/facturas/${id}`).then((r) => r.data),
 };
 

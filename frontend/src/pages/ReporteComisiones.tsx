@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cotizacionesApi, clientesApi, reportesApi } from "../api/endpoints";
-import { TrendingUp, Package, User, Receipt, ChevronDown, ChevronRight, Search, Download } from "lucide-react";
+import { TrendingUp, Package, User, Receipt, ChevronDown, ChevronRight, Search, Download, BarChart2 } from "lucide-react";
+import {
+  PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
+} from "recharts";
 
 function descargarCSV(nombre: string, cabeceras: string[], filas: (string | number)[][]) {
   const contenido = [cabeceras, ...filas]
@@ -14,7 +18,7 @@ function descargarCSV(nombre: string, cabeceras: string[], filas: (string | numb
   URL.revokeObjectURL(url);
 }
 
-type Tab = "ventas" | "cuenta" | "cobrar" | "comisiones";
+type Tab = "ventas" | "cuenta" | "cobrar" | "comisiones" | "grafico";
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   BORRADOR:    { label: "Borrador",    color: "#6b7280" },
@@ -47,6 +51,7 @@ export default function Reportes() {
           { id: "cuenta",     label: "Estado de Cuenta",    icon: User },
           { id: "cobrar",     label: "Cuentas por Cobrar",  icon: Receipt },
           { id: "comisiones", label: "Comisiones Vendedor", icon: TrendingUp },
+          { id: "grafico",    label: "Análisis Visual",     icon: BarChart2 },
         ] as const).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -68,6 +73,7 @@ export default function Reportes() {
       {tab === "cuenta"     && <TabEstadoCuenta />}
       {tab === "cobrar"     && <TabCuentasCobrar />}
       {tab === "comisiones" && <TabComisiones />}
+      {tab === "grafico"    && <TabGrafico />}
     </div>
   );
 }
@@ -444,6 +450,161 @@ function TabComisiones() {
               )}
             </div>
           ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── TAB GRÁFICOS ─────────────────────────────────────────────────────────
+
+const COLORS = ["#2563eb","#16a34a","#d97706","#dc2626","#7c3aed","#0891b2","#ea580c","#84cc16"];
+
+function TabGrafico() {
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [buscar, setBuscar] = useState(false);
+
+  const { data: lineas = [], isLoading } = useQuery({
+    queryKey: ["grafico-ventas", desde, hasta, buscar],
+    queryFn: () => reportesApi.ventasProducto({ desde: desde || undefined, hasta: hasta || undefined }),
+    enabled: buscar,
+  });
+
+  const typedLineas = lineas as any[];
+
+  // Chart A — Ingresos por categoría
+  const catMap: Record<string, number> = {};
+  typedLineas.forEach((l) => {
+    const cat = l.producto?.categoria?.nombre ?? "Sin categoría";
+    catMap[cat] = (catMap[cat] ?? 0) + Number(l.totalLinea);
+  });
+  const pieData = Object.entries(catMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+  const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
+
+  // Chart B — Top 10 productos por ingresos
+  const prodMontoMap: Record<string, number> = {};
+  typedLineas.forEach((l) => {
+    const key = `${l.producto?.nombre ?? ""} ${l.producto?.medida ?? ""}`.trim();
+    prodMontoMap[key] = (prodMontoMap[key] ?? 0) + Number(l.totalLinea);
+  });
+  const top10Monto = Object.entries(prodMontoMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+    .map((d) => ({ ...d, shortName: d.name.length > 20 ? d.name.slice(0, 20) + "…" : d.name }));
+
+  // Chart C — Top 10 productos por cantidad
+  const prodCantMap: Record<string, number> = {};
+  typedLineas.forEach((l) => {
+    const key = `${l.producto?.nombre ?? ""} ${l.producto?.medida ?? ""}`.trim();
+    prodCantMap[key] = (prodCantMap[key] ?? 0) + Number(l.cantidad);
+  });
+  const top10Cant = Object.entries(prodCantMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+    .map((d) => ({ ...d, shortName: d.name.length > 20 ? d.name.slice(0, 20) + "…" : d.name }));
+
+  const totalMonto = typedLineas.reduce((s, l) => s + Number(l.totalLinea), 0);
+
+  const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, index }: any) => {
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    const pct = pieTotal > 0 ? ((pieData[index]?.value ?? 0) / pieTotal * 100).toFixed(1) : "0";
+    const name = pieData[index]?.name ?? "";
+    if (Number(pct) < 4) return null;
+    return (
+      <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
+        {name.length > 10 ? name.slice(0, 10) + "…" : name} {pct}%
+      </text>
+    );
+  };
+
+  return (
+    <div>
+      <div style={filterBox}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
+          <div>
+            <label style={lbl}>Desde</label>
+            <input type="date" style={inp} value={desde} onChange={(e) => setDesde(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Hasta</label>
+            <input type="date" style={inp} value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          </div>
+          <button onClick={() => setBuscar(true)} style={btnBuscar}>Buscar</button>
+        </div>
+      </div>
+
+      {!buscar && <Vacio texto="Selecciona un rango de fechas y haz clic en Buscar" />}
+      {buscar && isLoading && <Cargando />}
+
+      {buscar && !isLoading && typedLineas.length > 0 && (
+        <>
+          <div style={{ display: "flex", gap: 14, marginBottom: 20 }}>
+            <SummaryCard label="Líneas encontradas" value={String(typedLineas.length)} />
+            <SummaryCard label="Monto total" value={`$${totalMonto.toFixed(2)}`} accent />
+          </div>
+
+          {/* Chart A — Pie */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>Ingresos por Categoría de Producto</div>
+            <ResponsiveContainer width="100%" height={320}>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={130}
+                  dataKey="value"
+                  labelLine={false}
+                  label={renderPieLabel}
+                >
+                  {pieData.map((_entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <ReTooltip formatter={(value: number) => [`$${value.toFixed(2)}`, "Total"]} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Charts B & C — side by side */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            {/* Chart B */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>Top 10 Productos por Ingresos</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={top10Monto} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v) => `$${v}`} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="shortName" width={120} tick={{ fontSize: 11 }} />
+                  <ReTooltip formatter={(value: number) => [`$${value.toFixed(2)}`, "Ingresos"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
+                  <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Chart C */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>Top 10 Productos por Unidades Vendidas</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={top10Cant} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="shortName" width={120} tick={{ fontSize: 11 }} />
+                  <ReTooltip formatter={(value: number) => [value, "Unidades"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
+                  <Bar dataKey="value" fill="#16a34a" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </>
       )}
     </div>

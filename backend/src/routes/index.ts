@@ -84,6 +84,7 @@ router.delete("/cotizaciones/:id", requireRol("MASTER"), w(cotizaciones.eliminar
 router.get("/facturas", requireRol("MASTER", "ADMIN"), w(facturas.listar));
 router.get("/facturas/balance", requireRol("MASTER", "ADMIN"), w(facturas.balanceGeneral));
 router.get("/facturas/cliente/:clienteId/resumen", requireRol("MASTER", "ADMIN"), w(facturas.resumenCliente));
+router.post("/facturas/manual", requireRol("MASTER", "ADMIN"), w(facturas.crearManual));
 router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));
 router.delete("/facturas/:id", requireRol("MASTER"), w(facturas.eliminar));

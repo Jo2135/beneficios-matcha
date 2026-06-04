@@ -66,6 +66,66 @@ export async function resumenCliente(req: Request, res: Response) {
   res.json({ facturas, totalDeuda });
 }
 
+export async function crearManual(req: Request, res: Response) {
+  const { clienteId, numero, fechaEmision, totalNeto, notas, empresaId, pagosIniciales = [] } = req.body;
+
+  if (!clienteId || !numero || totalNeto === undefined) {
+    return res.status(400).json({ error: "clienteId, numero y totalNeto son requeridos" });
+  }
+
+  const sumaPagos = (pagosIniciales as any[]).reduce((s: number, p: any) => s + Number(p.monto), 0);
+  const saldoPendiente = Math.max(0, Number(totalNeto) - sumaPagos);
+  const estado =
+    saldoPendiente <= 0 ? "COBRADA" : sumaPagos > 0 ? "COBRADA_PARCIAL" : "EMITIDA";
+  const fechaBase = fechaEmision ? new Date(fechaEmision) : new Date();
+
+  const factura = await prisma.$transaction(async (tx) => {
+    const f = await tx.factura.create({
+      data: {
+        numero,
+        clienteId: Number(clienteId),
+        empresaId: empresaId ? Number(empresaId) : undefined,
+        fechaEmision: fechaBase,
+        totalNeto: Number(totalNeto),
+        totalBruto: Number(totalNeto),
+        totalPagado: sumaPagos,
+        saldoPendiente,
+        estado: estado as any,
+        notas: notas ?? null,
+      },
+    });
+
+    for (const p of pagosIniciales as any[]) {
+      const fechaPago = p.fecha ? new Date(p.fecha) : fechaBase;
+      const pago = await tx.pago.create({
+        data: {
+          clienteId: Number(clienteId),
+          cuentaId: p.cuentaId ? Number(p.cuentaId) : undefined,
+          monto: Number(p.monto),
+          moneda: p.moneda ?? "USD",
+          fecha: fechaPago,
+          estado: "ASIGNADO" as any,
+          origenFondos: p.origenFondos ?? null,
+          observaciones: "Importación histórica",
+        },
+      });
+      await tx.pagoAsignacion.create({
+        data: {
+          pagoId: pago.id,
+          facturaId: f.id,
+          montoAsignado: Number(p.monto),
+          fechaAsignacion: fechaPago,
+          notas: "Importación histórica",
+        },
+      });
+    }
+
+    return f;
+  });
+
+  res.status(201).json(factura);
+}
+
 export async function actualizarNotas(req: Request, res: Response) {
   const factura = await prisma.factura.update({
     where: { id: Number(req.params.id) },
