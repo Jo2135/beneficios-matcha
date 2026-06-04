@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { despachosApi } from "../api/endpoints";
 import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X } from "lucide-react";
-import { pdfDespacho } from "../utils/pdf";
+import { pdfDespacho, pdfDespachoGandica } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
 const ESTADO_DESPACHO: Record<string, { label: string; color: string; icon: any }> = {
@@ -27,6 +27,16 @@ export default function Despachos() {
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+
+  // Gandica PDF modal
+  const [gandicaModal, setGandicaModal] = useState(false);
+  const [gFechaRef, setGFechaRef] = useState("");
+  const [gMes, setGMes] = useState("");
+  const [gPrestamo, setGPrestamo] = useState("");
+  const [gComision, setGComision] = useState("");
+  const [gAbonos, setGAbonos] = useState<{ label: string; monto: string }[]>([
+    { label: "Abono Fact Anterior USDT", monto: "" },
+  ]);
 
 
   const { data: despachos = [] } = useQuery({
@@ -116,8 +126,28 @@ export default function Despachos() {
 
   const hayEdits = Object.keys(cantidades).length > 0;
   const yaFinalizado = despacho?.estado === "ENTREGADO";
-  const clienteNombre =
-    despacho?.lineas?.[0]?.cotizacion?.cliente?.nombre ?? "—";
+  const clienteNombre = despacho?.lineas?.[0]?.cotizacion?.cliente?.nombre ?? "—";
+  const esGandica = clienteNombre.toLowerCase().includes("gandica");
+
+  const generarPdfGandica = () => {
+    if (!despacho) return;
+    const cliente = despacho.lineas?.[0]?.cotizacion?.cliente ?? {};
+    pdfDespachoGandica({
+      lineas: despacho.lineas ?? [],
+      cliente,
+      fecha: despacho.fechaSalida
+        ? new Date(despacho.fechaSalida).toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" })
+        : undefined,
+      fechaRef: gFechaRef || "—",
+      mesDespacho: gMes || "—",
+      prestamo: gPrestamo ? Number(gPrestamo) : 0,
+      comision: gComision ? Number(gComision) : 0,
+      abonos: gAbonos
+        .filter(a => a.label && a.monto)
+        .map(a => ({ label: a.label, monto: Number(a.monto) })),
+    });
+    setGandicaModal(false);
+  };
 
   return (
     <div style={{ padding: 24 }}>
@@ -207,6 +237,76 @@ export default function Despachos() {
         </table>
       </div>
 
+      {/* Modal PDF Gandica */}
+      {gandicaModal && (
+        <div style={modalOverlay} onClick={() => setGandicaModal(false)}>
+          <div style={{ ...modalBox, width: "min(520px, 96vw)" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>PDF Despacho — Formato Gandica</h3>
+              <button onClick={() => setGandicaModal(false)} style={btnClose}>✕</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={labelStyle}>Fecha referencia (título)</label>
+                <input value={gFechaRef} onChange={e => setGFechaRef(e.target.value)}
+                  placeholder="ej. 27-03"
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Mes despacho (resumen)</label>
+                <input value={gMes} onChange={e => setGMes(e.target.value)}
+                  placeholder="ej. Marzo"
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Más Préstamo / Viáticos ($)</label>
+                <input type="number" min={0} value={gPrestamo} onChange={e => setGPrestamo(e.target.value)}
+                  placeholder="0  (dejar vacío si no aplica)"
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Comisión ($)</label>
+                <input type="number" min={0} value={gComision} onChange={e => setGComision(e.target.value)}
+                  placeholder="ej. 300"
+                  style={inputStyle} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...labelStyle, display: "block", marginBottom: 8 }}>
+                Abonos anteriores
+                <button onClick={() => setGAbonos(prev => [...prev, { label: "", monto: "" }])}
+                  style={{ marginLeft: 10, fontSize: 12, padding: "2px 10px", background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 6, cursor: "pointer" }}>
+                  + Añadir
+                </button>
+              </label>
+              {gAbonos.map((ab, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                  <input value={ab.label} onChange={e => setGAbonos(prev => prev.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                    placeholder="ej. Abono Fact Anterior USDT"
+                    style={{ ...inputStyle, flex: 2 }} />
+                  <input type="number" min={0} value={ab.monto} onChange={e => setGAbonos(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
+                    placeholder="Monto"
+                    style={{ ...inputStyle, flex: 1 }} />
+                  <button onClick={() => setGAbonos(prev => prev.filter((_, j) => j !== i))}
+                    style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 13 }}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button onClick={() => setGandicaModal(false)} style={{ ...btnAction, background: "#f1f5f9", color: "#64748b" }}>Cancelar</button>
+              <button onClick={generarPdfGandica} style={{ ...btnAction, background: "#166534", color: "#fff" }}>
+                <Download size={14} /> Generar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de detalle / edición */}
       {despachoId && despacho && (
         <div style={modalOverlay} onClick={cerrar}>
@@ -241,6 +341,14 @@ export default function Despachos() {
               >
                 <Download size={14} /> Manifiesto PDF
               </button>
+              {esGandica && (
+                <button
+                  onClick={() => setGandicaModal(true)}
+                  style={{ ...btnAction, background: "#dcfce7", color: "#166534" }}
+                >
+                  <Download size={14} /> PDF Despacho Gandica
+                </button>
+              )}
             </div>
 
             {/* Tabla de líneas */}
@@ -367,6 +475,8 @@ const tdStyle: React.CSSProperties = { padding: "11px 14px", fontSize: 13, color
 const badge: React.CSSProperties = { display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600 };
 const modalOverlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 };
 const modalBox: React.CSSProperties = { background: "#fff", borderRadius: 16, padding: 28, maxHeight: "92vh", overflow: "auto" };
-const btnAction: React.CSSProperties = { border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 };
+const btnAction: React.CSSProperties = { border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 };
 const btnClose: React.CSSProperties = { background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#64748b", fontSize: 14 };
 const inputCant: React.CSSProperties = { width: 72, padding: "5px 8px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 14, textAlign: "center", outline: "none" };
+const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 };
+const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box" };

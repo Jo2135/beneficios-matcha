@@ -1337,3 +1337,230 @@ export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; factu
   addFooters(doc);
   doc.save(`estado-cuenta-${(cliente?.nombre ?? "cliente").replace(/\s+/g, "-").toLowerCase()}.pdf`);
 }
+
+// ─── PDF DESPACHO GANDICA ──────────────────────────────────────────────────────
+// Formato especial para Piezas y Conexiones Gandica — debe ser idéntico al PDF
+// entregado anteriormente.
+
+export function pdfDespachoGandica(params: {
+  lineas: any[];
+  cliente: any;
+  fecha?: string;
+  fechaRef: string;
+  mesDespacho: string;
+  prestamo?: number;
+  comision?: number;
+  abonos: { label: string; monto: number }[];
+}) {
+  const { lineas, cliente, fecha, fechaRef, mesDespacho, prestamo = 0, comision = 0, abonos = [] } = params;
+  const doc = new jsPDF();
+  const tema = TEMAS["ECOPLAST F.P."];
+  const [r, g, b] = tema.primary;
+  const W = 210, M = 14;
+
+  const fmtUsd = (v: number) =>
+    `$${v.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtPlain = (v: number) => {
+    const hasDec = Math.abs((v % 1)) > 0.0001;
+    return v.toLocaleString("es-VE", { minimumFractionDigits: hasDec ? 2 : 0, maximumFractionDigits: 4 });
+  };
+
+  const getPrecio = (l: any) => {
+    const cl = (l.cotizacion?.lineas ?? []).find((cl: any) => Number(cl.productoId) === Number(l.productoId));
+    return cl ? Number(cl.precioFinal ?? cl.precioUnitarioAplicado ?? 0) : 0;
+  };
+  const getCant = (l: any) => Number(l.cantidadDespachada ?? l.cantidad ?? 0);
+  const esConex = (l: any) => esConexionExternaPdf(l.producto ?? {});
+
+  const lineasTub = lineas.filter(l => !esConex(l));
+  const lineasCon = lineas.filter(l => esConex(l));
+  const totalTub = lineasTub.reduce((s, l) => s + getPrecio(l) * getCant(l), 0);
+  const totalCon = lineasCon.reduce((s, l) => s + getPrecio(l) * getCant(l), 0);
+  const totalFactura = totalTub + totalCon + (prestamo > 0 ? prestamo : 0) + (comision > 0 ? comision : 0);
+
+  // ── Header ──
+  const logoW = 40, boxH = 34, boxX = M, boxY = 10;
+  const boxW = W - M * 2 - logoW - 4;
+  const midX = boxX + boxW / 2, midY = boxY + boxH / 2;
+
+  doc.setDrawColor(r, g, b);
+  doc.setLineWidth(0.4);
+  doc.rect(boxX, boxY, boxW, boxH);
+  doc.line(midX, boxY, midX, boxY + boxH);
+  doc.line(boxX, midY, boxX + boxW, midY);
+
+  const cellW = boxW / 2 - 3;
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(r, g, b);
+  doc.text("Cliente:", boxX + 2, boxY + 4.5);
+  doc.text("RIF:", boxX + 2, midY + 4.5);
+  doc.text("Dirección:", midX + 2, boxY + 4.5);
+  doc.text("Fecha:", midX + 2, midY + 4.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(8);
+  const cnLines = doc.splitTextToSize(cliente?.nombre ?? "—", cellW);
+  doc.text((cnLines as string[]).slice(0, 2), boxX + 2, boxY + 9.5);
+  doc.text(cliente?.rif ?? "—", boxX + 2, midY + 9.5);
+  const dirLines = doc.splitTextToSize(cliente?.direccion ?? "—", cellW);
+  doc.text((dirLines as string[]).slice(0, 2), midX + 2, boxY + 9.5);
+  const fechaHeader = fecha ?? new Date().toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  doc.text(fechaHeader, midX + 2, midY + 9.5);
+
+  drawLogo(doc, tema, W - M - logoW, boxY, logoW, boxH);
+
+  const tY = boxY + boxH + 10;
+  doc.setFontSize(17);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text(`DESPACHO ${fechaRef}`, W / 2, tY, { align: "center" });
+
+  doc.setDrawColor(r, g, b);
+  doc.setLineWidth(0.7);
+  doc.line(M, tY + 8, W - M, tY + 8);
+  doc.setLineWidth(0.3);
+
+  let startY = tY + 14;
+
+  // ── Tuberías table ──
+  if (lineasTub.length > 0) {
+    const tubRows = lineasTub.map(l => {
+      const precio = getPrecio(l);
+      const cant = getCant(l);
+      return [l.producto?.nombre ?? "—", l.producto?.medida ?? "—", qty(cant), fmtUsd(precio), fmtUsd(precio * cant)];
+    });
+    autoTable(doc, {
+      startY,
+      head: [["Descripción Producto", "Medida", "Cantidad", "Costo Unit", "Costo Total"]],
+      body: tubRows,
+      styles: { fontSize: 8, cellPadding: [2, 2] },
+      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      columnStyles: { 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M },
+    });
+    startY = (doc as any).lastAutoTable.finalY + 3;
+
+    const bw = 72, bh = 9, bx = W - M - bw;
+    doc.setFillColor(r, g, b);
+    doc.roundedRect(bx, startY, bw, bh, 1.5, 1.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Total Tuberias", bx + 3, startY + 6);
+    doc.text(fmtUsd(totalTub), bx + bw - 3, startY + 6, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    startY += bh + 7;
+  }
+
+  // ── Conexiones table ──
+  if (lineasCon.length > 0) {
+    const conRows = lineasCon.map(l => {
+      const precio = getPrecio(l);
+      const cant = getCant(l);
+      return [l.producto?.nombre ?? "—", l.producto?.medida ?? "—", qty(cant), fmtPlain(precio), fmtPlain(precio * cant)];
+    });
+    autoTable(doc, {
+      startY,
+      head: [["Descripción Producto", "Medida", "Cantidad", "Costo Unit", "Costo Total"]],
+      body: conRows,
+      styles: { fontSize: 8, cellPadding: [2, 2] },
+      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      columnStyles: { 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M },
+    });
+    startY = (doc as any).lastAutoTable.finalY + 3;
+
+    const bw = 72, bh = 9, bx = W - M - bw;
+    doc.setFillColor(r, g, b);
+    doc.roundedRect(bx, startY, bw, bh, 1.5, 1.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Total Conexiones", bx + 3, startY + 6);
+    doc.text(fmtPlain(totalCon), bx + bw - 3, startY + 6, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    startY += bh + 8;
+  }
+
+  // ── RECIBI CONFORME ──
+  const sigLineY = startY + 4;
+  doc.setDrawColor(80);
+  doc.setLineWidth(0.4);
+  doc.line(M, sigLineY, M + 72, sigLineY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(0, 0, 0);
+  doc.text("RECIBI CONFORME", M + 36, sigLineY - 2, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(100);
+  doc.text("Firma / Sello Cliente", M + 36, sigLineY + 5, { align: "center" });
+  doc.setTextColor(0);
+
+  // ── Payment summary box (right side) ──
+  type SumRow = { label: string; value: string; kind: "header" | "normal" | "total" | "resta" };
+  const sumRows: SumRow[] = [];
+  sumRows.push({ label: `DESPACHO ${mesDespacho}`, value: fmtUsd(totalTub), kind: "header" });
+  sumRows.push({ label: "Mas Prestamo Viaticos", value: prestamo > 0 ? fmtPlain(prestamo) : "", kind: "normal" });
+  if (totalCon > 0) sumRows.push({ label: "Conexiones", value: fmtPlain(totalCon), kind: "normal" });
+  if (comision > 0) sumRows.push({ label: "Comision", value: fmtPlain(comision), kind: "normal" });
+  sumRows.push({ label: "Total Factura", value: fmtUsd(totalFactura), kind: "total" });
+
+  let resta = totalFactura;
+  sumRows.push({ label: "Resta", value: fmtPlain(resta), kind: "resta" });
+  for (const abono of abonos) {
+    sumRows.push({ label: abono.label, value: fmtPlain(abono.monto), kind: "normal" });
+    resta -= abono.monto;
+    sumRows.push({ label: "Resta", value: fmtPlain(resta), kind: "resta" });
+  }
+
+  const rowH = 8;
+  const sumBW = 86;
+  const sumBX = W - M - sumBW;
+  const totalBoxH = sumRows.length * rowH + 4;
+  let sumY = sigLineY + 12;
+  if (sumY + totalBoxH > 288) { doc.addPage(); sumY = 20; }
+
+  doc.setDrawColor(180);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(sumBX, sumY, sumBW, totalBoxH, 2, 2, "D");
+
+  let ry = sumY + 2;
+  for (const row of sumRows) {
+    if (row.kind === "header") {
+      doc.setFillColor(r, g, b);
+      doc.rect(sumBX, ry, sumBW, rowH, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(row.label, sumBX + 3, ry + 5.5);
+      doc.text(row.value, sumBX + sumBW - 3, ry + 5.5, { align: "right" });
+    } else if (row.kind === "total") {
+      doc.setFillColor(253, 185, 19);
+      doc.rect(sumBX, ry, sumBW, rowH, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      doc.text(row.label, sumBX + 3, ry + 5.5);
+      doc.text(row.value, sumBX + sumBW - 3, ry + 5.5, { align: "right" });
+    } else if (row.kind === "resta") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(200, 80, 0);
+      doc.text(row.label, sumBX + 3, ry + 5.5);
+      doc.text(row.value, sumBX + sumBW - 3, ry + 5.5, { align: "right" });
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      doc.text(row.label, sumBX + 3, ry + 5.5);
+      if (row.value) doc.text(row.value, sumBX + sumBW - 3, ry + 5.5, { align: "right" });
+    }
+    doc.setTextColor(0, 0, 0);
+    ry += rowH;
+  }
+
+  doc.save(`DESPACHO-${fechaRef.replace(/\//g, "-")}-Gandica.pdf`);
+}
