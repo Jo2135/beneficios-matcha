@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { cotizacionesApi, despachosApi, seguimientoApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X, Edit2, Copy, MessageSquare, Clock } from "lucide-react";
+import { cotizacionesApi, despachosApi, seguimientoApi, tasaCambioApi } from "../api/endpoints";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X, Edit2, Copy, MessageSquare, Clock, DollarSign } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -28,6 +28,8 @@ export default function Cotizaciones() {
   const [modalDespacho, setModalDespacho] = useState(false);
   const [formDespacho, setFormDespacho] = useState({ chofer: "", vehiculo: "" });
   const [seguimientoForm, setSeguimientoForm] = useState({ tipo: "NOTA", nota: "", fechaProxSeguimiento: "" });
+  const [modalBs, setModalBs] = useState(false);
+  const [tasaBsManual, setTasaBsManual] = useState("");
 
   const { data: cotizaciones = [] } = useQuery({
     queryKey: ["cotizaciones", filtroEstado],
@@ -81,6 +83,12 @@ export default function Cotizaciones() {
     mutationFn: (id: number) => cotizacionesApi.duplicar(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cotizaciones"] }); setDetalle(null); },
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al duplicar"),
+  });
+
+  const { data: tasaVigente } = useQuery({
+    queryKey: ["tasa-vigente"],
+    queryFn: tasaCambioApi.vigente,
+    enabled: modalBs,
   });
 
   const { data: seguimientos = [], refetch: refetchSeg } = useQuery({
@@ -224,6 +232,121 @@ export default function Cotizaciones() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal Ver en Bs */}
+      {modalBs && cotizacionDetallada && (
+        <div style={{ ...modalOverlay, zIndex: 200 }} onClick={() => setModalBs(false)}>
+          <div style={{ ...modalBox, width: "min(760px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1e293b" }}>
+                  Precios en Bs · {cotizacionDetallada.numero}
+                </h2>
+                <div style={{ fontSize: 13, color: "#64748b" }}>{cotizacionDetallada.cliente?.nombre}</div>
+              </div>
+              <button onClick={() => setModalBs(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Tasa input */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#92400e", display: "block", marginBottom: 4 }}>
+                  Tasa Bs / USD (manual)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={tasaBsManual}
+                  onChange={(e) => setTasaBsManual(e.target.value)}
+                  placeholder="Ej: 65.50"
+                  style={{ padding: "8px 12px", border: "1px solid #fbbf24", borderRadius: 8, fontSize: 15, fontWeight: 700, width: 160, outline: "none", color: "#713f12", background: "#fff" }}
+                />
+              </div>
+              {tasaVigente && (
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>Tasa vigente registrada</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#92400e" }}>
+                    {Number(tasaVigente.bsUSDT).toFixed(2)} Bs/$
+                  </div>
+                  <button
+                    onClick={() => setTasaBsManual(String(Number(tasaVigente.bsUSDT).toFixed(2)))}
+                    style={{ fontSize: 11, background: "#f59e0b", color: "#fff", border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer", marginTop: 4 }}
+                  >
+                    Usar ésta
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Tabla de conversión */}
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc" }}>
+                    <th style={{ ...thStyle, textAlign: "left" }}>Producto</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Cant.</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>P.Unit USD</th>
+                    <th style={{ ...thStyle, textAlign: "right", color: "#92400e" }}>P.Unit Bs</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Total USD</th>
+                    <th style={{ ...thStyle, textAlign: "right", color: "#92400e" }}>Total Bs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cotizacionDetallada.lineas.map((l: any) => {
+                    const tasa = Number(tasaBsManual) || 0;
+                    const pUnit = Number(l.precioUnitarioAplicado);
+                    const total = Number(l.totalLinea);
+                    return (
+                      <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "8px 10px" }}>
+                          <span style={{ fontWeight: 600 }}>{l.producto?.nombre}</span>
+                          {l.producto?.medida && <span style={{ color: "#94a3b8", marginLeft: 4, fontSize: 12 }}>{l.producto.medida}</span>}
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "center" }}>{Number(l.cantidad)}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right" }}>${pUnit.toFixed(2)}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#92400e" }}>
+                          {tasa > 0 ? `${(pUnit * tasa).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs` : "—"}
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>${total.toFixed(2)}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "#92400e" }}>
+                          {tasa > 0 ? `${(total * tasa).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "#f8fafc", borderTop: "2px solid #e2e8f0" }}>
+                    <td colSpan={4} style={{ padding: "10px 10px", fontWeight: 700, fontSize: 14 }}>TOTAL NETO</td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", fontWeight: 800, fontSize: 15, color: "#1e293b" }}>
+                      ${Number(cotizacionDetallada.totalNeto).toFixed(2)}
+                    </td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", fontWeight: 800, fontSize: 15, color: "#92400e" }}>
+                      {Number(tasaBsManual) > 0
+                        ? `${(Number(cotizacionDetallada.totalNeto) * Number(tasaBsManual)).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`
+                        : "—"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {Number(tasaBsManual) > 0 && (
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
+                <div style={{ background: "#92400e", color: "#fff", borderRadius: 10, padding: "12px 28px", textAlign: "center" }}>
+                  <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 2 }}>Total en Bolívares a {Number(tasaBsManual).toFixed(2)} Bs/$</div>
+                  <div style={{ fontSize: 24, fontWeight: 900 }}>
+                    {(Number(cotizacionDetallada.totalNeto) * Number(tasaBsManual)).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modal crear despacho */}
       {modalDespacho && detalle && (
@@ -443,7 +566,16 @@ export default function Cotizaciones() {
             )}
 
             {/* Botones PDF */}
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              {puedeEditar && (
+                <button
+                  onClick={() => { setModalBs(true); }}
+                  disabled={!cotizacionDetallada}
+                  style={{ ...btnAction, background: "#fef9c3", color: "#713f12", opacity: cotizacionDetallada ? 1 : 0.5 }}
+                >
+                  <DollarSign size={14} /> Ver en Bs
+                </button>
+              )}
               <button
                 onClick={() => cotizacionDetallada && pdfCotizacion(cotizacionDetallada)}
                 disabled={!cotizacionDetallada}
