@@ -2,12 +2,17 @@ import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 
 export async function listar(req: Request, res: Response) {
-  const items = await prisma.seguimientoCotizacion.findMany({
-    where: { cotizacionId: Number(req.params.cotizacionId) },
-    include: { creadoPor: { select: { nombre: true, rol: true } } },
-    orderBy: { creadoEn: "asc" },
-  });
-  res.json(items);
+  try {
+    const items = await prisma.seguimientoCotizacion.findMany({
+      where: { cotizacionId: Number(req.params.cotizacionId) },
+      include: { creadoPor: { select: { nombre: true, rol: true } } },
+      orderBy: { creadoEn: "asc" },
+    });
+    res.json(items);
+  } catch (e: any) {
+    if (e?.code === "P2021" || e?.message?.includes("does not exist")) return res.json([]);
+    throw e;
+  }
 }
 
 export async function crear(req: Request, res: Response) {

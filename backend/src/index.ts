@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { execSync } from "child_process";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -6,6 +7,10 @@ import morgan from "morgan";
 import path from "path";
 import { router } from "./routes/index";
 import { errorHandler } from "./middleware/errorHandler";
+
+try {
+  execSync("npx prisma migrate deploy", { stdio: "inherit" });
+} catch (_) { /* DB might not be ready yet; app will fail requests instead */ }
 
 const app = express();
 const PORT = process.env.PORT || 5101;

@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { siguienteNumero } from "../utils/secuencia";
-import { Decimal } from "@prisma/client/runtime/library";
 
 interface LineaInput {
   productoId: number;

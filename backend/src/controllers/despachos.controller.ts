@@ -259,7 +259,7 @@ export async function eliminar(req: Request, res: Response) {
   if (despacho.estado === "ENTREGADO") {
     return res.status(400).json({ error: "No se puede eliminar un despacho ya entregado (tiene factura generada)" });
   }
-  await prisma.despachoLinea.deleteMany({ where: { despachoId: id } });
+  await prisma.despachoLinea.deleteMany({ where: { ordenDespachoId: id } });
   await prisma.ordenDespacho.delete({ where: { id } });
   res.json({ ok: true });
 }
