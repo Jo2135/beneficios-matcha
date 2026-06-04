@@ -113,6 +113,11 @@ export async function importarPrecios(req: Request, res: Response) {
     return res.status(400).json({ error: "No hay líneas para importar" });
   }
 
+  // Asegurar que la columna codigo exista (idempotente)
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Producto" ADD COLUMN IF NOT EXISTS "codigo" TEXT`);
+  } catch { /* ya existe */ }
+
   const productos = await prisma.producto.findMany({
     where: { activo: true },
     select: { id: true, nombre: true, medida: true },
@@ -137,11 +142,15 @@ export async function importarPrecios(req: Request, res: Response) {
 
     // Fallback: buscar por código vía SQL (col A del Excel puede ser el código)
     if (!match && nombreKey) {
-      const rows = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(
-        `SELECT id FROM "Producto" WHERE lower("codigo") = $1`, nombreKey
-      );
-      if (rows[0]?.id) {
-        match = { id: Number(rows[0].id), nombre: nombreKey, medida: "" };
+      try {
+        const rows = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(
+          `SELECT id FROM "Producto" WHERE lower("codigo") = $1`, nombreKey
+        );
+        if (rows[0]?.id) {
+          match = { id: Number(rows[0].id), nombre: nombreKey, medida: "" };
+        }
+      } catch {
+        // columna codigo aún no existe en la BD — ignorar y seguir
       }
     }
 
