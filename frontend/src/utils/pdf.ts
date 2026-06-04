@@ -606,8 +606,8 @@ export function pdfCotizacion(cot: any) {
 
   drawTotalsBox(doc, tema, fy, Number(cot.totalBruto), Number(cot.descuentoTotal), Number(cot.totalNeto));
 
-  // MAXPLASTIC: condiciones de pago
-  if (tema.tipo === "MAXPLASTIC" && cliente.condicionPago) {
+  // Condiciones de pago (both company types)
+  if (cliente.condicionPago) {
     const cpY = fy + 52;
     if (cpY < 282) {
       doc.setFontSize(9);
@@ -765,6 +765,19 @@ export function pdfFactura(fac: any) {
     Number(fac.totalNeto),
     extraLabel
   );
+
+  // Notas internas (if any)
+  if (fac.notas) {
+    const notaY = fy + 2;
+    if (notaY < 255) {
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(100, 100, 100);
+      const notaLines = doc.splitTextToSize(`Nota: ${fac.notas}`, 108) as string[];
+      doc.text(notaLines.slice(0, 2), 14, notaY + 6);
+      doc.setTextColor(0, 0, 0);
+    }
+  }
 
   const sigY = Math.min(fyAfter + 15, 268);
   if (sigY < 272) {
@@ -1146,4 +1159,140 @@ export function pdfDespacho(des: any) {
 
   addFooters(doc);
   doc.save(`${des.numero}-manifiesto.pdf`);
+}
+
+// ─── PDF ESTADO DE CUENTA ──────────────────────────────────────────────────
+
+export function pdfEstadoCuenta(data: { cliente: any; cotizaciones: any[]; facturas: any[] }) {
+  const doc = new jsPDF();
+  const { cliente, cotizaciones, facturas } = data;
+  const [r, g, b]: [number, number, number] = [22, 101, 52];
+  const W = 210, M = 14;
+
+  // Header bar
+  doc.setFillColor(r, g, b);
+  doc.rect(0, 0, W, 10, "F");
+
+  // Title
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(r, g, b);
+  doc.text("ESTADO DE CUENTA", W / 2, 24, { align: "center" });
+
+  doc.setDrawColor(r, g, b);
+  doc.setLineWidth(0.5);
+  doc.line(M, 28, W - M, 28);
+
+  // Client info box
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(M, 32, W - M * 2, 22, 2, 2, "F");
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text(cliente?.nombre ?? "—", M + 3, 39);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(80, 80, 80);
+  doc.text(`RIF: ${cliente?.rif ?? "—"}   ·   Crédito: ${cliente?.diasCredito ?? 0} días`, M + 3, 46);
+  doc.text(`Generado: ${new Date().toLocaleDateString("es-VE")}`, W - M - 3, 39, { align: "right" });
+
+  // Summary totals
+  const totalCotizado = cotizaciones.reduce((s, c) => s + Number(c.totalNeto), 0);
+  const totalFacturado = facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
+  const totalPendiente = facturas.reduce((s, f) => s + Number(f.saldoPendiente), 0);
+
+  const sumY = 62;
+  const boxes = [
+    { label: "Total Cotizado", value: usd(totalCotizado), color: [37, 99, 235] as [number,number,number] },
+    { label: "Total Facturado", value: usd(totalFacturado), color: [22, 101, 52] as [number,number,number] },
+    { label: "Saldo Pendiente", value: usd(totalPendiente), color: totalPendiente > 0 ? [220, 38, 38] as [number,number,number] : [22, 101, 52] as [number,number,number] },
+  ];
+  const bw = (W - M * 2 - 8) / 3;
+  boxes.forEach(({ label, value, color }, i) => {
+    const bx = M + i * (bw + 4);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(bx, sumY, bw, 18, 2, 2, "F");
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    doc.text(label, bx + bw / 2, sumY + 6, { align: "center" });
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...color);
+    doc.text(value, bx + bw / 2, sumY + 14, { align: "center" });
+  });
+  doc.setTextColor(0, 0, 0);
+
+  let y = sumY + 26;
+
+  // Cotizaciones table
+  if (cotizaciones.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(r, g, b);
+    doc.text(`Cotizaciones (${cotizaciones.length})`, M, y);
+    y += 4;
+
+    autoTable(doc, {
+      startY: y,
+      head: [["N° Cotización", "Fecha", "Estado", "Vendedor", "Total"]],
+      body: cotizaciones.slice(0, 20).map((c) => [
+        c.numero,
+        fechaStr(c.creadoEn),
+        c.estado,
+        c.vendedor?.nombre ?? "—",
+        usd(c.totalNeto),
+      ]),
+      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: [2, 2] },
+      columnStyles: { 4: { halign: "right", fontStyle: "bold" } },
+      margin: { left: M, right: M },
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
+
+  // Add new page if needed
+  if (y > 230) { doc.addPage(); y = 20; }
+
+  // Facturas table
+  if (facturas.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(r, g, b);
+    doc.text(`Facturas (${facturas.length})`, M, y);
+    y += 4;
+
+    autoTable(doc, {
+      startY: y,
+      head: [["N° Factura", "Fecha", "Total", "Cobrado", "Saldo Pendiente"]],
+      body: facturas.slice(0, 30).map((f) => {
+        const pagado = Number(f.totalNeto) - Number(f.saldoPendiente);
+        return [
+          f.numero,
+          fechaStr(f.creadoEn),
+          usd(f.totalNeto),
+          usd(pagado),
+          usd(f.saldoPendiente),
+        ];
+      }),
+      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: [2, 2] },
+      columnStyles: {
+        2: { halign: "right" },
+        3: { halign: "right", textColor: [22, 101, 52] },
+        4: { halign: "right", fontStyle: "bold", textColor: totalPendiente > 0 ? [220, 38, 38] : [22, 101, 52] },
+      },
+      margin: { left: M, right: M },
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 4) {
+          const val = Number(String(data.cell.text[0]).replace(/[$,]/g, "").replace(",", "."));
+          if (val > 0) {
+            data.cell.styles.textColor = [220, 38, 38];
+          }
+        }
+      },
+    });
+  }
+
+  addFooters(doc);
+  doc.save(`estado-cuenta-${(cliente?.nombre ?? "cliente").replace(/\s+/g, "-").toLowerCase()}.pdf`);
 }

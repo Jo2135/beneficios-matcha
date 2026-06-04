@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cotizacionesApi, clientesApi, reportesApi } from "../api/endpoints";
 import { TrendingUp, Package, User, Receipt, ChevronDown, ChevronRight, Search, Download, BarChart2 } from "lucide-react";
+import { pdfEstadoCuenta } from "../utils/pdf";
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
@@ -220,10 +221,16 @@ function TabEstadoCuenta() {
             <strong>{data.cliente?.nombre}</strong> · RIF: {data.cliente?.rif ?? "—"} · Crédito: {data.cliente?.diasCredito ?? 0} días
           </div>
 
-          <div style={{ display: "flex", gap: 14, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 14, marginBottom: 20, alignItems: "flex-end" }}>
             <SummaryCard label="Total cotizado"  value={`$${totalCotizado.toFixed(2)}`} />
             <SummaryCard label="Total facturado" value={`$${totalFacturado.toFixed(2)}`} />
             <SummaryCard label="Saldo pendiente" value={`$${totalPendiente.toFixed(2)}`} accent={totalPendiente > 0} warn={totalPendiente > 0} />
+            <button
+              onClick={() => pdfEstadoCuenta(data)}
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#475569", whiteSpace: "nowrap" }}
+            >
+              <Download size={13} /> PDF
+            </button>
           </div>
 
           {/* Cotizaciones */}

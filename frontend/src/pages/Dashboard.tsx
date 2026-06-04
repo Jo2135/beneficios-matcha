@@ -3,6 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { facturasApi, pagosApi, cotizacionesApi, despachosApi } from "../api/endpoints";
 import { DollarSign, AlertTriangle, CheckCircle, Clock, TrendingUp, FileText, Truck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
+} from "recharts";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -37,6 +41,40 @@ export default function Dashboard() {
   const vencidas = facturas.filter((f: any) => f.estado === "VENCIDA");
   const porCobrar = facturas.filter((f: any) => ["EMITIDA", "PENDIENTE_COBRO", "COBRADA_PARCIAL"].includes(f.estado));
 
+  const criticas = vencidas.filter((f: any) => {
+    const dias = Math.floor((Date.now() - new Date(f.creadoEn).getTime()) / 86400000);
+    return dias > 30;
+  });
+
+  // Chart data — Estado de Facturas (pie)
+  const ESTADO_COLORS: Record<string, string> = {
+    EMITIDA: "#64748b",
+    PENDIENTE_COBRO: "#2563eb",
+    COBRADA_PARCIAL: "#d97706",
+    COBRADA: "#16a34a",
+    VENCIDA: "#dc2626",
+  };
+  const ESTADOS_CHART = ["EMITIDA", "PENDIENTE_COBRO", "COBRADA_PARCIAL", "COBRADA", "VENCIDA"];
+  const pieData = ESTADOS_CHART.map((estado) => {
+    const group = facturas.filter((f: any) => f.estado === estado);
+    const value = group.reduce((sum: number, f: any) => {
+      return sum + Number(estado === "COBRADA" ? f.totalNeto : f.saldoPendiente);
+    }, 0);
+    return { name: estado, value };
+  }).filter((d) => d.value > 0);
+
+  // Chart data — Top 5 clientes por saldo pendiente (bar)
+  const clienteSaldoMap: Record<string, number> = {};
+  facturas.forEach((f: any) => {
+    const nombre = f.cliente?.nombre ?? "Desconocido";
+    clienteSaldoMap[nombre] = (clienteSaldoMap[nombre] ?? 0) + Number(f.saldoPendiente);
+  });
+  const barData = Object.entries(clienteSaldoMap)
+    .filter(([, saldo]) => saldo > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([nombre, saldo]) => ({ nombre, saldo }));
+
   const cotsAbiertas = (cotizaciones as any[]).filter((c) => ["PENDIENTE", "ENVIADA", "APROBADA"].includes(c.estado));
   const cotsPorAprobar = (cotizaciones as any[]).filter((c) => c.estado === "ENVIADA");
   const despachosActivos = (despachos as any[]).filter((d) => ["PENDIENTE", "EN_RUTA"].includes(d.estado));
@@ -47,6 +85,21 @@ export default function Dashboard() {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Panel Principal</h1>
         <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>Resumen operativo y financiero</p>
       </div>
+
+      {/* Alerta facturas críticas */}
+      {puedeVerFinanzas && criticas.length > 0 && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <AlertTriangle size={20} style={{ color: "#dc2626", flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 14 }}>
+              {criticas.length} factura{criticas.length !== 1 ? "s" : ""} con más de 30 días vencida{criticas.length !== 1 ? "s" : ""}
+            </div>
+            <div style={{ fontSize: 12, color: "#dc2626" }}>
+              Saldo crítico: ${criticas.reduce((s: number, f: any) => s + Number(f.saldoPendiente), 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPIs financieros — solo MASTER/ADMIN */}
       {puedeVerFinanzas && (
@@ -97,6 +150,53 @@ export default function Dashboard() {
           />
         )}
       </div>
+
+      {/* Gráficas */}
+      {puedeVerFinanzas && facturas.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
+          {/* Pie: Distribución de Facturas */}
+          <div style={cardStyle}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0" }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b" }}>Distribución de Facturas</span>
+            </div>
+            <div style={{ padding: "16px 8px" }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
+                    {pieData.map((entry) => (
+                      <Cell key={entry.name} fill={ESTADO_COLORS[entry.name] ?? "#94a3b8"} />
+                    ))}
+                  </Pie>
+                  <ReTooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Bar: Top 5 Clientes por Saldo Pendiente */}
+          <div style={cardStyle}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0" }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b" }}>Top 5 Clientes con Saldo Pendiente</span>
+            </div>
+            <div style={{ padding: "16px 8px" }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={barData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="nombre"
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(v: string) => v.length > 15 ? v.slice(0, 15) + "…" : v}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} width={60} />
+                  <ReTooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+                  <Bar dataKey="saldo" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: puedeVerFinanzas ? "1fr 1fr 1fr" : "1fr", gap: 20 }}>
         {/* Cotizaciones por aprobar */}
