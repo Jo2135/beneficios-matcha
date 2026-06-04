@@ -125,11 +125,25 @@ export async function importarPrecios(req: Request, res: Response) {
     const precio = Number(linea.precio);
     if (!precio || precio <= 0) continue;
 
-    const match = productos.find(
+    const nombreKey = String(linea.nombre || "").toLowerCase().trim();
+    const medidaKey = String(linea.medida || "").toLowerCase().trim();
+
+    // Primero: buscar por nombre + medida exacto
+    let match = productos.find(
       (p) =>
-        p.nombre.toLowerCase().trim() === String(linea.nombre).toLowerCase().trim() &&
-        p.medida.toLowerCase().trim() === String(linea.medida).toLowerCase().trim()
+        p.nombre.toLowerCase().trim() === nombreKey &&
+        p.medida.toLowerCase().trim() === medidaKey
     );
+
+    // Fallback: buscar por código vía SQL (col A del Excel puede ser el código)
+    if (!match && nombreKey) {
+      const rows = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(
+        `SELECT id FROM "Producto" WHERE lower("codigo") = $1`, nombreKey
+      );
+      if (rows[0]?.id) {
+        match = { id: Number(rows[0].id), nombre: nombreKey, medida: "" };
+      }
+    }
 
     if (!match) {
       noEncontrados.push(`${linea.nombre} / ${linea.medida}`);

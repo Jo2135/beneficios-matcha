@@ -16,6 +16,9 @@ export default function ListasPrecios() {
   const [modalImport, setModalImport] = useState(false);
   const [csvTexto, setCsvTexto] = useState("");
   const [importResult, setImportResult] = useState<{ importados: number; noEncontrados: string[]; total: number } | null>(null);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [precioColIdx, setPrecioColIdx] = useState<number>(2);
+  const [excelRows, setExcelRows] = useState<any[][]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: listas = [] } = useQuery({ queryKey: ["listas-precios"], queryFn: listasApi.listar });
@@ -121,10 +124,27 @@ export default function ListasPrecios() {
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-        // Convertir a TSV para reusar el parser existente
-        const tsv = rows
-          .filter((r) => r.length >= 3 && r[0] && r[2])
-          .map((r) => `${String(r[0]).trim()}\t${String(r[1]).trim()}\t${String(r[2]).trim()}`)
+        if (rows.length === 0) return;
+
+        // Extraer encabezados de la primera fila
+        const headers = (rows[0] as any[]).map((h, i) => {
+          const letra = i < 26 ? String.fromCharCode(65 + i) : `A${String.fromCharCode(65 + i - 26)}`;
+          return h ? `Col ${letra}: ${String(h).trim().substring(0, 22)}` : `Col ${letra}`;
+        });
+        setExcelHeaders(headers);
+        setExcelRows(rows);
+
+        // Detectar automáticamente "Primo Gato" en headers → col L = índice 11
+        const autoIdx = (rows[0] as any[]).findIndex(
+          (h) => String(h || "").toLowerCase().includes("primo") || String(h || "").toLowerCase().includes("gato")
+        );
+        const colPrecio = autoIdx >= 0 ? autoIdx : 2;
+        setPrecioColIdx(colPrecio);
+
+        // Convertir usando col A como nombre/código y columna detectada como precio
+        const tsv = rows.slice(1)
+          .filter((r) => r[0] && r[colPrecio] && !isNaN(Number(r[colPrecio])))
+          .map((r) => `${String(r[0]).trim()}\t\t${String(r[colPrecio]).trim()}`)
           .join("\n");
         setCsvTexto(tsv);
         setImportResult(null);
@@ -141,6 +161,9 @@ export default function ListasPrecios() {
   function abrirImport() {
     setCsvTexto("");
     setImportResult(null);
+    setExcelHeaders([]);
+    setExcelRows([]);
+    setPrecioColIdx(2);
     setModalImport(true);
   }
 
@@ -315,23 +338,48 @@ export default function ListasPrecios() {
             </div>
 
             <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><FileText size={13} /> Formato esperado (3 columnas):</div>
-              <code style={{ display: "block", background: "#fff", borderRadius: 4, padding: "6px 10px", fontSize: 12, color: "#166534" }}>
-                Col A: Nombre del producto &nbsp;|&nbsp; Col B: Medida &nbsp;|&nbsp; Col C: Precio USD
-              </code>
-              <div style={{ marginTop: 6, color: "#166534" }}>
-                ✓ Excel (.xlsx/.xls): se lee la primera hoja, columnas A-B-C automáticamente<br/>
-                ✓ CSV/TXT: separado por tab, coma o punto y coma · Se ignora la fila de encabezado
+              <div style={{ fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><FileText size={13} /> Formato para Excel (.xlsx/.xls):</div>
+              <div style={{ color: "#166534" }}>
+                • Col A: Código o Nombre del producto (se busca exacto o por código)<br/>
+                • Columna de precio: la que selecciones abajo (por defecto se detecta automáticamente)<br/>
+                • CSV/TXT: col 1 = nombre, col 2 = medida, col 3 = precio
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
               <button onClick={() => fileRef.current?.click()} style={{ ...btnSecondary, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                 <Upload size={13} /> Seleccionar archivo (.xlsx, .csv)
               </button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.txt" style={{ display: "none" }} onChange={onArchivoSeleccionado} />
               {csvTexto && <span style={{ fontSize: 12, color: "#16a34a", alignSelf: "center" }}>✓ Archivo cargado ({csvTexto.split("\n").length} líneas)</span>}
             </div>
+
+            {excelHeaders.length > 0 && (
+              <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>Columna de precio:</span>
+                <select
+                  value={precioColIdx}
+                  onChange={(e) => {
+                    const idx = Number(e.target.value);
+                    setPrecioColIdx(idx);
+                    if (excelRows.length > 1) {
+                      const tsv = excelRows.slice(1)
+                        .filter((r) => r[0] && r[idx] && !isNaN(Number(r[idx])))
+                        .map((r) => `${String(r[0]).trim()}\t\t${String(r[idx]).trim()}`)
+                        .join("\n");
+                      setCsvTexto(tsv);
+                      setImportResult(null);
+                    }
+                  }}
+                  style={{ ...inputStyle, padding: "4px 8px", fontSize: 13 }}
+                >
+                  {excelHeaders.map((h, i) => (
+                    <option key={i} value={i}>{h}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>(Col A siempre es el código/nombre)</span>
+              </div>
+            )}
 
             <textarea
               value={csvTexto}
