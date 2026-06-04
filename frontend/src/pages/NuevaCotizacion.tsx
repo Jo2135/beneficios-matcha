@@ -89,7 +89,7 @@ export default function NuevaCotizacion() {
     const q = busqueda.toLowerCase();
     return (productos as any[])
       .filter((p) => p.nombre.toLowerCase().includes(q) || (p.medida ?? "").toLowerCase().includes(q))
-      .slice(0, 12);
+      .slice(0, 30);
   }, [productos, busqueda]);
 
   const getPrecio = (productoId: number): number | null => {
@@ -295,7 +295,7 @@ export default function NuevaCotizacion() {
                         <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{p.categoria?.nombre}</span>
                       </div>
                       <span style={{ fontWeight: 700, fontSize: 13, color: precio !== null ? "#16a34a" : "#dc2626", whiteSpace: "nowrap" }}>
-                        {precio !== null ? `$${precio.toFixed(2)}` : "Sin precio"}
+                        {precio !== null ? `$${redondearPrecio(precio, p.nombre).toFixed(p.nombre.toLowerCase().includes("curva") ? 3 : 2)}` : "Sin precio"}
                       </span>
                     </div>
                   );
@@ -336,7 +336,7 @@ export default function NuevaCotizacion() {
                         <div style={{ fontWeight: 600, color: "#1e293b" }}>{l.nombre}</div>
                         {l.medida && <div style={{ fontSize: 11, color: "#94a3b8" }}>{l.medida}</div>}
                       </td>
-                      <td style={{ ...tdStyle, color: "#475569" }}>${l.precioUnitario.toFixed(2)}</td>
+                      <td style={{ ...tdStyle, color: "#475569" }}>${l.precioUnitario.toFixed(l.nombre.toLowerCase().includes("curva") ? 3 : 2)}</td>
                       <td style={tdStyle}>
                         <input
                           type="number"
