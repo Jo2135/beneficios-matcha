@@ -58,6 +58,7 @@ export const cotizacionesApi = {
   listar: (params?: any) => api.get("/cotizaciones", { params }).then((r) => r.data),
   obtener: (id: number) => api.get(`/cotizaciones/${id}`).then((r) => r.data),
   crear: (data: any) => api.post("/cotizaciones", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.put(`/cotizaciones/${id}`, data).then((r) => r.data),
   cambiarEstado: (id: number, estado: string) =>
     api.patch(`/cotizaciones/${id}/estado`, { estado }).then((r) => r.data),
   generarFactura: (id: number) =>

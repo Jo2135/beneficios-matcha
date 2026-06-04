@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi } from "../api/endpoints";
-import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X } from "lucide-react";
+import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X, Edit2 } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -359,6 +359,11 @@ export default function Cotizaciones() {
 
             {/* Acciones según estado */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8, justifyContent: "space-between", alignItems: "center" }}>
+              {(detalle.estado === "BORRADOR" || detalle.estado === "RECHAZADA") && (
+                <button onClick={() => { setDetalle(null); navigate(`/cotizaciones/editar/${detalle.id}`); }} style={{ ...btnAction, background: "#f1f5f9", color: "#374151" }}>
+                  <Edit2 size={14} /> Editar
+                </button>
+              )}
               {detalle.estado === "BORRADOR" && (
                 <button onClick={() => cambiarEstado.mutate({ id: detalle.id, estado: "ENVIADA" })} style={{ ...btnAction, background: "#dbeafe", color: "#1d4ed8" }}>
                   <Send size={14} /> Enviar para Aprobación

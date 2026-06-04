@@ -75,6 +75,7 @@ router.get("/cotizaciones/orden-produccion", requireRol("MASTER", "ADMIN"), w(co
 router.get("/cotizaciones/reporte-comisiones", requireRol("MASTER", "ADMIN"), w(cotizaciones.reporteComisiones));
 router.get("/cotizaciones/:id", w(cotizaciones.obtener));
 router.post("/cotizaciones", w(cotizaciones.crear));
+router.put("/cotizaciones/:id", w(cotizaciones.actualizar));
 router.patch("/cotizaciones/:id/estado", w(cotizaciones.cambiarEstado)); // controller valida permisos por rol
 router.post("/cotizaciones/:id/generar-factura", requireRol("MASTER", "ADMIN"), w(cotizaciones.generarFactura));
 router.delete("/cotizaciones/:id", requireRol("MASTER"), w(cotizaciones.eliminar));

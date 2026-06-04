@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { clientesApi, productosApi, listasApi, cotizacionesApi } from "../api/endpoints";
 import { Search, Trash2, ArrowLeft, FileText, Truck } from "lucide-react";
@@ -22,6 +22,8 @@ function esConexionExterna(linea: Linea): boolean {
 
 export default function NuevaCotizacion() {
   const navigate = useNavigate();
+  const { id: editIdStr } = useParams<{ id?: string }>();
+  const editId = editIdStr ? Number(editIdStr) : null;
   const { usuario, esVendedor } = useAuth();
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [notas, setNotas] = useState("");
@@ -29,6 +31,30 @@ export default function NuevaCotizacion() {
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [dropdownAbierto, setDropdownAbierto] = useState(false);
+
+  // Cargar cotización existente si estamos en modo edición
+  const { data: cotExistente } = useQuery({
+    queryKey: ["cotizacion-editar", editId],
+    queryFn: () => cotizacionesApi.obtener(editId!),
+    enabled: !!editId,
+  });
+
+  useEffect(() => {
+    if (!cotExistente) return;
+    setClienteId(cotExistente.clienteId);
+    setNotas(cotExistente.notas ?? "");
+    setValidezDias(cotExistente.validezDias ?? 30);
+    setLineas((cotExistente.lineas ?? []).map((l: any) => ({
+      productoId: l.productoId,
+      nombre: l.producto?.nombre ?? "",
+      medida: l.producto?.medida ?? "",
+      origen: l.producto?.origen ?? "INTERNO",
+      precioUnitario: Number(l.precioUnitarioAplicado),
+      cantidad: Number(l.cantidad),
+      descuentoPct: Number(l.descuentoPct),
+      notaCantidad: l.notaCantidad ?? "",
+    })));
+  }, [cotExistente]);
 
   const { data: clientes = [] } = useQuery({
     queryKey: ["clientes"],
@@ -124,24 +150,28 @@ export default function NuevaCotizacion() {
     };
   }, [lineas, clienteSeleccionado]);
 
+  const lineasPayload = lineas.map((l) => ({
+    productoId: l.productoId,
+    cantidad: l.cantidad,
+    descuentoPct: l.descuentoPct || undefined,
+    notaCantidad: l.notaCantidad || undefined,
+  }));
+
   const crear = useMutation({
-    mutationFn: () =>
-      cotizacionesApi.crear({
-        clienteId,
-        notas: notas || undefined,
-        validezDias,
-        lineas: lineas.map((l) => ({
-          productoId: l.productoId,
-          cantidad: l.cantidad,
-          descuentoPct: l.descuentoPct || undefined,
-          notaCantidad: l.notaCantidad || undefined,
-        })),
-      }),
+    mutationFn: () => cotizacionesApi.crear({ clienteId, notas: notas || undefined, validezDias, lineas: lineasPayload }),
     onSuccess: () => navigate("/cotizaciones"),
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al crear la cotización"),
   });
 
-  const puedeCrear = !!clienteId && lineas.length > 0 && !crear.isPending;
+  const guardarEdicion = useMutation({
+    mutationFn: () => cotizacionesApi.actualizar(editId!, { clienteId, notas: notas || undefined, validezDias, lineas: lineasPayload }),
+    onSuccess: () => navigate("/cotizaciones"),
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al guardar la cotización"),
+  });
+
+  const isPending = crear.isPending || guardarEdicion.isPending;
+  const puedeCrear = !!clienteId && lineas.length > 0 && !isPending;
+  const handleSubmit = () => editId ? guardarEdicion.mutate() : crear.mutate();
 
   return (
     <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
@@ -151,8 +181,12 @@ export default function NuevaCotizacion() {
           <ArrowLeft size={15} /> Volver
         </button>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Nueva Cotización</h1>
-          <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: 13 }}>Selecciona cliente y agrega los productos</p>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>
+            {editId ? `Editando ${cotExistente?.numero ?? "…"}` : "Nueva Cotización"}
+          </h1>
+          <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: 13 }}>
+            {editId ? "Modifica los productos o cantidades y guarda los cambios" : "Selecciona cliente y agrega los productos"}
+          </p>
         </div>
       </div>
 
@@ -359,12 +393,12 @@ export default function NuevaCotizacion() {
               )}
               <TotalStat label="Total Neto" value={`$${totales.neto.toFixed(2)}`} big />
               <button
-                onClick={() => crear.mutate()}
+                onClick={handleSubmit}
                 disabled={!puedeCrear}
                 style={{ ...btnPrimary, opacity: puedeCrear ? 1 : 0.5, cursor: puedeCrear ? "pointer" : "not-allowed" }}
               >
                 <FileText size={15} />
-                {crear.isPending ? "Creando..." : "Crear Cotización"}
+                {isPending ? "Guardando..." : editId ? "Guardar Cambios" : "Crear Cotización"}
               </button>
             </div>
           </div>

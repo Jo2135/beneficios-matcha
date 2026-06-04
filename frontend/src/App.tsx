@@ -82,6 +82,7 @@ function AppRoutes() {
         {/* Cotizaciones para todos */}
         <Route path="/cotizaciones" element={<Cotizaciones />} />
         <Route path="/cotizaciones/nueva" element={<NuevaCotizacion />} />
+        <Route path="/cotizaciones/editar/:id" element={<NuevaCotizacion />} />
 
         {/* Redirigir rutas no permitidas */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

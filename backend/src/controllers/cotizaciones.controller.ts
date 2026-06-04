@@ -149,6 +149,93 @@ export async function crear(req: Request, res: Response) {
   res.status(201).json(cotizacion);
 }
 
+export async function actualizar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const { clienteId, notas, validezDias, lineas } = req.body as {
+    clienteId: number;
+    notas?: string;
+    validezDias?: number;
+    lineas: LineaInput[];
+  };
+  const usuario = req.usuario!;
+
+  const cot = await prisma.cotizacion.findUnique({
+    where: { id },
+    select: { estado: true, vendedorId: true, numero: true },
+  });
+  if (!cot) return res.status(404).json({ error: "Cotización no encontrada" });
+  if (!["BORRADOR", "RECHAZADA"].includes(cot.estado)) {
+    return res.status(400).json({ error: `No se puede editar una cotización en estado ${cot.estado}` });
+  }
+  if (usuario.rol === "VENDEDOR" && usuario.vendedorId && cot.vendedorId !== usuario.vendedorId) {
+    return res.status(403).json({ error: "Solo puedes editar tus propias cotizaciones" });
+  }
+
+  const cliente = await prisma.cliente.findUnique({
+    where: { id: clienteId },
+    include: { listaPrecio: { include: { detalle: true } } },
+  });
+  if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" });
+
+  const lineasConPrecios = await Promise.all(
+    lineas.map(async (linea, idx) => {
+      const detallePrecio = cliente.listaPrecio?.detalle.find((d) => d.productoId === linea.productoId);
+      if (!detallePrecio) throw new Error(`Producto ${linea.productoId} no tiene precio en la lista del cliente`);
+
+      const descuento = linea.descuentoPct ?? Number(detallePrecio.descuentoPct);
+      const precioBase = Number(detallePrecio.precioUnitario);
+      const precioFinal = precioBase * (1 - descuento / 100);
+      const totalLinea = precioFinal * linea.cantidad;
+
+      const producto = await prisma.producto.findUnique({ where: { id: linea.productoId } });
+      const pesoTotalKg = producto?.pesoUnitarioKg ? Number(producto.pesoUnitarioKg) * linea.cantidad : null;
+
+      return {
+        productoId: linea.productoId,
+        cantidad: linea.cantidad,
+        notaCantidad: linea.notaCantidad,
+        precioUnitarioAplicado: precioBase,
+        descuentoPct: descuento,
+        precioFinal,
+        totalLinea,
+        listaPrecioOrigenId: cliente.listaPrecioId,
+        pesoTotalKg,
+        orden: idx,
+      };
+    })
+  );
+
+  const totalBruto = lineasConPrecios.reduce((s, l) => s + Number(l.precioUnitarioAplicado) * l.cantidad, 0);
+  const descuentoTotal = totalBruto - lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
+  const totalNeto = lineasConPrecios.reduce((s, l) => s + l.totalLinea, 0);
+
+  const fechaVencimiento = new Date();
+  fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));
+
+  await prisma.cotizacionLinea.deleteMany({ where: { cotizacionId: id } });
+
+  const cotizacion = await prisma.cotizacion.update({
+    where: { id },
+    data: {
+      clienteId,
+      notas,
+      validezDias: validezDias ?? 30,
+      fechaVencimiento,
+      totalBruto,
+      descuentoTotal,
+      totalNeto,
+      estado: "BORRADOR",
+      lineas: { create: lineasConPrecios },
+    },
+    include: {
+      cliente: true,
+      lineas: { include: { producto: { include: { categoria: true } } } },
+    },
+  });
+
+  res.json(cotizacion);
+}
+
 export async function cambiarEstado(req: Request, res: Response) {
   const { estado } = req.body;
   const cotizacionId = Number(req.params.id);
