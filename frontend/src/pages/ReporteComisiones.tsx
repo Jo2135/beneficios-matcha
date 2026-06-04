@@ -515,6 +515,31 @@ function TabGrafico() {
     .slice(0, 10)
     .map((d) => ({ ...d, shortName: d.name.length > 20 ? d.name.slice(0, 20) + "…" : d.name }));
 
+  // Chart D — Top clientes por ingresos
+  const clienteMontoMap: Record<string, number> = {};
+  typedLineas.forEach((l) => {
+    const key = l.cotizacion?.cliente?.nombre ?? "Sin cliente";
+    clienteMontoMap[key] = (clienteMontoMap[key] ?? 0) + Number(l.totalLinea);
+  });
+  const top10ClientesMonto = Object.entries(clienteMontoMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+    .map((d) => ({ ...d, shortName: d.name.length > 24 ? d.name.slice(0, 24) + "…" : d.name }));
+
+  // Chart E — Top clientes por número de cotizaciones únicas
+  const clienteCotMap: Record<string, Set<number>> = {};
+  typedLineas.forEach((l) => {
+    const key = l.cotizacion?.cliente?.nombre ?? "Sin cliente";
+    if (!clienteCotMap[key]) clienteCotMap[key] = new Set();
+    if (l.cotizacion?.id) clienteCotMap[key].add(Number(l.cotizacion.id));
+  });
+  const top10ClientesPedidos = Object.entries(clienteCotMap)
+    .map(([name, cots]) => ({ name, value: cots.size }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+    .map((d) => ({ ...d, shortName: d.name.length > 24 ? d.name.slice(0, 24) + "…" : d.name }));
+
   const totalMonto = typedLineas.reduce((s, l) => s + Number(l.totalLinea), 0);
 
   const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, index }: any) => {
@@ -608,6 +633,37 @@ function TabGrafico() {
                   <YAxis type="category" dataKey="shortName" width={120} tick={{ fontSize: 11 }} />
                   <ReTooltip formatter={(value: number) => [value, "Unidades"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
                   <Bar dataKey="value" fill="#16a34a" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Charts D & E — Top Clientes */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }}>
+            {/* Chart D */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>Top 10 Clientes por Ingresos</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={top10ClientesMonto} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v) => `$${v}`} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="shortName" width={130} tick={{ fontSize: 11 }} />
+                  <ReTooltip formatter={(value: number) => [`$${value.toFixed(2)}`, "Ingresos"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
+                  <Bar dataKey="value" fill="#7c3aed" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Chart E */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>Top 10 Clientes por Pedidos</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={top10ClientesPedidos} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="shortName" width={130} tick={{ fontSize: 11 }} />
+                  <ReTooltip formatter={(value: number) => [value, "Cotizaciones"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
+                  <Bar dataKey="value" fill="#d97706" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
