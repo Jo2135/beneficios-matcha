@@ -1384,8 +1384,8 @@ export function pdfDespachoGandica(params: {
 
   // ── Header — 5-row table (matches reference format) ──
   const logoW = 42, boxX = M, boxY = 10;
-  const rowH = 8, rowCount = 5;
-  const boxH = rowH * rowCount;
+  const hdrRowH = 8, rowCount = 5;
+  const boxH = hdrRowH * rowCount;
   const boxW = W - M * 2 - logoW - 4;
   const labelW = 26;
   const fechaHeader = fecha ?? new Date().toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -1406,16 +1406,16 @@ export function pdfDespachoGandica(params: {
   doc.line(boxX + labelW, boxY, boxX + labelW, boxY + boxH);
   // Row separators
   for (let i = 1; i < rowCount; i++) {
-    doc.line(boxX, boxY + rowH * i, boxX + boxW, boxY + rowH * i);
+    doc.line(boxX, boxY + hdrRowH * i, boxX + boxW, boxY + hdrRowH * i);
   }
   // Labels (green bg + white text)
   for (let i = 0; i < rowCount; i++) {
     doc.setFillColor(r, g, b);
-    doc.rect(boxX, boxY + rowH * i, labelW, rowH, "F");
+    doc.rect(boxX, boxY + hdrRowH * i, labelW, hdrRowH, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
     doc.setTextColor(255, 255, 255);
-    doc.text(headerLabels[i], boxX + 2, boxY + rowH * i + rowH * 0.65);
+    doc.text(headerLabels[i], boxX + 2, boxY + hdrRowH * i + hdrRowH * 0.65);
   }
   // Values
   doc.setFont("helvetica", "normal");
@@ -1423,7 +1423,7 @@ export function pdfDespachoGandica(params: {
   doc.setTextColor(0, 0, 0);
   for (let i = 0; i < rowCount; i++) {
     const vLines = doc.splitTextToSize(headerValues[i], boxW - labelW - 3);
-    doc.text((vLines as string[]).slice(0, 1), boxX + labelW + 2, boxY + rowH * i + rowH * 0.65);
+    doc.text((vLines as string[]).slice(0, 1), boxX + labelW + 2, boxY + hdrRowH * i + hdrRowH * 0.65);
   }
 
   drawLogo(doc, tema, W - M - logoW, boxY, logoW, boxH);
