@@ -359,7 +359,51 @@ Usa **Recharts**. Gráficas implementadas:
 
 ---
 
-## 15. Historial de Cambios Recientes (sesión anterior)
+## 15. Metodología de Trabajo (cómo trabajamos en este proyecto)
+
+> Seguir estas reglas garantiza continuidad y calidad entre sesiones.
+
+### Flujo estándar para cualquier cambio
+1. **Leer antes de editar** — siempre usar `Read` en los archivos involucrados antes de modificar.
+2. **TypeScript check antes de commitear** — correr siempre:
+   ```bash
+   cd backend && npx tsc --noEmit --ignoreDeprecations 6.0
+   cd frontend && npx tsc --noEmit
+   ```
+3. **Commitear con mensaje descriptivo** y hacer push a la rama activa: `claude/fervent-wright-BUkm4`.
+4. **No crear PR** salvo que el usuario lo pida explícitamente.
+
+### Cómo comunicarse con el usuario
+- Si hay dudas sobre reglas de negocio (fórmulas, quién cobra qué, porcentajes), **preguntar antes de implementar**. El usuario es José, conoce las reglas del negocio al detalle.
+- Respuestas **cortas y directas**. Sin explicar lo obvio.
+- Cuando algo no funciona, mostrar **qué datos llegan vs qué se espera** (logs, screenshots, columna de categoría detectada).
+- Si una tarea es grande, dividirla en partes y confirmar con el usuario antes de cada fase.
+
+### Reglas de git en este proyecto
+- Rama activa: **`claude/fervent-wright-BUkm4`**
+- Siempre `git push -u origin claude/fervent-wright-BUkm4`
+- Nunca pushear a `main` sin permiso explícito del usuario.
+- Commitear archivos específicos (no `git add -A` indiscriminado).
+
+### Migraciones de Prisma
+Cada vez que se modifique `schema.prisma`:
+```bash
+cd backend
+npx prisma migrate dev --name <descripcion_del_cambio>
+npx prisma generate
+```
+El backend aplica migraciones automáticamente al arrancar (`migrate deploy` en `index.ts`).
+
+### Contexto del usuario
+- **Usuario:** José (josephlara3030@gmail.com)
+- **Empresa:** Ecoplast F.P., Venezuela
+- **Moneda base:** USD / USDT
+- **Socios que reciben ganancias:** Sr. Alberto, Danny, Darwin, SBUG, Yolanda, Sandra, Capital
+- **El usuario no es desarrollador** — explicar decisiones técnicas en términos de negocio cuando sea relevante.
+
+---
+
+## 16. Historial de Cambios Recientes (sesión anterior)
 
 | Commit | Descripción |
 |--------|-------------|
