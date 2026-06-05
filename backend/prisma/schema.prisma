@@ -206,17 +206,19 @@ enum EstadoDespacho {
 }
 
 model DespachoLinea {
-  id                 Int           @id @default(autoincrement())
-  ordenDespachoId    Int
-  ordenDespacho      OrdenDespacho @relation(fields: [ordenDespachoId], references: [id])
-  cotizacionId       Int?
-  cotizacion         Cotizacion?   @relation(fields: [cotizacionId], references: [id])
-  productoId         Int
-  producto           Producto      @relation(fields: [productoId], references: [id])
-  cantidadPedida     Decimal       @db.Decimal(10, 2)
-  cantidadDespachada Decimal       @db.Decimal(10, 2) @default(0)
-  cantidadFaltante   Decimal       @db.Decimal(10, 2) @default(0)
-  estado             EstadoLinea   @default(PENDIENTE)
+  id                   Int           @id @default(autoincrement())
+  ordenDespachoId      Int
+  ordenDespacho        OrdenDespacho @relation(fields: [ordenDespachoId], references: [id])
+  cotizacionId         Int?
+  cotizacion           Cotizacion?   @relation(fields: [cotizacionId], references: [id])
+  productoId           Int
+  producto             Producto      @relation(fields: [productoId], references: [id])
+  cantidadPedida       Decimal       @db.Decimal(10, 2)
+  cantidadDespachada   Decimal       @db.Decimal(10, 2) @default(0)
+  cantidadFaltante     Decimal       @db.Decimal(10, 2) @default(0)
+  estado               EstadoLinea   @default(PENDIENTE)
+  esServicioExterno    Boolean       @default(false)
+  costoServicioExterno Decimal?      @db.Decimal(12, 2)
 }
 
 enum EstadoLinea {

@@ -17,6 +17,7 @@ import OrdenDespachos from "./pages/OrdenDespachos";
 import ReporteComisiones from "./pages/ReporteComisiones";
 import Configuracion from "./pages/Configuracion";
 import CalendarioCobros from "./pages/CalendarioCobros";
+import GananciasDespacho from "./pages/GananciasDespacho";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -71,6 +72,7 @@ function AppRoutes() {
         {/* Solo MASTER y ADMIN */}
         {puedeEditar && <Route path="/precios" element={<ListasPrecios />} />}
         {puedeEditar && <Route path="/despachos" element={<Despachos />} />}
+        {puedeEditar && <Route path="/despachos/:id/ganancias" element={<GananciasDespacho />} />}
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
         {puedeEditar && <Route path="/facturas" element={<Facturas />} />}
         {puedeEditar && <Route path="/pagos" element={<Pagos />} />}

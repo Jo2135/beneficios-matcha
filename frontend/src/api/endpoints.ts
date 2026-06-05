@@ -123,6 +123,9 @@ export const despachosApi = {
   finalizar: (id: number, lineas?: { id: number; cantidadDespachada: number }[]) =>
     api.post(`/despachos/${id}/finalizar`, lineas ? { lineas } : {}).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/despachos/${id}`).then((r) => r.data),
+  calcularGanancias: (id: number) => api.get(`/despachos/${id}/ganancias`).then((r) => r.data),
+  actualizarServicioExterno: (lineaId: number, data: { esServicioExterno: boolean; costoServicioExterno?: number }) =>
+    api.patch(`/despachos/lineas/${lineaId}/servicio-externo`, data).then((r) => r.data),
 };
 
 // Pagos

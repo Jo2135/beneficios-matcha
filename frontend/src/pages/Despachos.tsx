@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { despachosApi } from "../api/endpoints";
-import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X } from "lucide-react";
+import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X, BarChart2 } from "lucide-react";
 import { pdfDespacho, pdfDespachoGandica } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -21,6 +22,7 @@ const ESTADO_LINEA: Record<string, { label: string; color: string }> = {
 
 export default function Despachos() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { esMaster } = useAuth();
   const [despachoId, setDespachoId] = useState<number | null>(null);
   const [cantidades, setCantidades] = useState<Record<number, number>>({});
@@ -240,7 +242,20 @@ export default function Despachos() {
                       ? <span style={{ ...badge, color: "#16a34a", background: "#dcfce7" }}>{d.facturas[0].numero}</span>
                       : <span style={{ color: "#94a3b8", fontSize: 12 }}>Pendiente</span>}
                   </td>
-                  <td style={tdStyle}><span style={{ fontSize: 12, color: "#94a3b8" }}>Ver →</span></td>
+                  <td style={tdStyle}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>Ver →</span>
+                      {d.facturas?.length > 0 && (
+                        <button
+                          title="Ver distribución de ganancias"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${d.id}/ganancias`); }}
+                          style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#16a34a" }}
+                        >
+                          <BarChart2 size={12} /> Ganancias
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}

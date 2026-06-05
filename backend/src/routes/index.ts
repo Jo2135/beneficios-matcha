@@ -12,6 +12,7 @@ import * as reportes from "../controllers/reportes.controller";
 import * as empresas from "../controllers/empresas.controller";
 import * as tasaCambio from "../controllers/tasaCambio.controller";
 import * as seguimiento from "../controllers/seguimiento.controller";
+import * as ganancias from "../controllers/ganancias.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -119,6 +120,8 @@ router.post("/despachos/desde-cotizacion/:cotizacionId", requireRol("MASTER", "A
 router.post("/despachos/:id/finalizar", requireRol("MASTER", "ADMIN"), w(despachos.finalizar));
 router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.actualizarLineas));
 router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));
+router.get("/despachos/:id/ganancias", requireRol("MASTER", "ADMIN"), w(ganancias.calcular));
+router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER", "ADMIN"), w(ganancias.actualizarServicioExterno));
 router.get("/despachos/:id", w(despachos.obtener));
 
 // ─── Reportes ─────────────────────────────────────────────────────────────
