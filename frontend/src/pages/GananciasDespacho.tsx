@@ -57,6 +57,8 @@ export default function GananciasDespacho() {
   const d = data as any;
   const hayCurvas = d.curvas.totalVenta > 0;
   const hayPEAD   = d.gananciaAguasNegras.total > 0;
+  const hayMateria = Object.values(d.costoMateria as Record<string, { kg: number }>)
+    .some((v) => typeof v === "object" && v.kg > 0);
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px", fontFamily: "'Segoe UI', sans-serif" }}>
@@ -89,7 +91,7 @@ export default function GananciasDespacho() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {["Código", "Producto", "Cant.", "Kg/u", "Total Kg", "Serv. Externo"].map(h => (
+                  {["Producto", "Cant.", "Kg/u", "Total Kg", "Categoría detectada", "Serv. Externo"].map(h => (
                     <th key={h} style={th}>{h}</th>
                   ))}
                 </tr>
@@ -97,11 +99,16 @@ export default function GananciasDespacho() {
               <tbody>
                 {(d.lineas as any[]).map((linea: any, i: number) => (
                   <tr key={linea.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8fafc" }}>
-                    <td style={td}><code style={{ fontSize: 11, color: "#7c3aed" }}>{linea.codigo || "—"}</code></td>
-                    <td style={td}>{linea.nombre} {linea.medida}</td>
+                    <td style={td}>
+                      <div style={{ fontSize: 12, color: "#374151" }}>{linea.nombre} {linea.medida}</div>
+                      {linea.codigo && <code style={{ fontSize: 10, color: "#7c3aed" }}>{linea.codigo}</code>}
+                    </td>
                     <td style={{ ...td, textAlign: "right" }}>{linea.cantidad}</td>
                     <td style={{ ...td, textAlign: "right" }}>{linea.pesoUnitKg > 0 ? linea.pesoUnitKg.toFixed(3) : "—"}</td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{linea.totalKg > 0 ? linea.totalKg.toFixed(2) : "—"}</td>
+                    <td style={{ ...td }}>
+                      <CatBadge label={linea.catDetectada} curvaKey={linea.curvaKey} esPead={linea.esPead} />
+                    </td>
                     <td style={{ ...td, textAlign: "center" }}>
                       {linea.elegibleServicio ? (
                         <ServicioExternoToggle
@@ -126,20 +133,26 @@ export default function GananciasDespacho() {
           <Section titulo="Costos de Materia Prima">
             {(["manguera34", "manguera13", "azul", "negro", "blanco", "amarillo"] as const).map((cat) => {
               const item = d.costoMateria[cat];
-              if (!item || item.kg === 0) return null;
+              const kg = item?.kg ?? 0;
               return (
                 <FilaCosto
                   key={cat}
                   label={CAT_LABELS[cat] || cat}
-                  valor={usd(item.costo)}
-                  detalle={`${item.kg.toFixed(2)} kg`}
+                  valor={kg > 0 ? usd(item.costo) : "—"}
+                  detalle={kg > 0 ? `${kg.toFixed(2)} kg` : undefined}
+                  dim={kg === 0}
                 />
               );
             })}
             {hayCurvas && (
               <FilaCosto label="Curvas (material)" valor={usd(d.curvas.totalVenta)} />
             )}
-            <FilaCostoTotal label="Total Materia Prima" valor={usd(d.costoMateria.total)} />
+            {!hayMateria && !hayCurvas && (
+              <div style={{ padding: "10px 16px", fontSize: 12, color: "#94a3b8" }}>
+                Sin materia prima detectada — revisa categorías en tabla de productos
+              </div>
+            )}
+            <FilaCostoTotal label="Total Materia Prima" valor={usd(d.costoMateria.total ?? 0)} />
           </Section>
 
           {/* Gastos generales */}
@@ -150,14 +163,25 @@ export default function GananciasDespacho() {
             <FilaCostoTotal label="Total Gastos" valor={usd(d.gastos.total)} />
           </Section>
 
-          {/* Curvas (si hay) */}
-          {hayCurvas && (
-            <Section titulo="Distribución Curvas Eléctricas">
-              <PagoLinea label="Pago Fábrica" monto={d.curvas.pagoFabrica} color="#dc2626" />
-              <PagoLinea label="Pago Muchachas" monto={d.curvas.pagoMuchachas} color="#d97706" />
-              <PagoLinea label="Ganancia Sr. Alberto (Curvas)" monto={d.curvas.gananciaAlberto} color="#16a34a" />
-            </Section>
-          )}
+          {/* Curvas (siempre visible) */}
+          <Section titulo="Distribución Curvas Eléctricas">
+            {!hayCurvas ? (
+              <div style={{ padding: "10px 16px", fontSize: 12, color: "#94a3b8" }}>
+                Sin curvas en este despacho
+              </div>
+            ) : (
+              <>
+                {(d.curvas.detalle as any[]).map((c: any) => (
+                  <FilaCosto key={c.clave} label={`${c.clave} × ${c.cantidad}`} valor={usd(c.subtotal)} detalle={`$${c.costoUnit}/u`} />
+                ))}
+                <div style={{ borderTop: "1px solid #f1f5f9" }}>
+                  <PagoLinea label="Pago Fábrica" monto={d.curvas.pagoFabrica} color="#dc2626" />
+                  <PagoLinea label="Pago Muchachas" monto={d.curvas.pagoMuchachas} color="#d97706" />
+                  <PagoLinea label="Ganancia Sr. Alberto (Curvas)" monto={d.curvas.gananciaAlberto} color="#16a34a" />
+                </div>
+              </>
+            )}
+          </Section>
 
         </div>
 
@@ -279,9 +303,30 @@ function Section({ titulo, children }: { titulo: string; children: React.ReactNo
   );
 }
 
-function FilaCosto({ label, valor, detalle }: { label: string; valor: string; detalle?: string }) {
+function CatBadge({ label, curvaKey, esPead }: { label: string; curvaKey?: string | null; esPead?: boolean }) {
+  const colors: Record<string, string> = {
+    manguera34: "#16a34a", manguera13: "#15803d",
+    azul: "#2563eb", gris: "#64748b",
+    negro_elec: "#374151", blanco_elec: "#7c3aed",
+    "pead/aguas negras": "#d97706", pead: "#d97706",
+  };
+  const bg = label.startsWith("curva:") ? "#e0f2fe"
+    : esPead ? "#fef3c7"
+    : colors[label] ? `${colors[label]}18`
+    : "#f1f5f9";
+  const fg = label.startsWith("curva:") ? "#0369a1"
+    : esPead ? "#92400e"
+    : colors[label] ?? "#475569";
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 16px", borderBottom: "1px solid #f1f5f9" }}>
+    <span style={{ fontSize: 10, background: bg, color: fg, padding: "2px 7px", borderRadius: 99, fontWeight: 600, whiteSpace: "nowrap" }}>
+      {label === "—" ? <span style={{ color: "#cbd5e1" }}>sin categoría</span> : label}
+    </span>
+  );
+}
+
+function FilaCosto({ label, valor, detalle, dim }: { label: string; valor: string; detalle?: string; dim?: boolean }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 16px", borderBottom: "1px solid #f1f5f9", opacity: dim ? 0.4 : 1 }}>
       <span style={{ fontSize: 13, color: "#475569" }}>{label}{detalle && <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>({detalle})</span>}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{valor}</span>
     </div>
