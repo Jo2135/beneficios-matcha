@@ -208,6 +208,25 @@ function elegibleServicio(codigo: string | null, nombre: string): boolean {
          (n.includes("negr") && n.includes("electr")) || (n.includes("blanc") && n.includes("electr"));
 }
 
+/** Detecta si un producto es "conexión" — excluido de Ganancias_2 */
+function esConexion(codigo: string | null, nombre: string): boolean {
+  const c = normCodigo(codigo);
+  // Por código: Codo, Semi Codo, Sifón, Tee PVC, Yee, Yee Reducida
+  if (c && /^(CO-|SC-|SI-|TE-|YE-|YR-)/.test(c)) return true;
+  // Por nombre (productos sin código aún)
+  const n = norm(nombre);
+  return (
+    n.includes("abrazadera") ||
+    (n.includes("tee") && n.includes("rapid")) ||
+    (n.includes("union") && n.includes("reduc")) ||
+    (n.includes("union") && n.includes("rapid")) ||
+    (n.includes("adaptador") && n.includes("macho")) ||
+    (n.includes("adaptador") && n.includes("hembra")) ||
+    n.includes("cajeti") ||
+    n.includes("aspersor")
+  );
+}
+
 // ─── CONTROLLER ──────────────────────────────────────────────────────────────
 
 export async function calcular(req: Request, res: Response) {
@@ -220,7 +239,14 @@ export async function calcular(req: Request, res: Response) {
         include: { producto: { include: { categoria: true } } },
         orderBy: { id: "asc" },
       },
-      facturas: { select: { totalNeto: true } },
+      facturas: {
+        select: {
+          totalNeto: true,
+          lineas: {
+            select: { totalLinea: true, productoId: true, producto: { select: { codigo: true, nombre: true } } },
+          },
+        },
+      },
     },
   });
 
@@ -319,8 +345,21 @@ export async function calcular(req: Request, res: Response) {
   const dannyAmarillo     = gananciaPEAD * 0.33;
   const darwinAmarillo    = gananciaPEAD * 0.25;
 
-  // ── Ganancias_2 ───────────────────────────────────────────────────────────
-  const x = facturaTotal;
+  // ── Ganancias_2 (excluye conexiones) ─────────────────────────────────────
+  // Suma de FacturaLineas excluyendo productos tipo conexión
+  let totalSinConexiones = 0;
+  let totalConexiones = 0;
+  for (const factura of despacho.facturas) {
+    for (const fl of (factura as any).lineas ?? []) {
+      const monto = Number(fl.totalLinea);
+      if (esConexion(fl.producto?.codigo ?? null, fl.producto?.nombre ?? "")) {
+        totalConexiones += monto;
+      } else {
+        totalSinConexiones += monto;
+      }
+    }
+  }
+  const x = totalSinConexiones;
   const sbug      = x - x / 1.015;
   const yolanda   = x - x / 1.0075;
   const sandra    = x - x / 1.0075;
@@ -355,7 +394,7 @@ export async function calcular(req: Request, res: Response) {
       dannyAmarillo,
       darwinAmarillo,
     },
-    ganancias2: { sbug, yolanda, sandra, comisiones },
+    ganancias2: { base: totalSinConexiones, conexionesExcluidas: totalConexiones, sbug, yolanda, sandra, comisiones },
     servicioExterno,
     lineas: lineasDetalle,
   });
