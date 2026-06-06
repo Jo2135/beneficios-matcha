@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  ArrowLeft, RefreshCw, Plus, Trash2, FileText, Edit3, Check, X,
+  ArrowLeft, RefreshCw, Plus, Trash2, FileText, Edit3, Check, X, Download,
 } from "lucide-react";
+import { pdfBalancePago } from "../utils/pdf";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Cuota { id: number; fecha: string; monto: number; notas?: string }
@@ -152,19 +153,30 @@ export default function BalancePago() {
             </p>
           )}
         </div>
-        {isMaster && (
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button
-            onClick={handleRegenerar}
-            disabled={generar.isPending}
-            title="Regenerar balance desde ganancias (recalcula montos)"
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
-              background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8,
-              padding: "7px 14px", cursor: "pointer", fontSize: 13, color: "#475569" }}
+            onClick={() => pdfBalancePago({ despachoId, calculadoEn: balance?.calculadoEn, items: balance?.items ?? [] })}
+            title="Exportar balance como PDF"
+            style={{ display: "flex", alignItems: "center", gap: 6,
+              background: "#fef9c3", border: "1px solid #fde047", borderRadius: 8,
+              padding: "7px 14px", cursor: "pointer", fontSize: 13, color: "#854d0e" }}
           >
-            <RefreshCw size={14} />
-            {generar.isPending ? "Regenerando…" : "Regenerar"}
+            <Download size={14} /> PDF
           </button>
-        )}
+          {isMaster && (
+            <button
+              onClick={handleRegenerar}
+              disabled={generar.isPending}
+              title="Regenerar balance desde ganancias (recalcula montos)"
+              style={{ display: "flex", alignItems: "center", gap: 6,
+                background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8,
+                padding: "7px 14px", cursor: "pointer", fontSize: 13, color: "#475569" }}
+            >
+              <RefreshCw size={14} />
+              {generar.isPending ? "Regenerando…" : "Regenerar"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabla */}

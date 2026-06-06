@@ -1610,3 +1610,206 @@ export function pdfDespachoGandica(params: {
 
   doc.save(`DESPACHO-${fechaRef.replace(/\//g, "-")}-Gandica.pdf`);
 }
+
+// ─── PDF BALANCE DE PAGOS ──────────────────────────────────────────────────────
+
+interface BalancePDFCuota { fecha: string; monto: number; notas?: string }
+interface BalancePDFItem {
+  nombre: string; montoTotal: number; notas?: string;
+  cuotas: BalancePDFCuota[];
+}
+interface BalancePDFData {
+  despachoId: number;
+  calculadoEn?: string;
+  items: BalancePDFItem[];
+}
+
+export function pdfBalancePago(data: BalancePDFData) {
+  const { despachoId, calculadoEn, items } = data;
+  const [r, g, b]: [number, number, number] = [22, 101, 52];
+
+  // Collect unique dates sorted ascending
+  const fechasSet = new Set<string>();
+  items.forEach((i) => i.cuotas.forEach((c) => fechasSet.add(c.fecha.slice(0, 10))));
+  const fechas = [...fechasSet].sort();
+
+  // Choose orientation based on column count
+  const totalCols = 2 + fechas.length + 1; // concepto + monto + fechas + saldo
+  const orientation = totalCols > 6 ? "landscape" : "portrait";
+  const doc = new jsPDF({ orientation });
+  const W = orientation === "landscape" ? 297 : 210;
+  const M = 14;
+
+  // ── Header bar ────────────────────────────────────────────────────────────
+  doc.setFillColor(r, g, b);
+  doc.rect(0, 0, W, 8, "F");
+
+  // Logo
+  const cached = _logoCache["ECOPLAST"];
+  if (cached) {
+    const lw = 36, lh = 14;
+    const ratio = cached.w / cached.h;
+    let iw = lw, ih = lw / ratio;
+    if (ih > lh) { ih = lh; iw = lh * ratio; }
+    doc.addImage(cached.data, "PNG", W - M - lw + (lw - iw) / 2, 10 + (lh - ih) / 2, iw, ih);
+  }
+
+  // Title
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text("BALANCE DE PAGOS", M, 19);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(60, 60, 60);
+  doc.text(`Despacho #${despachoId}`, M, 26);
+  if (calculadoEn) {
+    const calc = new Date(calculadoEn).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
+    doc.text(`Calculado: ${calc}`, M, 32);
+  }
+
+  doc.setDrawColor(r, g, b);
+  doc.setLineWidth(0.5);
+  doc.line(M, 36, W - M, 36);
+
+  // ── Compute totals for footer ─────────────────────────────────────────────
+  const totalGeneral = items.reduce((s, i) => s + Number(i.montoTotal), 0);
+  const totalPagado  = items.reduce((s, i) => i.cuotas.reduce((sc, c) => sc + Number(c.monto), 0) + s, 0);
+  const totalSaldo   = totalGeneral - totalPagado;
+
+  // ── Build table ────────────────────────────────────────────────────────────
+  const fmtUsdPdf = (n: number) =>
+    `$${Number(n).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const fmtFechaCel = (iso: string) => {
+    const d = new Date(iso + "T12:00:00");
+    return d.toLocaleDateString("es-VE", { day: "2-digit", month: "short" });
+  };
+
+  const head = [
+    "Concepto",
+    "Monto Total",
+    ...fechas.map(fmtFechaCel),
+    "Saldo",
+  ];
+
+  const body: any[][] = items.map((item) => {
+    const pagado = item.cuotas.reduce((s, c) => s + Number(c.monto), 0);
+    const saldo  = Number(item.montoTotal) - pagado;
+    return [
+      item.nombre + (item.notas ? `\n${item.notas}` : ""),
+      fmtUsdPdf(item.montoTotal),
+      ...fechas.map((f) => {
+        const c = item.cuotas.find((cu) => cu.fecha.slice(0, 10) === f);
+        return c ? fmtUsdPdf(c.monto) : "";
+      }),
+      saldo < -0.005
+        ? `(${fmtUsdPdf(Math.abs(saldo))})`
+        : fmtUsdPdf(saldo),
+    ];
+  });
+
+  // Totals footer row
+  const footerRow = [
+    "TOTAL",
+    fmtUsdPdf(totalGeneral),
+    ...fechas.map((f) => {
+      const sum = items.reduce((s, i) => {
+        const c = i.cuotas.find((cu) => cu.fecha.slice(0, 10) === f);
+        return s + (c ? Number(c.monto) : 0);
+      }, 0);
+      return sum > 0 ? fmtUsdPdf(sum) : "";
+    }),
+    totalSaldo < -0.005
+      ? `(${fmtUsdPdf(Math.abs(totalSaldo))})`
+      : fmtUsdPdf(totalSaldo),
+  ];
+
+  // Column widths
+  const availW = W - M * 2;
+  const saldoW = 26, montoW = 26;
+  const dateW  = Math.min(24, Math.max(18, (availW - 60 - montoW - saldoW) / Math.max(fechas.length, 1)));
+  const conceptoW = availW - montoW - dateW * fechas.length - saldoW;
+
+  const colStyles: Record<number, any> = {
+    0: { cellWidth: conceptoW },
+    1: { halign: "right", cellWidth: montoW, fontStyle: "bold" },
+  };
+  fechas.forEach((_, i) => { colStyles[2 + i] = { halign: "right", cellWidth: dateW }; });
+  colStyles[2 + fechas.length] = { halign: "right", cellWidth: saldoW, fontStyle: "bold" };
+
+  const saldoColIdx = 2 + fechas.length;
+
+  autoTable(doc, {
+    startY: 40,
+    head: [head],
+    body: [...body, footerRow],
+    headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
+    styles: { fontSize: 8, cellPadding: [2.5, 3] },
+    columnStyles: colStyles,
+    margin: { left: M, right: M },
+    didParseCell: (data) => {
+      if (data.section === "body") {
+        const isFooter = data.row.index === body.length;
+        if (isFooter) {
+          data.cell.styles.fillColor = [15, 23, 42];
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fontStyle = "bold";
+          // Saldo amarillo en el footer
+          if (data.column.index === saldoColIdx) {
+            data.cell.styles.textColor = totalSaldo < 0 ? [192, 132, 252] : [251, 191, 36];
+          }
+        } else {
+          // Pintar saldo en rojo si pagado completo (saldo ≤ 0)
+          if (data.column.index === saldoColIdx) {
+            const item = items[data.row.index];
+            if (!item) return;
+            const pagado = item.cuotas.reduce((s, c) => s + Number(c.monto), 0);
+            const sal = Number(item.montoTotal) - pagado;
+            if (sal <= 0.005) data.cell.styles.textColor = [220, 38, 38];
+          }
+          // Pagos en verde
+          const fechaIdx = data.column.index - 2;
+          if (fechaIdx >= 0 && fechaIdx < fechas.length && data.cell.text[0]) {
+            data.cell.styles.textColor = [22, 163, 74];
+            data.cell.styles.fontStyle = "bold";
+          }
+        }
+      }
+    },
+  });
+
+  const finalY = (doc as any).lastAutoTable.finalY ?? 200;
+
+  // ── Summary box ────────────────────────────────────────────────────────────
+  const boxW = 86, boxX = W - M - boxW;
+  let by = finalY + 8;
+  if (by + 36 > (orientation === "landscape" ? 200 : 280)) { doc.addPage(); by = 20; }
+
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(boxX, by, boxW, 34, 2, 2, "F");
+
+  const col1 = boxX + 4, col2 = boxX + boxW - 4;
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(80, 80, 80);
+  doc.text("Total Balance:", col1, by + 9);
+  doc.text("Total Pagado:", col1, by + 18);
+  doc.text("Saldo Pendiente:", col1, by + 27);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text(fmtUsdPdf(totalGeneral), col2, by + 9,  { align: "right" });
+  doc.setTextColor(22, 163, 74);
+  doc.text(fmtUsdPdf(totalPagado),  col2, by + 18, { align: "right" });
+  doc.setTextColor(totalSaldo <= 0.005 ? 22 : 0, totalSaldo <= 0.005 ? 163 : 0, totalSaldo <= 0.005 ? 74 : 0);
+  doc.text(
+    totalSaldo < -0.005 ? `(${fmtUsdPdf(Math.abs(totalSaldo))})` : fmtUsdPdf(totalSaldo),
+    col2, by + 27, { align: "right" }
+  );
+  doc.setTextColor(0, 0, 0);
+
+  addFooters(doc);
+  doc.save(`balance-despacho-${despachoId}.pdf`);
+}
