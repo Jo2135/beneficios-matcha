@@ -97,6 +97,24 @@ function esConexionExternaPdf(prod: { nombre: string; origen?: string }): boolea
     !prod.nombre.toLowerCase().includes("manguera");
 }
 
+/** Detecta si una línea es "Conexión" para agrupar en el PDF (por código primero, luego nombre/origen) */
+function esConexionFrontend(linea: any): boolean {
+  const codigo = ((linea.producto?.codigo ?? "") as string).trim().toUpperCase().replace(/\s+/g, "");
+  if (codigo && /^(CO-|SC-|SI-|TE-|YE-|YR-)/.test(codigo)) return true;
+  const n = (linea.producto?.nombre ?? "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (n.includes("abrazadera")) return true;
+  if (n.includes("tee") && n.includes("rapid")) return true;
+  if (n.includes("union") && (n.includes("reduc") || n.includes("rapid"))) return true;
+  if (n.includes("adaptador") && (n.includes("macho") || n.includes("hembra"))) return true;
+  if (n.includes("cajeti")) return true;
+  if (n.includes("aspersor")) return true;
+  // Fallback: origen EXTERNO (excepto mangueras que son tuberías flexibles)
+  const origen = (linea.producto?.origen ?? "INTERNO").toUpperCase();
+  if (origen === "EXTERNO" && !n.includes("manguera")) return true;
+  return false;
+}
+
 // ─── EMPRESA THEME ─────────────────────────────────────────────────────────────
 
 type EmpresaTipo = "ECOPLAST" | "MAXPLASTIC";
@@ -315,14 +333,18 @@ function drawTotalsBox(
   totalBruto: number,
   descuento: number,
   totalNeto: number,
-  extraLabel?: string
+  extraLabel?: string,
+  split?: { tuberias: number; conexiones: number }
 ): number {
   const [r, g, b] = tema.primary;
   const boxX = 130;
   const lineH = 7;
 
   const subRows: [string, string][] = [];
-  if (descuento > 0.005) {
+  if (split && split.tuberias > 0 && split.conexiones > 0) {
+    subRows.push(["Total Tuberías:", usd(split.tuberias)]);
+    subRows.push(["Total Conexiones:", usd(split.conexiones)]);
+  } else if (descuento > 0.005) {
     subRows.push(["Subtotal:", usd(totalBruto)]);
     subRows.push(["Descuento:", `−${usd(descuento)}`]);
   }
@@ -382,18 +404,24 @@ interface TableConfig {
   headers: string[];
   rows: any[][];
   subtotalRows: Set<number>;
+  conexionRows: Set<number>;   // índices de filas que son conexiones (fondo suave)
   colStyles: Record<number, any>;
+  totalTub: number;
+  totalCon: number;
 }
 
-// ECOPLAST: no item numbers, grouped by product category with subtotals
-function tablaEcoplast(lineas: any[], tipo: DocTipo): TableConfig {
-  const groups = new Map<string, any[]>();
-  for (const l of lineas) {
-    const cat = l.producto?.categoria?.nombre ?? "Productos";
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat)!.push(l);
-  }
+/** Ordena líneas de tuberías por familia y luego por medida ordinal */
+function sortLineasTub(lineas: any[]): any[] {
+  return [...lineas].sort((a, b) => {
+    const fa = familiaPdf(a.producto?.nombre ?? "");
+    const fb = familiaPdf(b.producto?.nombre ?? "");
+    if (fa.prio !== fb.prio) return fa.prio - fb.prio;
+    return medidaOrdinalPdf(a.producto?.medida ?? "") - medidaOrdinalPdf(b.producto?.medida ?? "");
+  });
+}
 
+// ECOPLAST: dos grupos — Tuberías/Mangueras + Conexiones — cada uno con subtotal
+function tablaEcoplast(lineas: any[], tipo: DocTipo): TableConfig {
   const esDespacho = tipo === "des";
   const headers = esDespacho
     ? ["Descripción Producto", "Medida", "Pedido", "Despachado", "Costo Unit.", "Costo Total"]
@@ -401,78 +429,68 @@ function tablaEcoplast(lineas: any[], tipo: DocTipo): TableConfig {
 
   const rows: any[][] = [];
   const subtotalRows = new Set<number>();
+  const conexionRows  = new Set<number>();
 
-  for (const [cat, items] of groups) {
-    let catTotal = 0;
+  const lineasTub = sortLineasTub(lineas.filter(l => !esConexionFrontend(l)));
+  const lineasCon = lineas.filter(l => esConexionFrontend(l));
+  const cols = esDespacho ? 6 : 5;
 
-    for (const l of items) {
-      if (esDespacho) {
-        const cotLinea = l.cotizacion?.lineas?.find(
-          (cl: any) => Number(cl.productoId) === Number(l.productoId)
-        );
-        const precio = cotLinea ? Number(cotLinea.precioFinal) : 0;
-        const cantDesp = Number(l.cantidadDespachada ?? 0);
-        const total = precio * cantDesp;
-        catTotal += total;
-        rows.push([
-          l.producto?.nombre ?? "—",
-          l.producto?.medida ?? "—",
-          qty(l.cantidadPedida),
-          qty(cantDesp),
-          usd(precio),
-          usd(total),
-        ]);
-      } else if (tipo === "cot") {
-        const total = Number(l.totalLinea ?? 0);
-        catTotal += total;
-        const cantStr = l.notaCantidad
-          ? `${qty(l.cantidad)} (${l.notaCantidad})`
-          : qty(l.cantidad);
-        rows.push([
-          l.producto?.nombre ?? "—",
-          l.producto?.medida ?? "—",
-          cantStr,
-          usd(l.precioFinal ?? l.precioUnitarioAplicado ?? 0),
-          usd(total),
-        ]);
-      } else {
-        const total = Number(l.totalLinea ?? 0);
-        catTotal += total;
-        rows.push([
-          l.producto?.nombre ?? "—",
-          l.producto?.medida ?? "—",
-          qty(l.cantidad),
-          usd(l.precioUnitario ?? 0),
-          usd(total),
-        ]);
-      }
+  function buildRow(l: any): { row: any[]; total: number } {
+    if (esDespacho) {
+      const cotLinea = l.cotizacion?.lineas?.find(
+        (cl: any) => Number(cl.productoId) === Number(l.productoId)
+      );
+      const precio = cotLinea ? Number(cotLinea.precioFinal) : 0;
+      const cantDesp = Number(l.cantidadDespachada ?? 0);
+      const total = precio * cantDesp;
+      return { row: [l.producto?.nombre ?? "—", l.producto?.medida ?? "—", qty(l.cantidadPedida), qty(cantDesp), usd(precio), usd(total)], total };
+    } else if (tipo === "cot") {
+      const total = Number(l.totalLinea ?? 0);
+      const cantStr = l.notaCantidad ? `${qty(l.cantidad)} (${l.notaCantidad})` : qty(l.cantidad);
+      return { row: [l.producto?.nombre ?? "—", l.producto?.medida ?? "—", cantStr, usd(l.precioFinal ?? l.precioUnitarioAplicado ?? 0), usd(total)], total };
+    } else {
+      const total = Number(l.totalLinea ?? 0);
+      return { row: [l.producto?.nombre ?? "—", l.producto?.medida ?? "—", qty(l.cantidad), usd(l.precioUnitario ?? 0), usd(total)], total };
     }
+  }
 
-    // Subtotal row (fills last column)
-    const cols = esDespacho ? 6 : 5;
+  // ── Grupo Tuberías ────────────────────────────────────────────────────────
+  let totalTub = 0;
+  for (const l of lineasTub) {
+    const { row, total } = buildRow(l);
+    totalTub += total;
+    rows.push(row);
+  }
+  if (lineasTub.length > 0) {
     const sub = Array(cols).fill("");
-    sub[0] = `Total ${cat.split("_")[0]}`;
-    sub[cols - 1] = usd(catTotal);
+    sub[0] = "Total Tuberías";
+    sub[cols - 1] = usd(totalTub);
+    rows.push(sub);
+    subtotalRows.add(rows.length - 1);
+  }
+
+  // ── Grupo Conexiones ──────────────────────────────────────────────────────
+  let totalCon = 0;
+  for (const l of lineasCon) {
+    const { row, total } = buildRow(l);
+    totalCon += total;
+    const idx = rows.length;
+    rows.push(row);
+    conexionRows.add(idx);
+  }
+  if (lineasCon.length > 0) {
+    const sub = Array(cols).fill("");
+    sub[0] = "Total Conexiones";
+    sub[cols - 1] = usd(totalCon);
     rows.push(sub);
     subtotalRows.add(rows.length - 1);
   }
 
   const colStyles: Record<number, any> = esDespacho
-    ? {
-        1: { halign: "center" },
-        2: { halign: "center" },
-        3: { halign: "center", fontStyle: "bold" },
-        4: { halign: "right" },
-        5: { halign: "right", fontStyle: "bold" },
-      }
-    : {
-        1: { halign: "center" },
-        2: { halign: "center" },
-        3: { halign: "right" },
-        4: { halign: "right", fontStyle: "bold" },
-      };
+    ? { 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "center", fontStyle: "bold" }, 4: { halign: "right" }, 5: { halign: "right", fontStyle: "bold" } }
+    : { 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } };
 
-  return { headers, rows, subtotalRows, colStyles };
+  return { headers, rows, subtotalRows, conexionRows, colStyles, totalTub, totalCon };
 }
 
 // MAXPLASTIC: numbered items, no grouping
@@ -561,10 +579,15 @@ function drawTable(doc: jsPDF, tema: Tema, startY: number, config: TableConfig):
     alternateRowStyles: tema.tipo === "MAXPLASTIC" ? { fillColor: [248, 250, 252] } : undefined,
     margin: { left: 14, right: 14 },
     didParseCell: (data) => {
-      if (data.section === "body" && config.subtotalRows.has(data.row.index)) {
+      if (data.section !== "body") return;
+      const idx = data.row.index;
+      if (config.subtotalRows.has(idx)) {
+        const isTub = (config.rows[idx]?.[0] as string ?? "").includes("Tuberías");
         data.cell.styles.fontStyle = "bold";
-        data.cell.styles.fillColor = [234, 250, 241];
-        data.cell.styles.textColor = [22, 101, 52];
+        data.cell.styles.fillColor = isTub ? [22, 101, 52] : [30, 58, 95];
+        data.cell.styles.textColor = [255, 255, 255];
+      } else if (config.conexionRows?.has(idx)) {
+        data.cell.styles.fillColor = [239, 246, 255]; // azul muy suave para conexiones
       }
     },
   });
@@ -604,7 +627,8 @@ export function pdfCotizacion(cot: any) {
     doc.text(lines.slice(0, 3), 14, fy + 12);
   }
 
-  drawTotalsBox(doc, tema, fy, Number(cot.totalBruto), Number(cot.descuentoTotal), Number(cot.totalNeto));
+  const splitCot = tema.tipo === "ECOPLAST" ? { tuberias: config.totalTub, conexiones: config.totalCon } : undefined;
+  drawTotalsBox(doc, tema, fy, Number(cot.totalBruto), Number(cot.descuentoTotal), Number(cot.totalNeto), undefined, splitCot);
 
   // Condiciones de pago (both company types)
   if (cliente.condicionPago) {
@@ -678,7 +702,8 @@ export function pdfCotizacionGanancia(cot: any) {
       : tablaMaxplastic(lineas, "cot");
 
   const fy = drawTable(doc, tema, startY + 2, config);
-  drawTotalsBox(doc, tema, fy, Number(cot.totalBruto), Number(cot.descuentoTotal), Number(cot.totalNeto));
+  const splitGan = tema.tipo === "ECOPLAST" ? { tuberias: (config as any).totalTub, conexiones: (config as any).totalCon } : undefined;
+  drawTotalsBox(doc, tema, fy, Number(cot.totalBruto), Number(cot.descuentoTotal), Number(cot.totalNeto), undefined, splitGan);
 
   // Ganancia breakdown box
   const bY = fy + 46;
@@ -756,6 +781,7 @@ export function pdfFactura(fac: any) {
 
   const saldo = Number(fac.saldoPendiente ?? 0);
   const extraLabel = saldo > 0.005 ? `Saldo pendiente: ${usd(saldo)}` : undefined;
+  const splitFac = tema.tipo === "ECOPLAST" ? { tuberias: (config as any).totalTub, conexiones: (config as any).totalCon } : undefined;
   const fyAfter = drawTotalsBox(
     doc,
     tema,
@@ -763,7 +789,8 @@ export function pdfFactura(fac: any) {
     Number(fac.totalBruto),
     Number(fac.descuentoTotal),
     Number(fac.totalNeto),
-    extraLabel
+    extraLabel,
+    splitFac
   );
 
   // Notas internas (if any)
@@ -1124,7 +1151,8 @@ export function pdfDespacho(des: any) {
       const precio = cotLinea ? Number(cotLinea.precioFinal) : 0;
       return acc + precio * Number(l.cantidadDespachada ?? 0);
     }, 0);
-    drawTotalsBox(doc, tema, fy, totalDesp, 0, totalDesp);
+    const splitDes = tema.tipo === "ECOPLAST" ? { tuberias: (config as any).totalTub, conexiones: (config as any).totalCon } : undefined;
+    drawTotalsBox(doc, tema, fy, totalDesp, 0, totalDesp, undefined, splitDes);
   }
 
   // "RECIBI CONFORME" signature — add new page if table is too close to page bottom
