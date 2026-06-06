@@ -196,6 +196,7 @@ model OrdenDespacho {
 
   lineas   DespachoLinea[]
   facturas Factura[]
+  balance  BalancePago?
 }
 
 enum EstadoDespacho {
@@ -392,6 +393,40 @@ model DistribucionGanancia {
   montoAbonado   Decimal @db.Decimal(12, 2) @default(0)
   saldoPendiente Decimal @db.Decimal(12, 2)
   notas          String?
+}
+
+// ─── BALANCE DE PAGOS ──────────────────────────────────────────────────────
+
+model BalancePago {
+  id              Int               @id @default(autoincrement())
+  ordenDespachoId Int               @unique
+  ordenDespacho   OrdenDespacho     @relation(fields: [ordenDespachoId], references: [id], onDelete: Cascade)
+  nombre          String?
+  creadoEn        DateTime          @default(now())
+  actualizadoEn   DateTime          @updatedAt
+  items           BalancePagoItem[]
+}
+
+model BalancePagoItem {
+  id            Int               @id @default(autoincrement())
+  balancePagoId Int
+  balancePago   BalancePago       @relation(fields: [balancePagoId], references: [id], onDelete: Cascade)
+  nombre        String
+  montoTotal    Decimal           @db.Decimal(12, 2)
+  esEditable    Boolean           @default(false)
+  orden         Int               @default(0)
+  notas         String?
+  cuotas        BalancePagoCuota[]
+}
+
+model BalancePagoCuota {
+  id                Int             @id @default(autoincrement())
+  balancePagoItemId Int
+  balancePagoItem   BalancePagoItem @relation(fields: [balancePagoItemId], references: [id], onDelete: Cascade)
+  fecha             DateTime        @db.Date
+  monto             Decimal         @db.Decimal(12, 2)
+  notas             String?
+  creadoEn          DateTime        @default(now())
 }
 
 model Secuencia {

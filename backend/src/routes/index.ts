@@ -13,6 +13,7 @@ import * as empresas from "../controllers/empresas.controller";
 import * as tasaCambio from "../controllers/tasaCambio.controller";
 import * as seguimiento from "../controllers/seguimiento.controller";
 import * as ganancias from "../controllers/ganancias.controller";
+import * as balance from "../controllers/balance.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -122,6 +123,13 @@ router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.a
 router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));
 router.get("/despachos/:id/ganancias", requireRol("MASTER", "ADMIN"), w(ganancias.calcular));
 router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER", "ADMIN"), w(ganancias.actualizarServicioExterno));
+// Balance de Pagos
+router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
+router.get("/despachos/:id/balance", requireRol("MASTER", "ADMIN"), w(balance.getBalance));
+router.patch("/balance/items/:itemId", requireRol("MASTER"), w(balance.actualizarItem));
+router.post("/balance/items/:itemId/cuotas", requireRol("MASTER", "ADMIN"), w(balance.agregarCuota));
+router.patch("/balance/cuotas/:cuotaId", requireRol("MASTER", "ADMIN"), w(balance.actualizarCuota));
+router.delete("/balance/cuotas/:cuotaId", requireRol("MASTER"), w(balance.eliminarCuota));
 router.get("/despachos/:id", w(despachos.obtener));
 
 // ─── Reportes ─────────────────────────────────────────────────────────────
