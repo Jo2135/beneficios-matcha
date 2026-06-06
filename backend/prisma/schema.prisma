@@ -402,6 +402,10 @@ model BalancePago {
   ordenDespachoId Int               @unique
   ordenDespacho   OrdenDespacho     @relation(fields: [ordenDespachoId], references: [id], onDelete: Cascade)
   nombre          String?
+  // Snapshot del cálculo — preserva los valores aunque cambien tasas en el código
+  calculadoEn     DateTime?
+  calculosJson    String?           @db.Text   // JSON con el resultado completo de ganancias
+  tasasJson       String?           @db.Text   // JSON con las tasas usadas al calcular
   creadoEn        DateTime          @default(now())
   actualizadoEn   DateTime          @updatedAt
   items           BalancePagoItem[]

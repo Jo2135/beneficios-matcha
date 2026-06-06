@@ -126,6 +126,7 @@ router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER",
 // Balance de Pagos
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
 router.get("/despachos/:id/balance", requireRol("MASTER", "ADMIN"), w(balance.getBalance));
+router.get("/despachos/:id/balance/snapshot", requireRol("MASTER"), w(balance.getSnapshot));
 router.patch("/balance/items/:itemId", requireRol("MASTER"), w(balance.actualizarItem));
 router.post("/balance/items/:itemId/cuotas", requireRol("MASTER", "ADMIN"), w(balance.agregarCuota));
 router.patch("/balance/cuotas/:cuotaId", requireRol("MASTER", "ADMIN"), w(balance.actualizarCuota));

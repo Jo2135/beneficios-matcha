@@ -380,20 +380,38 @@ export async function generarBalance(req: Request, res: Response) {
     const extraMaterial = g.facturaTotal - sumaCostos;
     add("Extra Material", Math.max(0, extraMaterial), true);
 
-    // Upsert en DB
-    const balance = await (prisma as any).balancePago.upsert({
+    // ── Snapshot de tasas usadas para auditoría futura ───────────────────────
+    const tasasUsadas = {
+      COSTO_MAT_KG, GANANCIA_KG, PEAD_GANANCIA_RATE: 0.49,
+      CODO_COSTO_FABRICA, version: "1.0",
+      generadoEn: new Date().toISOString(),
+    };
+
+    // ── Upsert en DB — guardar snapshot y timestamp ───────────────────────────
+    const ahora = new Date();
+    const balance = await prisma.balancePago.upsert({
       where: { ordenDespachoId: id },
-      update: { actualizadoEn: new Date() },
-      create: { ordenDespachoId: id },
+      update: {
+        actualizadoEn: ahora,
+        calculadoEn:   ahora,
+        calculosJson:  JSON.stringify(g),
+        tasasJson:     JSON.stringify(tasasUsadas),
+      },
+      create: {
+        ordenDespachoId: id,
+        calculadoEn:     ahora,
+        calculosJson:    JSON.stringify(g),
+        tasasJson:       JSON.stringify(tasasUsadas),
+      },
     });
 
-    // Eliminar items anteriores y recrear
-    await (prisma as any).balancePagoItem.deleteMany({ where: { balancePagoId: balance.id } });
-    await (prisma as any).balancePagoItem.createMany({
+    // ── Eliminar items anteriores y recrear ───────────────────────────────────
+    await prisma.balancePagoItem.deleteMany({ where: { balancePagoId: balance.id } });
+    await prisma.balancePagoItem.createMany({
       data: items.map((i) => ({ ...i, balancePagoId: balance.id })),
     });
 
-    return res.json({ ok: true, balanceId: balance.id, items: items.length });
+    return res.json({ ok: true, balanceId: balance.id, items: items.length, calculadoEn: ahora });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
   }
@@ -402,7 +420,7 @@ export async function generarBalance(req: Request, res: Response) {
 /** Obtiene el balance completo con cuotas */
 export async function getBalance(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const balance = await (prisma as any).balancePago.findUnique({
+  const balance = await prisma.balancePago.findUnique({
     where: { ordenDespachoId: id },
     include: {
       items: {
@@ -412,7 +430,24 @@ export async function getBalance(req: Request, res: Response) {
     },
   });
   if (!balance) return res.status(404).json({ error: "Balance no generado aún" });
-  return res.json(balance);
+  // Omitir el JSON pesado de la respuesta normal (disponible en endpoint aparte si se necesita)
+  const { calculosJson, tasasJson, ...rest } = balance as any;
+  return res.json(rest);
+}
+
+/** Obtiene el snapshot completo de cálculos (para auditoría) */
+export async function getSnapshot(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const balance = await prisma.balancePago.findUnique({
+    where: { ordenDespachoId: id },
+    select: { calculadoEn: true, calculosJson: true, tasasJson: true },
+  });
+  if (!balance) return res.status(404).json({ error: "Balance no encontrado" });
+  return res.json({
+    calculadoEn: balance.calculadoEn,
+    calculos: balance.calculosJson ? JSON.parse(balance.calculosJson) : null,
+    tasas: balance.tasasJson ? JSON.parse(balance.tasasJson) : null,
+  });
 }
 
 /** Actualiza monto o notas de un item (MASTER) */
@@ -422,7 +457,7 @@ export async function actualizarItem(req: Request, res: Response) {
   const data: any = {};
   if (montoTotal !== undefined) data.montoTotal = Number(montoTotal);
   if (notas !== undefined) data.notas = notas;
-  await (prisma as any).balancePagoItem.update({ where: { id: itemId }, data });
+  await prisma.balancePagoItem.update({ where: { id: itemId }, data });
   return res.json({ ok: true });
 }
 
@@ -431,7 +466,7 @@ export async function agregarCuota(req: Request, res: Response) {
   const itemId = Number(req.params.itemId);
   const { fecha, monto, notas } = req.body;
   if (!fecha || !monto) return res.status(400).json({ error: "fecha y monto requeridos" });
-  const cuota = await (prisma as any).balancePagoCuota.create({
+  const cuota = await prisma.balancePagoCuota.create({
     data: { balancePagoItemId: itemId, fecha: new Date(fecha), monto: Number(monto), notas },
   });
   return res.json(cuota);
@@ -440,7 +475,7 @@ export async function agregarCuota(req: Request, res: Response) {
 /** Elimina un pago */
 export async function eliminarCuota(req: Request, res: Response) {
   const cuotaId = Number(req.params.cuotaId);
-  await (prisma as any).balancePagoCuota.delete({ where: { id: cuotaId } });
+  await prisma.balancePagoCuota.delete({ where: { id: cuotaId } });
   return res.json({ ok: true });
 }
 
@@ -451,6 +486,6 @@ export async function actualizarCuota(req: Request, res: Response) {
   const data: any = {};
   if (notas !== undefined) data.notas = notas;
   if (monto !== undefined) data.monto = Number(monto);
-  await (prisma as any).balancePagoCuota.update({ where: { id: cuotaId }, data });
+  await prisma.balancePagoCuota.update({ where: { id: cuotaId }, data });
   return res.json({ ok: true });
 }

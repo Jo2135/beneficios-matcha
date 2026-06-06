@@ -13,7 +13,18 @@ interface Item {
   id: number; nombre: string; montoTotal: number; esEditable: boolean;
   orden: number; notas?: string; cuotas: Cuota[];
 }
-interface Balance { id: number; nombre?: string; items: Item[] }
+interface Balance {
+  id: number; nombre?: string; items: Item[];
+  calculadoEn?: string;   // ISO timestamp del último cálculo
+}
+
+const fmtFecha = (iso?: string) => {
+  if (!iso) return null;
+  return new Date(iso).toLocaleString("es-VE", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit"
+  });
+};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) =>
@@ -62,6 +73,16 @@ export default function BalancePago() {
     mutationFn: () => apiClient.post(`/despachos/${despachoId}/balance/generar`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["balance", despachoId] }),
   });
+
+  const handleRegenerar = () => {
+    const hayPagos = balance?.items.some(i => i.cuotas.length > 0);
+    const hayAjustes = balance?.items.some(i => i.esEditable && i.notas);
+    if (hayPagos || hayAjustes) {
+      const msg = "⚠️ ATENCIÓN\n\nRegenerar recalculará todos los montos con las tasas actuales.\n\nLos pagos ya registrados se conservan, pero cualquier monto editado manualmente volverá al valor calculado.\n\n¿Deseas continuar?";
+      if (!window.confirm(msg)) return;
+    }
+    generar.mutate();
+  };
 
   const actualizarItem = useMutation({
     mutationFn: ({ itemId, montoTotal, notas }: { itemId: number; montoTotal?: number; notas?: string }) =>
@@ -117,18 +138,25 @@ export default function BalancePago() {
   return (
     <div style={{ padding: "20px 16px", maxWidth: "100%", overflowX: "auto" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
         <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", cursor: "pointer" }}>
           <ArrowLeft size={20} color="#64748b" />
         </button>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
-          Balance de Pagos — Despacho #{despachoId}
-        </h2>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
+            Balance de Pagos — Despacho #{despachoId}
+          </h2>
+          {balance?.calculadoEn && (
+            <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+              Calculado el {fmtFecha(balance.calculadoEn)}
+            </p>
+          )}
+        </div>
         {isMaster && (
           <button
-            onClick={() => generar.mutate()}
+            onClick={handleRegenerar}
             disabled={generar.isPending}
-            title="Regenerar balance desde ganancias"
+            title="Regenerar balance desde ganancias (recalcula montos)"
             style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
               background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8,
               padding: "7px 14px", cursor: "pointer", fontSize: 13, color: "#475569" }}
