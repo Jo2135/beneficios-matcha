@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../api/client";
+import { api as apiClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft, RefreshCw, Plus, Trash2, FileText, Edit3, Check, X, Download,
@@ -51,13 +51,11 @@ export default function BalancePago() {
   const despachoId = Number(id);
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user } = useAuth();
-  const isMaster = user?.rol === "MASTER";
+  const { esMaster: isMaster } = useAuth();
 
   // ── State UI ────────────────────────────────────────────────────────────
   const [editando, setEditando] = useState<number | null>(null);
   const [editMonto, setEditMonto] = useState("");
-  const [editNota, setEditNota] = useState("");
   const [notaAbierta, setNotaAbierta] = useState<number | null>(null);
   const [notaTexto, setNotaTexto] = useState("");
   const [nuevaCuota, setNuevaCuota] = useState<{ itemId: number; fecha: string; monto: string; notas: string } | null>(null);
@@ -224,7 +222,6 @@ export default function BalancePago() {
           <tbody>
             {items.map((item) => {
               const sal = saldo(item);
-              const pag = pagado(item);
               const pagadoCompleto = sal <= 0.005;
               const sobrepagado = sal < -0.005;
               const rowBg = pagadoCompleto ? "#fef2f2" : "#fff";
