@@ -62,11 +62,6 @@ export default function BalancePago() {
   const [notaTexto, setNotaTexto] = useState("");
   const [nuevaCuota, setNuevaCuota] = useState<{ itemId: number; fecha: string; monto: string; notas: string } | null>(null);
 
-  // ── Filtros ─────────────────────────────────────────────────────────────
-  const [soloPendientes, setSoloPendientes] = useState(false);
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
-
   // ── Queries ─────────────────────────────────────────────────────────────
   const { data: balance, isLoading, isError } = useQuery<Balance>({
     queryKey: ["balance", despachoId],
@@ -125,20 +120,10 @@ export default function BalancePago() {
     );
   }
 
-  const itemsFiltrados = soloPendientes
-    ? balance.items.filter((i) => saldo(i) > 0.005)
-    : balance.items;
-
-  const todasFechas = fechasUnicas(balance.items);
-  const fechas = todasFechas.filter((f) => {
-    if (fechaDesde && f < fechaDesde) return false;
-    if (fechaHasta && f > fechaHasta) return false;
-    return true;
-  });
-
-  const items = itemsFiltrados;
-  const totalGeneral = balance.items.reduce((s, i) => s + Number(i.montoTotal), 0);
-  const totalPagado = balance.items.reduce((s, i) => s + pagado(i), 0);
+  const items = balance.items;
+  const fechas = fechasUnicas(items);
+  const totalGeneral = items.reduce((s, i) => s + Number(i.montoTotal), 0);
+  const totalPagado = items.reduce((s, i) => s + pagado(i), 0);
   const totalSaldo = totalGeneral - totalPagado;
 
   // Estilos base
@@ -192,43 +177,6 @@ export default function BalancePago() {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Filtros */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13, color: "#374151", userSelect: "none" }}>
-          <input
-            type="checkbox"
-            checked={soloPendientes}
-            onChange={(e) => setSoloPendientes(e.target.checked)}
-            style={{ width: 15, height: 15, accentColor: "#2563eb", cursor: "pointer" }}
-          />
-          Solo pendientes
-        </label>
-        <div style={{ width: 1, height: 20, background: "#e2e8f0" }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>Pagos desde</span>
-          <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
-            style={{ padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, outline: "none", background: "#fff" }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>hasta</span>
-          <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
-            style={{ padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, outline: "none", background: "#fff" }} />
-        </div>
-        {(fechaDesde || fechaHasta) && (
-          <button
-            onClick={() => { setFechaDesde(""); setFechaHasta(""); }}
-            style={{ fontSize: 11, color: "#64748b", background: "none", border: "none", cursor: "pointer", padding: "2px 6px" }}
-          >
-            ✕ Limpiar fechas
-          </button>
-        )}
-        {(soloPendientes || fechaDesde || fechaHasta) && (
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "#64748b" }}>
-            {items.length} concepto{items.length !== 1 ? "s" : ""} · {fechas.length} columna{fechas.length !== 1 ? "s" : ""}
-          </span>
-        )}
       </div>
 
       {/* Tabla */}
