@@ -378,6 +378,7 @@ Usa **Recharts**. Gráficas implementadas:
 - Respuestas **cortas y directas**. Sin explicar lo obvio.
 - Cuando algo no funciona, mostrar **qué datos llegan vs qué se espera** (logs, screenshots, columna de categoría detectada).
 - Si una tarea es grande, dividirla en partes y confirmar con el usuario antes de cada fase.
+- **Usar `PushNotification`** al terminar tareas largas o al hacer preguntas cuando el usuario puede no estar mirando la pantalla. Mensaje corto, claro, sin markdown.
 
 ### Reglas de git en este proyecto
 - Rama activa: **`claude/fervent-wright-BUkm4`**
@@ -403,7 +404,26 @@ El backend aplica migraciones automáticamente al arrancar (`migrate deploy` en 
 
 ---
 
-## 16. Historial de Cambios Recientes (sesión anterior)
+## 16. Herramientas de Entorno del Usuario
+
+> Configuradas en la sesión del 2026-06-06. No son parte del código del proyecto.
+
+### Script anti-suspensión
+- **Archivo:** `C:\Ecoplast\keep-awake.ps1`
+- **Acceso directo:** Escritorio → "Claude - Modo Trabajo"
+- **Atajo de teclado:** `Ctrl + Alt + K`
+- **Función:** Evita que la laptop entre en suspensión mientras Claude trabaja. La pantalla sí puede apagarse. Al cerrar la terminal (Ctrl+C), la suspensión vuelve a funcionar normal.
+- **Usa API de Windows** `SetThreadExecutionState` — no requiere software adicional.
+
+### Notificaciones push
+- La herramienta `PushNotification` está disponible en Claude Code.
+- Se activa automáticamente cuando el usuario lleva más de 60 segundos inactivo.
+- Si el usuario conecta la app Claude en el teléfono via `/rc` (Remote Control), las notificaciones también llegan al celular.
+- **Pendiente:** José aún no vinculó el teléfono. Pasos: abrir Claude Code en terminal → escribir `/rc` → escanear QR con la app Claude.
+
+---
+
+## 17. Historial de Cambios Recientes (sesión anterior)
 
 | Commit | Descripción |
 |--------|-------------|
