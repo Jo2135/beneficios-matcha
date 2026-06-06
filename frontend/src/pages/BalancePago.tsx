@@ -179,6 +179,31 @@ export default function BalancePago() {
         </div>
       </div>
 
+      {/* Contador de estado */}
+      {(() => {
+        const pagados = items.filter((i) => saldo(i) <= 0.005).length;
+        const pendientes = items.length - pagados;
+        return (
+          <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "#64748b" }}>
+              <strong style={{ color: "#1e293b" }}>{items.length}</strong> conceptos
+            </span>
+            <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>
+              ✓ {pagados} pagados
+            </span>
+            <span style={{ fontSize: 13, color: pendientes > 0 ? "#dc2626" : "#94a3b8", fontWeight: pendientes > 0 ? 600 : 400 }}>
+              ● {pendientes} pendientes
+            </span>
+            <span style={{ fontSize: 13, color: "#64748b", marginLeft: "auto" }}>
+              Pendiente total:{" "}
+              <strong style={{ color: totalSaldo > 0.005 ? "#dc2626" : "#16a34a" }}>
+                ${fmt(totalSaldo)}
+              </strong>
+            </span>
+          </div>
+        );
+      })()}
+
       {/* Tabla */}
       <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,.06)" }}>
         <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
