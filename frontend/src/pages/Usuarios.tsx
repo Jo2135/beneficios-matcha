@@ -348,14 +348,19 @@ export default function Usuarios() {
               )}
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+            {(!form.nombre || !form.email || !form.password) && (
+              <p style={{ margin: "12px 0 0", fontSize: 12, color: "#dc2626" }}>
+                * Completa los campos: {[!form.nombre && "Nombre", !form.email && "Usuario/Correo", !form.password && "Contraseña"].filter(Boolean).join(", ")}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
               <button onClick={() => { setModalAbierto(false); setError(""); }} style={{ padding: "10px 20px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 14 }}>
                 Cancelar
               </button>
               <button
                 onClick={() => crearMutation.mutate(form)}
                 disabled={crearMutation.isPending || !form.nombre || !form.email || !form.password}
-                style={{ padding: "10px 20px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14 }}
+                style={{ padding: "10px 20px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14, opacity: (!form.nombre || !form.email || !form.password) ? 0.5 : 1 }}
               >
                 {crearMutation.isPending ? "Creando..." : "Crear Usuario"}
               </button>

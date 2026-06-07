@@ -88,6 +88,10 @@ export async function crear(req: Request, res: Response) {
     res.status(201).json(cliente);
   } catch (e: any) {
     console.error("[error crear cliente]", e.message);
+    // Unique constraint: nombre o RIF duplicado
+    if (e.code === "P2002") {
+      return res.status(409).json({ error: "Ya existe un cliente con ese nombre o RIF. Verifica los datos e intenta de nuevo." });
+    }
     res.status(500).json({ error: e.message });
   }
 }
