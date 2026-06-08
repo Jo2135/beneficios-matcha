@@ -131,7 +131,7 @@ export default function GananciasDespacho() {
 
           {/* Costos de materia prima */}
           <Section titulo="Costos de Materia Prima">
-            {(["manguera34", "manguera13", "azul", "negro", "blanco", "amarillo"] as const).map((cat) => {
+            {(["manguera34", "manguera13", "azul", "gris", "negro", "blanco", "amarillo"] as const).map((cat) => {
               const item = d.costoMateria[cat];
               const kg = item?.kg ?? 0;
               return (
@@ -145,7 +145,7 @@ export default function GananciasDespacho() {
               );
             })}
             {hayCurvas && (
-              <FilaCosto label="Curvas (material)" valor={usd(d.curvas.totalVenta)} />
+              <FilaCosto label="Curvas (material)" valor={usd(d.curvas.costoMaterial ?? 0)} />
             )}
             {!hayMateria && !hayCurvas && (
               <div style={{ padding: "10px 16px", fontSize: 12, color: "#94a3b8" }}>
@@ -238,12 +238,41 @@ export default function GananciasDespacho() {
             <PagoLinea label="Comisiones (2.2%)" monto={d.ganancias2.comisiones} color="#7c3aed" />
           </Section>
 
+          {/* Comisiones vendedores */}
+          {(d.comisionesVendedores?.detalle?.length ?? 0) > 0 && (
+            <Section titulo="Comisiones Vendedores">
+              {(d.comisionesVendedores.detalle as any[]).map((c: any, i: number) => (
+                <PagoLinea
+                  key={i}
+                  label={`${c.nombre} (${c.pct}%)`}
+                  monto={c.monto}
+                  color="#0891b2"
+                  detalle={`Base: ${usd(c.base)}`}
+                />
+              ))}
+            </Section>
+          )}
+
           {/* Servicios externos activos */}
           {(d.servicioExterno as any[]).length > 0 && (
             <Section titulo="Servicios Externos de Fabricación">
               {(d.servicioExterno as any[]).map((s: any) => (
                 <PagoLinea key={s.lineaId} label={`Mano de obra — ${s.nombre}`} monto={s.costo} color="#0891b2" />
               ))}
+            </Section>
+          )}
+
+          {/* Extra de Material (fondo reserva) */}
+          {d.extraMaterial !== undefined && (
+            <Section titulo="Extra de Material — Fondo Reserva">
+              <div style={{ padding: "16px", textAlign: "center" }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: d.extraMaterial >= 0 ? "#16a34a" : "#dc2626" }}>
+                  {usd(d.extraMaterial)}
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+                  Diferencia entre venta total y gastos + ganancias distribuidas
+                </div>
+              </div>
             </Section>
           )}
 
@@ -342,7 +371,7 @@ function FilaCostoTotal({ label, valor }: { label: string; valor: string }) {
   );
 }
 
-function PagoLinea({ label, monto, color, badge }: { label: string; monto: number; color: string; badge?: string }) {
+function PagoLinea({ label, monto, color, badge, detalle }: { label: string; monto: number; color: string; badge?: string; detalle?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f1f5f9" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -350,6 +379,7 @@ function PagoLinea({ label, monto, color, badge }: { label: string; monto: numbe
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{label}</div>
           {badge && <div style={{ fontSize: 10, color: "#94a3b8" }}>celda {badge}</div>}
+          {detalle && <div style={{ fontSize: 10, color: "#94a3b8" }}>{detalle}</div>}
         </div>
       </div>
       <span style={{ fontSize: 16, fontWeight: 800, color }}>{usd(monto)}</span>
@@ -372,18 +402,22 @@ function ResumenTotal({ data: d }: { data: any }) {
     { label: "SBUG",                        monto: d.ganancias2.sbug },
     { label: "Yolanda",                     monto: d.ganancias2.yolanda },
     { label: "Sandra",                      monto: d.ganancias2.sandra },
-    { label: "Comisiones",                  monto: d.ganancias2.comisiones },
+    { label: "Comisiones (2.2%)",           monto: d.ganancias2.comisiones },
     ...(d.curvas.pagoFabrica > 0 ? [
       { label: "Pago Fábrica (Curvas)",     monto: d.curvas.pagoFabrica },
       { label: "Pago Muchachas (Curvas)",   monto: d.curvas.pagoMuchachas },
       { label: "Ganancia Alberto (Curvas)", monto: d.curvas.gananciaAlberto },
     ] : []),
+    ...((d.comisionesVendedores?.detalle ?? []) as any[]).map((c: any) => ({
+      label: `Comisión ${c.nombre} (${c.pct}%)`, monto: c.monto,
+    })),
     ...(d.servicioExterno as any[]).map((s: any) => ({
       label: `Mano de obra — ${s.nombre}`,  monto: s.costo,
     })),
   ];
 
   const totalPagos = pagos.reduce((s, p) => s + p.monto, 0);
+  const extraMat   = d.extraMaterial ?? 0;
 
   return (
     <div style={{ background: "#1e293b", borderRadius: 12, overflow: "hidden" }}>
@@ -396,9 +430,15 @@ function ResumenTotal({ data: d }: { data: any }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: "#f8fafc" }}>{usd(p.monto)}</span>
         </div>
       ))}
+      {extraMat !== 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid #334155", background: extraMat >= 0 ? "#14532d22" : "#7f1d1d22" }}>
+          <span style={{ fontSize: 13, color: extraMat >= 0 ? "#4ade80" : "#f87171" }}>Extra de Material (reserva)</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: extraMat >= 0 ? "#4ade80" : "#f87171" }}>{usd(extraMat)}</span>
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px" }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc" }}>Total distribuido</span>
-        <span style={{ fontSize: 16, fontWeight: 800, color: "#4ade80" }}>{usd(totalPagos)}</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: "#4ade80" }}>{usd(totalPagos + extraMat)}</span>
       </div>
     </div>
   );

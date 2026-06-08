@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 
 const COSTO_MAT_KG: Record<string, number> = {
   manguera34: 1.083, manguera13: 1.090,
-  azul: 1.580, negro: 1.280, blanco: 1.580, amarillo: 1.590,
+  azul: 1.580, negro: 1.280, gris: 1.280, blanco: 1.580, amarillo: 1.590,
 };
 
 const GANANCIA_KG: Record<string, number> = {
@@ -133,8 +133,9 @@ function detectarPorNombre(nombre: string, medida: string, categoriaNombre: stri
   // ── Manguera Agrícola / Riego ───────────────────────────────────────────────
   if (full.includes("manguera") || full.includes("agricola") || full.includes("riego")) {
     // Si el nombre o medida incluye tamaños grandes (1" en adelante) → manguera13
-    const grande = /\b(1 ?1\/2|2 ?1\/2|2|3)\s*["x]/.test(nombre + " " + medida) ||
-                   (/\b1\s*["x]/.test(nombre + " " + medida) && !/(1\/2|3\/4)/.test(medida));
+    // Lookbehind negativo para no confundir "2" en "1/2" con tamaño "2 pulgadas"
+    const grande = /(?<![/\d])(1\s*1\/2|2\s*1\/2|[23])\s*["x]/i.test(nombre + " " + medida) ||
+                   (/(?<![/\d])1\s*["x]/i.test(nombre + " " + medida) && !/(1\/2|3\/4)/i.test(medida));
     const cat = grande ? "manguera13" : "manguera34";
     return { catMat: cat, catGan: cat, esPead: false, curvaKey: null, label: cat };
   }
@@ -146,7 +147,7 @@ function detectarPorNombre(nombre: string, medida: string, categoriaNombre: stri
 
   // ── Tubo Gris Agua Blanca ───────────────────────────────────────────────────
   if (full.includes("gris") && (full.includes("agua") || full.includes("tubo"))) {
-    return { catMat: "negro", catGan: "gris", esPead: false, curvaKey: null, label: "gris" };
+    return { catMat: "gris", catGan: "gris", esPead: false, curvaKey: null, label: "gris" };
   }
 
   // ── Tubo Eléctrico Negro ────────────────────────────────────────────────────
@@ -236,7 +237,10 @@ export async function calcular(req: Request, res: Response) {
     where: { id },
     include: {
       lineas: {
-        include: { producto: { include: { categoria: true } } },
+        include: {
+          producto: { include: { categoria: true } },
+          cotizacion: { select: { id: true, totalNeto: true, vendedor: { select: { nombre: true, comisionPct: true } } } },
+        },
         orderBy: { id: "asc" },
       },
       facturas: {
@@ -254,7 +258,7 @@ export async function calcular(req: Request, res: Response) {
 
   const facturaTotal = despacho.facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
 
-  const kgMat: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, negro: 0, blanco: 0, amarillo: 0 };
+  const kgMat: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, negro: 0, gris: 0, blanco: 0, amarillo: 0 };
   const kgGan: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, gris: 0, negro_elec: 0, blanco_elec: 0 };
   let gananciaPEAD = 0;
   const cantCurvas: Record<string, number> = {};
@@ -370,6 +374,44 @@ export async function calcular(req: Request, res: Response) {
     .filter((l) => l.esServicioExterno)
     .map((l) => ({ lineaId: l.id, nombre: `${l.nombre} ${l.medida}`.trim(), costo: l.costoServicioExterno }));
 
+  // ── Comisiones vendedores ─────────────────────────────────────────────────
+  // Agrupa por cotizacionId para no duplicar cuando hay varias líneas de la misma cotización
+  const cotizacionesVistas = new Set<number>();
+  const comisionMap = new Map<string, { nombre: string; pct: number; base: number; monto: number }>();
+
+  for (const linea of despacho.lineas) {
+    const cot = (linea as any).cotizacion;
+    if (!cot || cotizacionesVistas.has(cot.id)) continue;
+    cotizacionesVistas.add(cot.id);
+    const vend = cot.vendedor;
+    if (!vend || Number(vend.comisionPct) <= 0) continue;
+    const pct   = Number(vend.comisionPct);
+    const base  = Number(cot.totalNeto);
+    const monto = base * pct / 100;
+    const prev  = comisionMap.get(vend.nombre);
+    if (prev) {
+      comisionMap.set(vend.nombre, { ...prev, base: prev.base + base, monto: prev.monto + monto });
+    } else {
+      comisionMap.set(vend.nombre, { nombre: vend.nombre, pct, base, monto });
+    }
+  }
+  const comisionesVendedores = Array.from(comisionMap.values());
+  const totalComisionVendedores = comisionesVendedores.reduce((s, c) => s + c.monto, 0);
+
+  // ── Extra de material (fondo reserva) ────────────────────────────────────
+  // = Venta total − costos identificados − ganancias distribuidas
+  // curvaTotalVenta ya engloba curvaMaterial + curvaAlberto + curvaMuchachas
+  const gastosTotal = gastos.obreros + gastos.pigmento + gastos.electricidad;
+  const g2Sum = sbug + yolanda + sandra + comisiones;
+  const extraMaterial = facturaTotal
+    - totalCostoMateria
+    - curvaTotalVenta
+    - gastosTotal
+    - totalGananciaGeneral
+    - gananciaPEAD
+    - g2Sum
+    - totalComisionVendedores;
+
   res.json({
     despacho: { id: despacho.id, numero: despacho.numero },
     facturaTotal,
@@ -378,6 +420,7 @@ export async function calcular(req: Request, res: Response) {
     curvas: {
       detalle: curvasDetalle,
       totalVenta: curvaTotalVenta,
+      costoMaterial: curvaMaterial,
       pagoFabrica: curvaFabrica,
       pagoMuchachas: curvaMuchachas,
       gananciaAlberto: curvaAlberto,
@@ -395,6 +438,8 @@ export async function calcular(req: Request, res: Response) {
       darwinAmarillo,
     },
     ganancias2: { base: totalSinConexiones, conexionesExcluidas: totalConexiones, sbug, yolanda, sandra, comisiones },
+    comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
+    extraMaterial,
     servicioExterno,
     lineas: lineasDetalle,
   });
