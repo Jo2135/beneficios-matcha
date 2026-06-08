@@ -19,7 +19,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 export default function Cotizaciones() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { puedeEditar, esVendedor, esMaster } = useAuth();
+  const { puedeEditar, esVendedor, esMaster, usuario } = useAuth();
   const [filtroEstado, setFiltroEstado] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
@@ -305,8 +305,8 @@ export default function Cotizaciones() {
             </div>
 
             {/* Tabla de conversión */}
-            {/* Botón recalcular — solo para MASTER/ADMIN y cotizaciones no facturadas */}
-            {puedeEditar && cotizacionDetallada.estado !== "FACTURADA" && (
+            {/* Botón recalcular — visible para MASTER/ADMIN o para el vendedor dueño, si no está completada */}
+            {cotizacionDetallada.estado !== "COMPLETADA" && (puedeEditar || (esVendedor && cotizacionDetallada.vendedor?.id === usuario?.vendedorId)) && (
               <div style={{ marginBottom: 10, display: "flex", justifyContent: "flex-end" }}>
                 <button
                   onClick={() => { if (confirm("¿Actualizar todos los precios desde la lista actual del cliente?")) recalcularPrecios.mutate(cotizacionDetallada.id); }}
@@ -636,15 +636,13 @@ export default function Cotizaciones() {
 
             {/* Botones PDF */}
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-              {puedeEditar && (
-                <button
-                  onClick={() => { setModalBs(true); }}
-                  disabled={!cotizacionDetallada}
-                  style={{ ...btnAction, background: "#fef9c3", color: "#713f12", opacity: cotizacionDetallada ? 1 : 0.5 }}
-                >
-                  <DollarSign size={14} /> Ver en Bs
-                </button>
-              )}
+              <button
+                onClick={() => { setModalBs(true); }}
+                disabled={!cotizacionDetallada}
+                style={{ ...btnAction, background: "#fef9c3", color: "#713f12", opacity: cotizacionDetallada ? 1 : 0.5 }}
+              >
+                <DollarSign size={14} /> Ver / Editar precios
+              </button>
               <button
                 onClick={() => cotizacionDetallada && pdfCotizacion(cotizacionDetallada)}
                 disabled={!cotizacionDetallada}

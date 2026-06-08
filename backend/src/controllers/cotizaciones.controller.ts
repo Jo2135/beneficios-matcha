@@ -306,6 +306,7 @@ export async function actualizarPrecioLinea(req: Request, res: Response) {
 // Recalcula todos los precios de una cotización desde la lista de precios actual del cliente
 export async function recalcularDesdeListaPrecios(req: Request, res: Response) {
   const cotizacionId = Number(req.params.id);
+  const usuario = req.usuario!;
   const cotizacion = await prisma.cotizacion.findUnique({
     where: { id: cotizacionId },
     include: {
@@ -316,6 +317,10 @@ export async function recalcularDesdeListaPrecios(req: Request, res: Response) {
   if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
   if (cotizacion.estado === "COMPLETADA") {
     return res.status(400).json({ error: "No se puede recalcular una cotización ya completada/facturada" });
+  }
+  // VENDEDOR solo puede recalcular sus propias cotizaciones
+  if (usuario.rol === "VENDEDOR" && cotizacion.vendedorId !== usuario.vendedorId) {
+    return res.status(403).json({ error: "Solo puedes modificar tus propias cotizaciones" });
   }
 
   const detalleLista = cotizacion.cliente.listaPrecio?.detalle ?? [];
