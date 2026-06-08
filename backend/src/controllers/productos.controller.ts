@@ -43,17 +43,40 @@ export async function obtener(req: Request, res: Response) {
 }
 
 export async function crear(req: Request, res: Response) {
+  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, descripcion, activo, imagenUrl } = req.body;
   const producto = await prisma.producto.create({
-    data: req.body,
+    data: {
+      nombre,
+      codigo: codigo ?? null,
+      medida,
+      origen: origen ?? "INTERNO",
+      categoriaId: categoriaId ? Number(categoriaId) : undefined,
+      pesoUnitarioKg: pesoUnitarioKg !== undefined ? pesoUnitarioKg : undefined,
+      descripcion: descripcion ?? null,
+      activo: activo ?? true,
+      imagenUrl: imagenUrl ?? null,
+    },
     include: { categoria: true },
   });
   res.status(201).json(producto);
 }
 
 export async function actualizar(req: Request, res: Response) {
+  // Extraer solo los campos planos — excluir relaciones anidadas (categoria, etc.)
+  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, descripcion, activo, imagenUrl } = req.body;
   const producto = await prisma.producto.update({
     where: { id: Number(req.params.id) },
-    data: req.body,
+    data: {
+      nombre,
+      codigo: codigo ?? null,
+      medida,
+      origen,
+      categoriaId: categoriaId ? Number(categoriaId) : undefined,
+      pesoUnitarioKg: pesoUnitarioKg !== undefined ? pesoUnitarioKg : undefined,
+      descripcion: descripcion ?? null,
+      activo,
+      imagenUrl: imagenUrl ?? null,
+    },
     include: { categoria: true },
   });
   res.json(producto);
