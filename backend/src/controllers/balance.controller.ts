@@ -232,6 +232,9 @@ async function calcularDesdeDespacho(despachoId: number) {
       totalServicioExterno += Number((linea as any).costoServicioExterno ?? 0);
     }
 
+    // Productos EXTERNOS excluidos de kgMat/kgGan (manguera verde y codos ya salieron arriba)
+    if (linea.producto?.origen === "EXTERNO") continue;
+
     // Detección por código con fallback por nombre (para productos sin código en DB)
     const catNombre = linea.producto?.categoria?.nombre ?? "";
     const det = detectar(codigo, nombre, medida, catNombre);
@@ -306,6 +309,20 @@ async function calcularDesdeDespacho(despachoId: number) {
     }
   }
 
+  // ── Tubería Gris PVC (compra externa) ────────────────────────────────────
+  let hayTuboGrisPVC = false;
+  let totalTuboGrisPVC = 0;
+  for (const factura of despacho.facturas) {
+    for (const fl of factura.lineas) {
+      const cn = normCod(fl.producto?.codigo ?? "");
+      const fn = norm(fl.producto?.nombre ?? "");
+      if (/^TUGR/.test(cn) || (fn.includes("gris") && (fn.includes("tubo") || fn.includes("tuberia")))) {
+        hayTuboGrisPVC = true;
+        totalTuboGrisPVC += Number(fl.totalLinea);
+      }
+    }
+  }
+
   // ── Niples: ganancia = venta - costo tubos ────────────────────────────────
   let hayNiples = false;
   let gananciaRevenueNiples = 0;
@@ -376,6 +393,7 @@ async function calcularDesdeDespacho(despachoId: number) {
     hayNiples, gananciaNetaNiples, costoTubosNiples,
     totalConexiones,
     hayMangueraVerde, totalMangueraVerde,
+    hayTuboGrisPVC, totalTuboGrisPVC,
     darwinCodos, hayCodos: darwinCodos > 0,
     costoFlete, hayFlete: costoFlete > 0.01,
     hayServicioExterno, totalServicioExterno,
@@ -434,6 +452,11 @@ export async function generarBalance(req: Request, res: Response) {
     // Manguera Verde
     if (g.hayMangueraVerde) {
       add("Manguera Verde", g.totalMangueraVerde, true);
+    }
+
+    // Tubería Gris PVC (compra externa)
+    if (g.hayTuboGrisPVC) {
+      add("Tuberia Gris PVC", g.totalTuboGrisPVC, true);
     }
 
     // Codos Darwin

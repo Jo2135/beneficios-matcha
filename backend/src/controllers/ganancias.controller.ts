@@ -273,29 +273,34 @@ export async function calcular(req: Request, res: Response) {
     const totalKg   = cantidad * pesoUnit;
 
     const det = detectar(codigo, nombre, medida, catNombre);
+    // Productos EXTERNOS (compra directa) no acumulan kgMat/kgGan de fabricación
+    const esExterno = linea.producto?.origen === "EXTERNO";
 
-    // Acumular material
-    if (det.catMat) kgMat[det.catMat] = (kgMat[det.catMat] ?? 0) + totalKg;
+    if (!esExterno) {
+      // Acumular material
+      if (det.catMat) kgMat[det.catMat] = (kgMat[det.catMat] ?? 0) + totalKg;
 
-    // Acumular ganancia general
-    if (det.catGan) {
-      kgGan[det.catGan] = (kgGan[det.catGan] ?? 0) + totalKg;
-    } else if (det.esPead) {
-      const c = normCodigo(codigo);
-      const pesoGan = (c && PEAD_PESO_CODE[c]) ? PEAD_PESO_CODE[c]
-                    : pesoGananciaPeadFromNombre(nombre, medida, pesoUnit);
-      gananciaPEAD += cantidad * pesoGan * PEAD_GANANCIA_RATE;
-    }
+      // Acumular ganancia general
+      if (det.catGan) {
+        kgGan[det.catGan] = (kgGan[det.catGan] ?? 0) + totalKg;
+      } else if (det.esPead) {
+        const c = normCodigo(codigo);
+        const pesoGan = (c && PEAD_PESO_CODE[c]) ? PEAD_PESO_CODE[c]
+                      : pesoGananciaPeadFromNombre(nombre, medida, pesoUnit);
+        gananciaPEAD += cantidad * pesoGan * PEAD_GANANCIA_RATE;
+      }
 
-    // Acumular curvas
-    if (det.curvaKey) {
-      cantCurvas[det.curvaKey] = (cantCurvas[det.curvaKey] ?? 0) + cantidad;
+      // Acumular curvas
+      if (det.curvaKey) {
+        cantCurvas[det.curvaKey] = (cantCurvas[det.curvaKey] ?? 0) + cantidad;
+      }
     }
 
     return {
       id: linea.id, codigo, nombre, medida, cantidad,
       pesoUnitKg: pesoUnit, totalKg,
-      catDetectada: det.label,
+      esExterno,
+      catDetectada: esExterno ? `externo` : det.label,
       catMat: det.catMat, esPead: det.esPead, curvaKey: det.curvaKey,
       esServicioExterno: (linea as any).esServicioExterno ?? false,
       costoServicioExterno: Number((linea as any).costoServicioExterno ?? 0),
