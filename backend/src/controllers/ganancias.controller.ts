@@ -54,7 +54,7 @@ function catMatByCode(c: string): keyof typeof COSTO_MAT_KG | null {
   if (/^MGR-(3\/8|1\/2|3\/4)/.test(c)) return "manguera34";
   if (/^MGR-/.test(c))                   return "manguera13";
   if (/^(MGAZ|TUAZ)/.test(c))            return "azul";
-  if (/^TUGR-1/.test(c))                 return "negro";
+  if (/^TUGR-1/.test(c))                 return "gris";   // Tubo Gris Agua Blanca (fabricado)
   if (/^TUNG/.test(c))                   return "negro";
   if (/^TUBL/.test(c))                   return "blanco";
   if (/^(TUAM|TUNA|TUGR-2)/.test(c))    return "amarillo";
@@ -145,8 +145,13 @@ function detectarPorNombre(nombre: string, medida: string, categoriaNombre: stri
     return { catMat: "azul", catGan: "azul", esPead: false, curvaKey: null, label: "azul" };
   }
 
-  // ── Tubo Gris Agua Blanca ───────────────────────────────────────────────────
-  if (full.includes("gris") && (full.includes("agua") || full.includes("tubo"))) {
+  // ── Tubo Gris PVC (compra externa — excluir de costos de fabricación) ────────
+  if (full.includes("gris") && full.includes("pvc")) {
+    return { catMat: null, catGan: null, esPead: false, curvaKey: null, label: "gris-pvc (externo)" };
+  }
+
+  // ── Tubo Gris Agua Blanca (fabricado internamente) ─────────────────────────
+  if (full.includes("gris") && (full.includes("agua") || full.includes("tubo") || full.includes("tuberia"))) {
     return { catMat: "gris", catGan: "gris", esPead: false, curvaKey: null, label: "gris" };
   }
 
@@ -239,7 +244,14 @@ export async function calcular(req: Request, res: Response) {
       lineas: {
         include: {
           producto: { include: { categoria: true } },
-          cotizacion: { select: { id: true, totalNeto: true, vendedor: { select: { nombre: true, comisionPct: true } } } },
+          cotizacion: {
+          select: {
+            id: true, totalNeto: true,
+            vendedor: { select: { nombre: true } },
+            cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true } },
+            lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true } } } },
+          },
+        },
         },
         orderBy: { id: "asc" },
       },
@@ -379,28 +391,43 @@ export async function calcular(req: Request, res: Response) {
     .filter((l) => l.esServicioExterno)
     .map((l) => ({ lineaId: l.id, nombre: `${l.nombre} ${l.medida}`.trim(), costo: l.costoServicioExterno }));
 
-  // ── Comisiones vendedores ─────────────────────────────────────────────────
-  // Agrupa por cotizacionId para no duplicar cuando hay varias líneas de la misma cotización
+  // ── Comisiones por cliente (misma fórmula que muestra NuevaCotizacion) ──────
+  // Se calcula por cotización única: tubería × ctPct/(100+ctPct) + conexiones × ccPct/(100+ccPct)
   const cotizacionesVistas = new Set<number>();
-  const comisionMap = new Map<string, { nombre: string; pct: number; base: number; monto: number }>();
+  interface ComisionItem { clienteNombre: string; vendedorNombre: string; ctPct: number; ccPct: number; totalTuberia: number; totalConexiones: number; monto: number; }
+  const comisionesVendedores: ComisionItem[] = [];
 
   for (const linea of despacho.lineas) {
     const cot = (linea as any).cotizacion;
     if (!cot || cotizacionesVistas.has(cot.id)) continue;
     cotizacionesVistas.add(cot.id);
-    const vend = cot.vendedor;
-    if (!vend || Number(vend.comisionPct) <= 0) continue;
-    const pct   = Number(vend.comisionPct);
-    const base  = Number(cot.totalNeto);
-    const monto = base * pct / 100;
-    const prev  = comisionMap.get(vend.nombre);
-    if (prev) {
-      comisionMap.set(vend.nombre, { ...prev, base: prev.base + base, monto: prev.monto + monto });
-    } else {
-      comisionMap.set(vend.nombre, { nombre: vend.nombre, pct, base, monto });
+
+    const ctPct = Number(cot.cliente?.comisionTuberiaPct ?? 0);
+    const ccPct = Number(cot.cliente?.comisionConexionesPct ?? 0);
+    if (ctPct + ccPct === 0) continue;
+
+    let totalTuberia = 0, totalConexiones = 0;
+    for (const cl of (cot.lineas ?? []) as any[]) {
+      const monto = Number(cl.totalLinea ?? 0);
+      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "")) {
+        totalConexiones += monto;
+      } else {
+        totalTuberia += monto;
+      }
+    }
+
+    const monto =
+      (ctPct > 0 ? totalTuberia  * ctPct / (100 + ctPct) : 0) +
+      (ccPct > 0 ? totalConexiones * ccPct / (100 + ccPct) : 0);
+
+    if (monto > 0) {
+      comisionesVendedores.push({
+        clienteNombre:  cot.cliente?.nombre  ?? `Cot #${cot.id}`,
+        vendedorNombre: cot.vendedor?.nombre ?? "—",
+        ctPct, ccPct, totalTuberia, totalConexiones, monto,
+      });
     }
   }
-  const comisionesVendedores = Array.from(comisionMap.values());
   const totalComisionVendedores = comisionesVendedores.reduce((s, c) => s + c.monto, 0);
 
   // ── Extra de material (fondo reserva) ────────────────────────────────────

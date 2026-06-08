@@ -238,16 +238,20 @@ export default function GananciasDespacho() {
             <PagoLinea label="Comisiones" monto={d.ganancias2.comisiones} color="#7c3aed" />
           </Section>
 
-          {/* Comisiones vendedores */}
+          {/* Comisiones por cliente */}
           {(d.comisionesVendedores?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Comisiones Vendedores">
               {(d.comisionesVendedores.detalle as any[]).map((c: any, i: number) => (
                 <PagoLinea
                   key={i}
-                  label={`${c.nombre} (${c.pct}%)`}
+                  label={`Comisión — ${c.clienteNombre}`}
                   monto={c.monto}
                   color="#0891b2"
-                  detalle={`Base: ${usd(c.base)}`}
+                  detalle={[
+                    c.ctPct > 0 && c.totalTuberia > 0 ? `${c.ctPct}% tub (${usd(c.totalTuberia)})` : "",
+                    c.ccPct > 0 && c.totalConexiones > 0 ? `${c.ccPct}% con (${usd(c.totalConexiones)})` : "",
+                    c.vendedorNombre !== "—" ? `Vendedor: ${c.vendedorNombre}` : "",
+                  ].filter(Boolean).join(" · ")}
                 />
               ))}
             </Section>
@@ -409,7 +413,7 @@ function ResumenTotal({ data: d }: { data: any }) {
       { label: "Ganancia Alberto (Curvas)", monto: d.curvas.gananciaAlberto },
     ] : []),
     ...((d.comisionesVendedores?.detalle ?? []) as any[]).map((c: any) => ({
-      label: `Comisión ${c.nombre} (${c.pct}%)`, monto: c.monto,
+      label: `Comisión — ${c.clienteNombre}`, monto: c.monto,
     })),
     ...(d.servicioExterno as any[]).map((s: any) => ({
       label: `Mano de obra — ${s.nombre}`,  monto: s.costo,
