@@ -77,6 +77,8 @@ router.delete("/listas-precios/:id", requireRol("MASTER"), w(listaPrecios.elimin
 router.get("/cotizaciones", w(cotizaciones.listar));
 router.get("/cotizaciones/orden-produccion", requireRol("MASTER", "ADMIN"), w(cotizaciones.ordenProduccion));
 router.get("/cotizaciones/reporte-comisiones", requireRol("MASTER", "ADMIN"), w(cotizaciones.reporteComisiones));
+router.patch("/cotizaciones/lineas/:lineaId/precio", requireRol("MASTER", "ADMIN"), w(cotizaciones.actualizarPrecioLinea));
+router.post("/cotizaciones/:id/recalcular-precios", requireRol("MASTER", "ADMIN"), w(cotizaciones.recalcularDesdeListaPrecios));
 router.get("/cotizaciones/:id", w(cotizaciones.obtener));
 router.post("/cotizaciones", w(cotizaciones.crear));
 router.put("/cotizaciones/:id", w(cotizaciones.actualizar));

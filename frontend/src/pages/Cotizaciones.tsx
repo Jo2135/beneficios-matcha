@@ -85,6 +85,29 @@ export default function Cotizaciones() {
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al duplicar"),
   });
 
+  // Edición de precio por línea
+  const [editandoLinea, setEditandoLinea] = useState<{ id: number; valor: string } | null>(null);
+  const actualizarPrecio = useMutation({
+    mutationFn: ({ lineaId, precio }: { lineaId: number; precio: number }) =>
+      cotizacionesApi.actualizarPrecioLinea(lineaId, precio),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cotizacion-detalle", detalle?.id] });
+      qc.invalidateQueries({ queryKey: ["cotizaciones"] });
+      setEditandoLinea(null);
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al actualizar precio"),
+  });
+
+  const recalcularPrecios = useMutation({
+    mutationFn: (id: number) => cotizacionesApi.recalcularDesdeListaPrecios(id),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["cotizacion-detalle", detalle?.id] });
+      qc.invalidateQueries({ queryKey: ["cotizaciones"] });
+      alert(`Precios actualizados: ${data.actualizados} líneas recalculadas${data.sinPrecio?.length ? `\n⚠️ Sin precio en lista: ${data.sinPrecio.length} producto(s)` : ""}`);
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al recalcular precios"),
+  });
+
   const { data: tasaVigente } = useQuery({
     queryKey: ["tasa-vigente"],
     queryFn: tasaCambioApi.vigente,
@@ -282,6 +305,20 @@ export default function Cotizaciones() {
             </div>
 
             {/* Tabla de conversión */}
+            {/* Botón recalcular — solo para MASTER/ADMIN y cotizaciones no facturadas */}
+            {puedeEditar && cotizacionDetallada.estado !== "FACTURADA" && (
+              <div style={{ marginBottom: 10, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => { if (confirm("¿Actualizar todos los precios desde la lista actual del cliente?")) recalcularPrecios.mutate(cotizacionDetallada.id); }}
+                  disabled={recalcularPrecios.isPending}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#16a34a" }}
+                  title="Actualiza todos los precios desde la lista de precios actual del cliente"
+                >
+                  <DollarSign size={13} /> {recalcularPrecios.isPending ? "Recalculando..." : "Recalcular precios desde lista"}
+                </button>
+              </div>
+            )}
+
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
@@ -299,6 +336,8 @@ export default function Cotizaciones() {
                     const tasa = Number(tasaBsManual) || 0;
                     const pUnit = Number(l.precioUnitarioAplicado);
                     const total = Number(l.totalLinea);
+                    const estaEditando = editandoLinea?.id === l.id;
+                    const puedeEditarLinea = puedeEditar && cotizacionDetallada.estado !== "FACTURADA";
                     return (
                       <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                         <td style={{ padding: "8px 10px" }}>
@@ -306,7 +345,37 @@ export default function Cotizaciones() {
                           {l.producto?.medida && <span style={{ color: "#94a3b8", marginLeft: 4, fontSize: 12 }}>{l.producto.medida}</span>}
                         </td>
                         <td style={{ padding: "8px 10px", textAlign: "center" }}>{Number(l.cantidad)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right" }}>${pUnit.toFixed(2)}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                          {estaEditando ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                              <span style={{ color: "#64748b" }}>$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                autoFocus
+                                value={editandoLinea.valor}
+                                onChange={(e) => setEditandoLinea({ ...editandoLinea, valor: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") actualizarPrecio.mutate({ lineaId: l.id, precio: Number(editandoLinea.valor) });
+                                  if (e.key === "Escape") setEditandoLinea(null);
+                                }}
+                                style={{ width: 80, padding: "3px 6px", border: "1.5px solid #2563eb", borderRadius: 6, fontSize: 13, textAlign: "right" }}
+                              />
+                              <button onClick={() => actualizarPrecio.mutate({ lineaId: l.id, precio: Number(editandoLinea.valor) })} style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 4, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>✓</button>
+                              <button onClick={() => setEditandoLinea(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 4, padding: "3px 7px", cursor: "pointer", fontSize: 11, color: "#64748b" }}>✕</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end" }}>
+                              ${pUnit.toFixed(2)}
+                              {puedeEditarLinea && (
+                                <button onClick={() => setEditandoLinea({ id: l.id, valor: pUnit.toFixed(4) })} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 2, display: "flex", alignItems: "center" }} title="Editar precio">
+                                  <Edit2 size={11} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#92400e" }}>
                           {tasa > 0 ? `${(pUnit * tasa).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs` : "—"}
                         </td>

@@ -68,6 +68,10 @@ export const cotizacionesApi = {
     api.get("/cotizaciones/reporte-comisiones", { params: mes ? { mes } : {} }).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/cotizaciones/${id}`).then((r) => r.data),
   duplicar: (id: number) => api.post(`/cotizaciones/${id}/duplicar`).then((r) => r.data),
+  actualizarPrecioLinea: (lineaId: number, precioUnitario: number) =>
+    api.patch(`/cotizaciones/lineas/${lineaId}/precio`, { precioUnitario }).then((r) => r.data),
+  recalcularDesdeListaPrecios: (id: number) =>
+    api.post(`/cotizaciones/${id}/recalcular-precios`).then((r) => r.data),
 };
 
 // Facturas

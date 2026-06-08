@@ -264,6 +264,90 @@ export async function cambiarEstado(req: Request, res: Response) {
   res.json(cotizacion);
 }
 
+// Actualiza el precio de una línea específica y recalcula los totales de la cotización
+export async function actualizarPrecioLinea(req: Request, res: Response) {
+  const lineaId = Number(req.params.lineaId);
+  const { precioUnitario, descuentoPct } = req.body;
+
+  const linea = await prisma.cotizacionLinea.findUnique({
+    where: { id: lineaId },
+    include: { cotizacion: true },
+  });
+  if (!linea) return res.status(404).json({ error: "Línea no encontrada" });
+  if (linea.cotizacion.estado === "COMPLETADA") {
+    return res.status(400).json({ error: "No se puede editar una cotización ya completada/facturada" });
+  }
+
+  const precio = Number(precioUnitario);
+  const dto = descuentoPct !== undefined ? Number(descuentoPct) : Number(linea.descuentoPct);
+  const precioFinal = precio * (1 - dto / 100);
+  const totalLinea = precioFinal * Number(linea.cantidad);
+
+  await prisma.cotizacionLinea.update({
+    where: { id: lineaId },
+    data: { precioUnitarioAplicado: precio, descuentoPct: dto, precioFinal, totalLinea },
+  });
+
+  // Recalcular totales de la cotización
+  const todasLineas = await prisma.cotizacionLinea.findMany({
+    where: { cotizacionId: linea.cotizacionId },
+  });
+  const totalBruto = todasLineas.reduce((s, l) => s + Number(l.precioUnitarioAplicado) * Number(l.cantidad), 0);
+  const totalNeto = todasLineas.reduce((s, l) => s + Number(l.totalLinea), 0);
+  const descuentoTotal = totalBruto - totalNeto;
+
+  const cot = await prisma.cotizacion.update({
+    where: { id: linea.cotizacionId },
+    data: { totalBruto, totalNeto, descuentoTotal },
+  });
+  res.json({ ok: true, totalNeto: cot.totalNeto });
+}
+
+// Recalcula todos los precios de una cotización desde la lista de precios actual del cliente
+export async function recalcularDesdeListaPrecios(req: Request, res: Response) {
+  const cotizacionId = Number(req.params.id);
+  const cotizacion = await prisma.cotizacion.findUnique({
+    where: { id: cotizacionId },
+    include: {
+      cliente: { include: { listaPrecio: { include: { detalle: true } } } },
+      lineas: true,
+    },
+  });
+  if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
+  if (cotizacion.estado === "COMPLETADA") {
+    return res.status(400).json({ error: "No se puede recalcular una cotización ya completada/facturada" });
+  }
+
+  const detalleLista = cotizacion.cliente.listaPrecio?.detalle ?? [];
+  const actualizados: string[] = [];
+  const sinPrecio: string[] = [];
+
+  for (const linea of cotizacion.lineas) {
+    const detalle = detalleLista.find((d: any) => d.productoId === linea.productoId);
+    if (!detalle) { sinPrecio.push(String(linea.productoId)); continue; }
+
+    const precio = Number(detalle.precioUnitario);
+    const dto = Number(linea.descuentoPct);
+    const precioFinal = precio * (1 - dto / 100);
+    const totalLinea = precioFinal * Number(linea.cantidad);
+
+    await prisma.cotizacionLinea.update({
+      where: { id: linea.id },
+      data: { precioUnitarioAplicado: precio, precioFinal, totalLinea, listaPrecioOrigenId: cotizacion.cliente.listaPrecio?.id },
+    });
+    actualizados.push(String(linea.id));
+  }
+
+  // Recalcular totales
+  const todasLineas = await prisma.cotizacionLinea.findMany({ where: { cotizacionId } });
+  const totalBruto = todasLineas.reduce((s, l) => s + Number(l.precioUnitarioAplicado) * Number(l.cantidad), 0);
+  const totalNeto = todasLineas.reduce((s, l) => s + Number(l.totalLinea), 0);
+  const descuentoTotal = totalBruto - totalNeto;
+
+  await prisma.cotizacion.update({ where: { id: cotizacionId }, data: { totalBruto, totalNeto, descuentoTotal } });
+  res.json({ actualizados: actualizados.length, sinPrecio });
+}
+
 export async function ordenProduccion(req: Request, res: Response) {
   const cotizaciones = await prisma.cotizacion.findMany({
     where: { estado: { in: ["APROBADA", "EN_DESPACHO"] } },
