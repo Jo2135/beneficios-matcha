@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { clientesApi, listasApi, authApi, cotizacionesApi, facturasApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { Plus, Search, Edit2, MapPin, User, History, X } from "lucide-react";
+import { Plus, Search, Edit2, MapPin, User, History, X, BookOpen } from "lucide-react";
 
 const EMPRESAS = ["ECOPLAST F.P.", "MAXPLASTIC F.P."];
 
 export default function Clientes() {
   const qc = useQueryClient();
   const { puedeEditar } = useAuth();
+  const navigate = useNavigate();
   const [busqueda, setBusqueda] = useState("");
   const [modal, setModal] = useState<{ abierto: boolean; datos: any }>({ abierto: false, datos: null });
   const [form, setForm] = useState<any>({});
@@ -137,6 +139,15 @@ export default function Clientes() {
                     >
                       <History size={14} />
                     </button>
+                    {puedeEditar && (
+                      <button
+                        onClick={() => navigate(`/clientes/${c.id}/estado-cuenta`)}
+                        style={{ ...btnIcon, color: "#0369a1" }}
+                        title="Estado de cuenta"
+                      >
+                        <BookOpen size={14} />
+                      </button>
+                    )}
                     {puedeEditar && (
                       <button onClick={() => abrir(c)} style={btnIcon}><Edit2 size={14} /></button>
                     )}

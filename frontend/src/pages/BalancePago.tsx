@@ -59,6 +59,7 @@ export default function BalancePago() {
   const [notaAbierta, setNotaAbierta] = useState<number | null>(null);
   const [notaTexto, setNotaTexto] = useState("");
   const [nuevaCuota, setNuevaCuota] = useState<{ itemId: number; fecha: string; monto: string; notas: string } | null>(null);
+  const [tooltipItem, setTooltipItem] = useState<number | null>(null);
 
   // ── Queries ─────────────────────────────────────────────────────────────
   const { data: balance, isLoading, isError } = useQuery<Balance>({
@@ -229,12 +230,28 @@ export default function BalancePago() {
               return (
                 <tr key={item.id} style={{ background: rowBg }}>
                   {/* Nombre */}
-                  <td style={{ ...tdStyle }}>
+                  <td
+                    style={{ ...tdStyle, position: "relative", cursor: item.notas ? "help" : "default" }}
+                    onMouseEnter={() => item.notas ? setTooltipItem(item.id) : undefined}
+                    onMouseLeave={() => setTooltipItem(null)}
+                  >
                     <span style={{ fontWeight: 600, color: pagadoCompleto ? "#dc2626" : "#0f172a" }}>
                       {item.nombre}
                     </span>
                     {item.notas && (
-                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{item.notas}</div>
+                      <span style={{ marginLeft: 5, fontSize: 11, color: "#94a3b8" }}>📝</span>
+                    )}
+                    {tooltipItem === item.id && item.notas && (
+                      <div style={{
+                        position: "absolute", left: 0, top: "100%", zIndex: 200,
+                        background: "#1e293b", color: "#e2e8f0", borderRadius: 8,
+                        padding: "8px 12px", fontSize: 12, maxWidth: 300,
+                        whiteSpace: "pre-wrap", lineHeight: 1.5,
+                        boxShadow: "0 6px 20px rgba(0,0,0,.3)",
+                        pointerEvents: "none",
+                      }}>
+                        {item.notas}
+                      </div>
                     )}
                   </td>
 

@@ -19,6 +19,7 @@ import Configuracion from "./pages/Configuracion";
 import CalendarioCobros from "./pages/CalendarioCobros";
 import GananciasDespacho from "./pages/GananciasDespacho";
 import BalancePago from "./pages/BalancePago";
+import EstadoCuenta from "./pages/EstadoCuenta";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -76,6 +77,7 @@ function AppRoutes() {
         {puedeEditar && <Route path="/despachos/:id/ganancias" element={<GananciasDespacho />} />}
         {puedeEditar && <Route path="/despachos/:id/balance" element={<BalancePago />} />}
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
+        {puedeEditar && <Route path="/clientes/:clienteId/estado-cuenta" element={<EstadoCuenta />} />}
         {puedeEditar && <Route path="/facturas" element={<Facturas />} />}
         {puedeEditar && <Route path="/pagos" element={<Pagos />} />}
         {puedeEditar && <Route path="/reportes" element={<ReporteComisiones />} />}
