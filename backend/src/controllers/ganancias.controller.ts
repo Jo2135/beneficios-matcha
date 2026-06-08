@@ -187,6 +187,14 @@ function detectar(codigo: string | null, nombre: string, medida: string, catNomb
     if (/^(TUAM|TUNA|TUGR-2)/.test(c)) {
       return { catMat: "amarillo", catGan: null, esPead: true, curvaKey: null, label: "pead" };
     }
+    // TUGR-1: si el nombre contiene "pvc" es compra externa (Tubo Gris PVC),
+    // aunque tenga el código de Agua Blanca
+    if (/^TUGR-1/.test(c)) {
+      const nfull = norm(nombre + " " + medida + " " + catNombre);
+      if (nfull.includes("pvc")) {
+        return { catMat: null, catGan: null, esPead: false, curvaKey: null, label: "gris-pvc (externo)" };
+      }
+    }
     const catMat = catMatByCode(c);
     const catGan = catGanByCode(c);
     if (catMat || catGan) {
@@ -248,7 +256,7 @@ export async function calcular(req: Request, res: Response) {
           select: {
             id: true, totalNeto: true,
             vendedor: { select: { nombre: true } },
-            cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true } },
+            cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true } },
             lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true } } } },
           },
         },
@@ -430,6 +438,43 @@ export async function calcular(req: Request, res: Response) {
   }
   const totalComisionVendedores = comisionesVendedores.reduce((s, c) => s + c.monto, 0);
 
+  // ── Flete por cliente (misma fórmula que NuevaCotizacion) ─────────────────
+  interface FleteItem { clienteNombre: string; ftPct: number; fcPct: number; totalTuberia: number; totalConexiones: number; monto: number; }
+  const fletesCliente: FleteItem[] = [];
+  const cotVistasF = new Set<number>();
+
+  for (const linea of despacho.lineas) {
+    const cot = (linea as any).cotizacion;
+    if (!cot || cotVistasF.has(cot.id)) continue;
+    cotVistasF.add(cot.id);
+
+    const ftPct = Number(cot.cliente?.fleteTuberiaPct ?? 0);
+    const fcPct = Number(cot.cliente?.fleteConexionesPct ?? 0);
+    if (ftPct + fcPct === 0) continue;
+
+    let totalTuberia = 0, totalConexiones = 0;
+    for (const cl of (cot.lineas ?? []) as any[]) {
+      const monto = Number(cl.totalLinea ?? 0);
+      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "")) {
+        totalConexiones += monto;
+      } else {
+        totalTuberia += monto;
+      }
+    }
+
+    const monto =
+      (ftPct > 0 ? totalTuberia  * ftPct / (100 + ftPct) : 0) +
+      (fcPct > 0 ? totalConexiones * fcPct / (100 + fcPct) : 0);
+
+    if (monto > 0) {
+      fletesCliente.push({
+        clienteNombre: cot.cliente?.nombre ?? `Cot #${cot.id}`,
+        ftPct, fcPct, totalTuberia, totalConexiones, monto,
+      });
+    }
+  }
+  const totalFlete = fletesCliente.reduce((s, f) => s + f.monto, 0);
+
   // ── Extra de material (fondo reserva) ────────────────────────────────────
   // = Venta total − costos identificados − ganancias distribuidas
   // curvaTotalVenta ya engloba curvaMaterial + curvaAlberto + curvaMuchachas
@@ -442,7 +487,8 @@ export async function calcular(req: Request, res: Response) {
     - totalGananciaGeneral
     - gananciaPEAD
     - g2Sum
-    - totalComisionVendedores;
+    - totalComisionVendedores
+    - totalFlete;
 
   res.json({
     despacho: { id: despacho.id, numero: despacho.numero },
@@ -471,6 +517,7 @@ export async function calcular(req: Request, res: Response) {
     },
     ganancias2: { base: totalSinConexiones, conexionesExcluidas: totalConexiones, sbug, yolanda, sandra, comisiones },
     comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
+    fletesCliente: { detalle: fletesCliente, total: totalFlete },
     extraMaterial,
     servicioExterno,
     lineas: lineasDetalle,

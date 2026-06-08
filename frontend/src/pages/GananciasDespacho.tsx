@@ -238,6 +238,24 @@ export default function GananciasDespacho() {
             <PagoLinea label="Comisiones" monto={d.ganancias2.comisiones} color="#7c3aed" />
           </Section>
 
+          {/* Flete por cliente */}
+          {(d.fletesCliente?.detalle?.length ?? 0) > 0 && (
+            <Section titulo="Flete">
+              {(d.fletesCliente.detalle as any[]).map((f: any, i: number) => (
+                <PagoLinea
+                  key={i}
+                  label={`Flete — ${f.clienteNombre}`}
+                  monto={f.monto}
+                  color="#7c3aed"
+                  detalle={[
+                    f.ftPct > 0 && f.totalTuberia > 0   ? `${f.ftPct}% tub (${usd(f.totalTuberia)})` : "",
+                    f.fcPct > 0 && f.totalConexiones > 0 ? `${f.fcPct}% con (${usd(f.totalConexiones)})` : "",
+                  ].filter(Boolean).join(" · ")}
+                />
+              ))}
+            </Section>
+          )}
+
           {/* Comisiones por cliente */}
           {(d.comisionesVendedores?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Comisiones Vendedores">
@@ -412,6 +430,9 @@ function ResumenTotal({ data: d }: { data: any }) {
       { label: "Pago Muchachas (Curvas)",   monto: d.curvas.pagoMuchachas },
       { label: "Ganancia Alberto (Curvas)", monto: d.curvas.gananciaAlberto },
     ] : []),
+    ...((d.fletesCliente?.detalle ?? []) as any[]).map((f: any) => ({
+      label: `Flete — ${f.clienteNombre}`, monto: f.monto,
+    })),
     ...((d.comisionesVendedores?.detalle ?? []) as any[]).map((c: any) => ({
       label: `Comisión — ${c.clienteNombre}`, monto: c.monto,
     })),
