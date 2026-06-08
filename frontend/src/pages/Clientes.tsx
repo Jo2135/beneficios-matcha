@@ -60,7 +60,7 @@ export default function Clientes() {
   );
 
   const abrir = (cliente?: any) => {
-    setForm(cliente ?? { empresaFactura: "ECOPLAST F.P.", diasCredito: 0, fleteTuberiaPct: 0, fleteConexionesPct: 0, comisionTuberiaPct: 0, comisionConexionesPct: 0 });
+    setForm(cliente ?? { empresaFactura: "ECOPLAST F.P.", diasCredito: 0, fleteTuberiaPct: 0, fleteConexionesPct: 0, comisionTuberiaPct: 0, comisionConexionesPct: 0, socioEquivalente: null, vendedorEsMaster: false });
     setModal({ abierto: true, datos: cliente ?? null });
   };
 
@@ -324,6 +324,43 @@ export default function Clientes() {
                   </div>
                 </div>
               </div>
+              {/* Reglas especiales de ganancias */}
+              <div style={{ gridColumn: "1/-1" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#1d4ed8", background: "#dbeafe", border: "1px solid #bfdbfe", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
+                  Reglas especiales de distribución de ganancias
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Socio equivalente al vendedor</label>
+                    <select style={inputStyle} value={form.socioEquivalente || ""} onChange={(e) => setForm({ ...form, socioEquivalente: e.target.value || null })}>
+                      <option value="">Ninguno (normal)</option>
+                      <option value="sbug">SBUG</option>
+                      <option value="yolanda">Yolanda</option>
+                      <option value="sandra">Sandra</option>
+                      <option value="comisiones">Comisiones</option>
+                    </select>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>
+                      La parte de G2 de ese socio en facturas de este cliente va a Extra de Material
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-start", flexDirection: "column", gap: 6, paddingTop: 2 }}>
+                    <label style={labelStyle}>Vendedor MASTER</label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(form.vendedorEsMaster)}
+                        onChange={(e) => setForm({ ...form, vendedorEsMaster: e.target.checked })}
+                        style={{ width: 16, height: 16, cursor: "pointer" }}
+                      />
+                      <span style={{ fontSize: 13, color: "#374151" }}>Su comisión ya está en el 2.2% de Comisiones</span>
+                    </label>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                      Ej: Casa del Tubo, FERCA, Infinito, Gloria Center
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>Condición de Pago</label>
                 <input style={inputStyle} value={form.condicionPago || ""} placeholder="Ej: 30% al despachar + 15 días" onChange={(e) => setForm({ ...form, condicionPago: e.target.value })} />

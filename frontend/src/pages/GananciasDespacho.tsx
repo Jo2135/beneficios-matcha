@@ -238,6 +238,23 @@ export default function GananciasDespacho() {
             <PagoLinea label="Comisiones" monto={d.ganancias2.comisiones} color="#7c3aed" />
           </Section>
 
+          {/* Redirección de socio a Extra de Material */}
+          {(d.socioRedireccion?.detalle?.length ?? 0) > 0 && (
+            <Section titulo="Redirección a Extra de Material (Socio Equivalente)">
+              <div style={{ padding: "4px 12px 8px", fontSize: 12, color: "#64748b" }}>
+                La parte de Ganancias_2 de estos socios va a Extra de Material porque el vendedor ya cobró como vendedor
+              </div>
+              {(d.socioRedireccion.detalle as any[]).map((r: any, i: number) => (
+                <PagoLinea
+                  key={i}
+                  label={`${r.socio.toUpperCase()} → Extra Material (${r.clienteNombre})`}
+                  monto={r.monto}
+                  color="#16a34a"
+                />
+              ))}
+            </Section>
+          )}
+
           {/* Flete por cliente */}
           {(d.fletesCliente?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Flete">
@@ -457,7 +474,14 @@ function ResumenTotal({ data: d }: { data: any }) {
       ))}
       {extraMat !== 0 && (
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid #334155", background: extraMat >= 0 ? "#14532d22" : "#7f1d1d22" }}>
-          <span style={{ fontSize: 13, color: extraMat >= 0 ? "#4ade80" : "#f87171" }}>Extra de Material (reserva)</span>
+          <div>
+            <span style={{ fontSize: 13, color: extraMat >= 0 ? "#4ade80" : "#f87171" }}>Extra de Material (reserva)</span>
+            {(d.socioRedireccion?.total ?? 0) > 0 && (
+              <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+                Incluye redireccion socios: {usd(d.socioRedireccion.total)}
+              </div>
+            )}
+          </div>
           <span style={{ fontSize: 13, fontWeight: 700, color: extraMat >= 0 ? "#4ade80" : "#f87171" }}>{usd(extraMat)}</span>
         </div>
       )}

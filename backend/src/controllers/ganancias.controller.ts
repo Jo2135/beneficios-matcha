@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { DEFAULTS } from "./tablas.controller";
 
 // ─── TABLAS FIJAS (fuente: archivos Excel de referencia) ──────────────────────
+// Si hay overrides en ConfigGanancias, éstos reemplazan los defaults al calcular.
 
 const COSTO_MAT_KG: Record<string, number> = {
   manguera34: 1.083, manguera13: 1.090,
@@ -13,6 +15,61 @@ const GANANCIA_KG: Record<string, number> = {
   azul: 0.190, gris: 0.180,
   negro_elec: 0.260, blanco_elec: 0.350,
 };
+
+// ─── Lee ConfigGanancias y devuelve tablas efectivas ─────────────────────────
+async function cargarTablas(despachoId: number) {
+  const rows = await prisma.configGanancias.findMany({
+    where: { OR: [{ despachoId: null }, { despachoId }] },
+  });
+  // despacho-specific tiene prioridad sobre global
+  const ov = new Map<string, number>();
+  const globalRows = rows.filter((r) => r.despachoId === null);
+  const despRows   = rows.filter((r) => r.despachoId !== null);
+  for (const r of globalRows) ov.set(r.campo, Number(r.valor));
+  for (const r of despRows)   ov.set(r.campo, Number(r.valor));
+
+  const get = (campo: string, fallback: number) => ov.has(campo) ? ov.get(campo)! : fallback;
+
+  return {
+    costoMat: {
+      manguera34: get("costo_manguera34", COSTO_MAT_KG.manguera34),
+      manguera13: get("costo_manguera13", COSTO_MAT_KG.manguera13),
+      azul:       get("costo_azul",       COSTO_MAT_KG.azul),
+      negro:      get("costo_negro",      COSTO_MAT_KG.negro),
+      gris:       get("costo_gris",       COSTO_MAT_KG.gris),
+      blanco:     get("costo_blanco",     COSTO_MAT_KG.blanco),
+      amarillo:   get("costo_amarillo",   COSTO_MAT_KG.amarillo),
+    } as Record<string, number>,
+    gananciaKg: {
+      manguera34: get("gan_manguera34",  GANANCIA_KG.manguera34),
+      manguera13: get("gan_manguera13",  GANANCIA_KG.manguera13),
+      azul:       get("gan_azul",        GANANCIA_KG.azul),
+      gris:       get("gan_gris",        GANANCIA_KG.gris),
+      negro_elec: get("gan_negro_elec",  GANANCIA_KG.negro_elec),
+      blanco_elec:get("gan_blanco_elec", GANANCIA_KG.blanco_elec),
+    } as Record<string, number>,
+    g2: {
+      sbug:       get("g2_sbug",       DEFAULTS.g2_sbug.valor),
+      yolanda:    get("g2_yolanda",    DEFAULTS.g2_yolanda.valor),
+      sandra:     get("g2_sandra",     DEFAULTS.g2_sandra.valor),
+      comisiones: get("g2_comisiones", DEFAULTS.g2_comisiones.valor),
+    },
+    dist: {
+      alberto_gral: get("dist_alberto_gral", DEFAULTS.dist_alberto_gral.valor) / 100,
+      capital:      get("dist_capital",      DEFAULTS.dist_capital.valor)      / 100,
+      alberto_am:   get("dist_alberto_am",   DEFAULTS.dist_alberto_am.valor)   / 100,
+      danny_am:     get("dist_danny_am",     DEFAULTS.dist_danny_am.valor)     / 100,
+      darwin_am:    get("dist_darwin_am",    DEFAULTS.dist_darwin_am.valor)    / 100,
+    },
+    gastosOv: {
+      obreros:  ov.has("gastos_obreros") ? ov.get("gastos_obreros")! : null,
+      pigmento: ov.has("gastos_pigmento") ? ov.get("gastos_pigmento")! : null,
+      elect:    ov.has("gastos_elect")   ? ov.get("gastos_elect")!   : null,
+    },
+    hayOverrides: ov.size > 0,
+    overridesCampos: [...ov.keys()],
+  };
+}
 
 // Pesos de ganancia para tubería PEAD (Ganancias_1 — valores menores al sistema)
 const PEAD_PESO_CODE: Record<string, number> = {
@@ -246,6 +303,11 @@ function esConexion(codigo: string | null, nombre: string): boolean {
 export async function calcular(req: Request, res: Response) {
   const id = Number(req.params.id);
 
+  // Cargar tablas (con posibles overrides de ConfigGanancias)
+  const tablas = await cargarTablas(id);
+  const CM = tablas.costoMat;
+  const GK = tablas.gananciaKg;
+
   const despacho = await prisma.ordenDespacho.findUnique({
     where: { id },
     include: {
@@ -256,7 +318,7 @@ export async function calcular(req: Request, res: Response) {
           select: {
             id: true, totalNeto: true,
             vendedor: { select: { nombre: true } },
-            cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true } },
+            cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true } },
             lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true } } } },
           },
         },
@@ -332,7 +394,7 @@ export async function calcular(req: Request, res: Response) {
   const costoMateria: Record<string, { kg: number; rate: number; costo: number }> = {};
   let totalCostoMateria = 0;
   for (const [cat, kg] of Object.entries(kgMat)) {
-    const rate = COSTO_MAT_KG[cat] ?? 0;
+    const rate = CM[cat] ?? COSTO_MAT_KG[cat] ?? 0;
     const costo = kg * rate;
     costoMateria[cat] = { kg, rate, costo };
     totalCostoMateria += costo;
@@ -361,18 +423,18 @@ export async function calcular(req: Request, res: Response) {
   const gananciaDesglose: { cat: string; kg: number; rate: number; ganancia: number }[] = [];
   let totalGananciaGeneral = 0;
   for (const [cat, kg] of Object.entries(kgGan)) {
-    const rate = GANANCIA_KG[cat] ?? 0;
+    const rate = GK[cat] ?? GANANCIA_KG[cat] ?? 0;
     const ganancia = kg * rate;
     gananciaDesglose.push({ cat, kg, rate, ganancia });
     totalGananciaGeneral += ganancia;
   }
-  const srAlbertoGral = totalGananciaGeneral * 0.6;
-  const capital       = totalGananciaGeneral * 0.4;
+  const srAlbertoGral = totalGananciaGeneral * tablas.dist.alberto_gral;
+  const capital       = totalGananciaGeneral * tablas.dist.capital;
 
   // ── Ganancia Aguas Negras H47 ─────────────────────────────────────────────
-  const srAlbertoAmarillo = gananciaPEAD * 0.42;
-  const dannyAmarillo     = gananciaPEAD * 0.33;
-  const darwinAmarillo    = gananciaPEAD * 0.25;
+  const srAlbertoAmarillo = gananciaPEAD * tablas.dist.alberto_am;
+  const dannyAmarillo     = gananciaPEAD * tablas.dist.danny_am;
+  const darwinAmarillo    = gananciaPEAD * tablas.dist.darwin_am;
 
   // ── Ganancias_2 (excluye conexiones) ─────────────────────────────────────
   // Suma de FacturaLineas excluyendo productos tipo conexión
@@ -389,10 +451,10 @@ export async function calcular(req: Request, res: Response) {
     }
   }
   const x = totalSinConexiones;
-  const sbug      = x - x / 1.015;
-  const yolanda   = x - x / 1.0075;
-  const sandra    = x - x / 1.0075;
-  const comisiones = x - x / 1.022;
+  const sbug       = x - x / (1 + tablas.g2.sbug);
+  const yolanda    = x - x / (1 + tablas.g2.yolanda);
+  const sandra     = x - x / (1 + tablas.g2.sandra);
+  const comisiones = x - x / (1 + tablas.g2.comisiones);
 
   // ── Servicios externos ────────────────────────────────────────────────────
   const servicioExterno = lineasDetalle
@@ -409,6 +471,9 @@ export async function calcular(req: Request, res: Response) {
     const cot = (linea as any).cotizacion;
     if (!cot || cotizacionesVistas.has(cot.id)) continue;
     cotizacionesVistas.add(cot.id);
+
+    // Si el cliente pertenece al vendedor MASTER, su comisión ya está en Ganancias_2 (2.2% Comisiones)
+    if (cot.cliente?.vendedorEsMaster === true) continue;
 
     const ctPct = Number(cot.cliente?.comisionTuberiaPct ?? 0);
     const ccPct = Number(cot.cliente?.comisionConexionesPct ?? 0);
@@ -475,11 +540,55 @@ export async function calcular(req: Request, res: Response) {
   }
   const totalFlete = fletesCliente.reduce((s, f) => s + f.monto, 0);
 
+  // ── socioEquivalente: redirigir parte de Ganancias_2 a Extra de Material ──
+  // Cuando un cliente tiene socioEquivalente, la fracción de G2 que le correspondería
+  // a ese socio (calculada sobre las ventas de ESA cotización) va a Extra de Material
+  // porque el vendedor ya cobró su parte como vendedor, no como socio.
+  interface SocioRedirItem { clienteNombre: string; socio: string; monto: number; }
+  const socioRedireccionDetalle: SocioRedirItem[] = [];
+  const socioRedireccion: Record<string, number> = {};
+  const cotVistasS = new Set<number>();
+
+  for (const linea of despacho.lineas) {
+    const cot = (linea as any).cotizacion;
+    if (!cot || cotVistasS.has(cot.id)) continue;
+    cotVistasS.add(cot.id);
+
+    const socio = cot.cliente?.socioEquivalente as string | null;
+    if (!socio) continue;
+    const tasaObj = tablas.g2 as Record<string, number>;
+    const tasa = tasaObj[socio];
+    if (!tasa) continue;
+
+    // Calcular tubería de esta cotización (sin conexiones)
+    let cotSinCon = 0;
+    for (const cl of (cot.lineas ?? []) as any[]) {
+      if (!esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? ""))
+        cotSinCon += Number(cl.totalLinea ?? 0);
+    }
+    if (cotSinCon <= 0) continue;
+
+    const montoRedirigido = cotSinCon - cotSinCon / (1 + tasa);
+    socioRedireccion[socio] = (socioRedireccion[socio] ?? 0) + montoRedirigido;
+    socioRedireccionDetalle.push({
+      clienteNombre: cot.cliente?.nombre ?? `Cot #${cot.id}`,
+      socio,
+      monto: montoRedirigido,
+    });
+  }
+
+  // Montos finales de G2 (descontando las redirecciones)
+  const sbugFinal       = sbug       - (socioRedireccion.sbug       ?? 0);
+  const yolandaFinal    = yolanda    - (socioRedireccion.yolanda    ?? 0);
+  const sandraFinal     = sandra     - (socioRedireccion.sandra     ?? 0);
+  const comisionesFinal = comisiones - (socioRedireccion.comisiones ?? 0);
+  const totalSocioRedirigido = Object.values(socioRedireccion).reduce((s, v) => s + v, 0);
+
   // ── Extra de material (fondo reserva) ────────────────────────────────────
   // = Venta total − costos identificados − ganancias distribuidas
   // curvaTotalVenta ya engloba curvaMaterial + curvaAlberto + curvaMuchachas
   const gastosTotal = gastos.obreros + gastos.pigmento + gastos.electricidad;
-  const g2Sum = sbug + yolanda + sandra + comisiones;
+  const g2Sum = sbugFinal + yolandaFinal + sandraFinal + comisionesFinal;
   const extraMaterial = facturaTotal
     - totalCostoMateria
     - curvaTotalVenta
@@ -515,7 +624,13 @@ export async function calcular(req: Request, res: Response) {
       dannyAmarillo,
       darwinAmarillo,
     },
-    ganancias2: { base: totalSinConexiones, conexionesExcluidas: totalConexiones, sbug, yolanda, sandra, comisiones },
+    ganancias2: {
+      base: totalSinConexiones, conexionesExcluidas: totalConexiones,
+      sbug: sbugFinal, yolanda: yolandaFinal, sandra: sandraFinal, comisiones: comisionesFinal,
+      // montos brutos (antes de redirección) — para referencia
+      sbugBruto: sbug, yolandaBruto: yolanda, sandraBruto: sandra, comisionesBruto: comisiones,
+    },
+    socioRedireccion: { detalle: socioRedireccionDetalle, total: totalSocioRedirigido },
     comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
     fletesCliente: { detalle: fletesCliente, total: totalFlete },
     extraMaterial,

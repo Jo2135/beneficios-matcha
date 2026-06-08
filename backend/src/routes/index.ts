@@ -14,6 +14,7 @@ import * as tasaCambio from "../controllers/tasaCambio.controller";
 import * as seguimiento from "../controllers/seguimiento.controller";
 import * as ganancias from "../controllers/ganancias.controller";
 import * as balance from "../controllers/balance.controller";
+import * as tablas from "../controllers/tablas.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -151,6 +152,13 @@ router.get("/tasa-cambio", w(tasaCambio.listar));
 router.get("/tasa-cambio/vigente", w(tasaCambio.obtenerVigente));
 router.post("/tasa-cambio", requireRol("MASTER", "ADMIN"), w(tasaCambio.upsertHoy));
 router.delete("/tasa-cambio/:id", requireRol("MASTER"), w(tasaCambio.eliminar));
+
+// ─── Tablas de distribución de ganancias ─────────────────────────────────
+router.get("/tablas",              requireRol("MASTER", "ADMIN"), w(tablas.getTablasConOverrides));
+router.patch("/tablas",            requireRol("MASTER"),          w(tablas.setTablaOverride));
+router.get("/tablas/pin",          requireRol("MASTER"),          w(tablas.getPinEstado));
+router.post("/tablas/pin/verificar", requireRol("MASTER"),        w(tablas.verificarPin));
+router.post("/tablas/pin",         requireRol("MASTER"),          w(tablas.setPin));
 
 // ─── Categorías y seed ────────────────────────────────────────────────────
 router.use("/categorias", categoriasRouter);

@@ -60,13 +60,16 @@ export async function actualizar(req: Request, res: Response) {
   try {
     const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-            condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
-    console.log("[actualizar cliente]", req.params.id, { nombre, fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct });
+            condicionPago, observaciones, vendedorId, listaPrecioId,
+            socioEquivalente, vendedorEsMaster } = req.body;
+    console.log("[actualizar cliente]", req.params.id, { nombre, fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct, socioEquivalente, vendedorEsMaster });
     const cliente = await prisma.cliente.update({
       where: { id: Number(req.params.id) },
       data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito: Number(diasCredito) || 0,
               fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null },
+              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null,
+              socioEquivalente: socioEquivalente || null,
+              vendedorEsMaster: Boolean(vendedorEsMaster) },
     });
     res.json(cliente);
   } catch (e: any) {
@@ -79,18 +82,23 @@ export async function crear(req: Request, res: Response) {
   try {
     const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-            condicionPago, observaciones, vendedorId, listaPrecioId } = req.body;
+            condicionPago, observaciones, vendedorId, listaPrecioId,
+            socioEquivalente, vendedorEsMaster } = req.body;
+    console.log("[crear cliente] body:", JSON.stringify({ nombre, rif, vendedorId, listaPrecioId }));
     const cliente = await prisma.cliente.create({
       data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito: Number(diasCredito) || 0,
               fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null },
+              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null,
+              socioEquivalente: socioEquivalente || null,
+              vendedorEsMaster: Boolean(vendedorEsMaster) },
     });
     res.status(201).json(cliente);
   } catch (e: any) {
-    console.error("[error crear cliente]", e.message);
-    // Unique constraint: nombre o RIF duplicado
+    console.error("[error crear cliente] code:", e.code, "meta:", JSON.stringify(e.meta), "msg:", e.message);
+    // Unique constraint: campo duplicado
     if (e.code === "P2002") {
-      return res.status(409).json({ error: "Ya existe un cliente con ese nombre o RIF. Verifica los datos e intenta de nuevo." });
+      const campo = e.meta?.target ?? "desconocido";
+      return res.status(409).json({ error: `Ya existe un registro con ese valor en el campo: ${campo}. Verifica los datos.` });
     }
     res.status(500).json({ error: e.message });
   }
