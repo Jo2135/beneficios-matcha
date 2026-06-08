@@ -220,9 +220,9 @@ export default function GananciasDespacho() {
                 <div style={{ padding: "8px 12px 4px", fontSize: 12, color: "#64748b" }}>
                   Total base: {usd(d.gananciaAguasNegras.total)} — H47
                 </div>
-                <PagoLinea label="Sr. Alberto Amarillo (42%)" monto={d.gananciaAguasNegras.srAlbertoAmarillo} color="#16a34a" />
-                <PagoLinea label="Danny Amarillo (33%)"       monto={d.gananciaAguasNegras.dannyAmarillo}      color="#7c3aed" />
-                <PagoLinea label="Darwin Amarillo (25%)"      monto={d.gananciaAguasNegras.darwinAmarillo}     color="#d97706" />
+                <PagoLinea label="Sr. Alberto Amarillo" monto={d.gananciaAguasNegras.srAlbertoAmarillo} color="#16a34a" />
+                <PagoLinea label="Danny Amarillo"       monto={d.gananciaAguasNegras.dannyAmarillo}      color="#7c3aed" />
+                <PagoLinea label="Darwin Amarillo"      monto={d.gananciaAguasNegras.darwinAmarillo}     color="#d97706" />
               </>
             )}
           </Section>
@@ -232,10 +232,10 @@ export default function GananciasDespacho() {
             <div style={{ padding: "4px 12px 8px", fontSize: 12, color: "#64748b" }}>
               Base: {usd(d.facturaTotal)} — fórmula: x − x / (1 + %)
             </div>
-            <PagoLinea label="SBUG (1.5%)"       monto={d.ganancias2.sbug}       color="#dc2626" />
-            <PagoLinea label="Yolanda (0.75%)"   monto={d.ganancias2.yolanda}    color="#d97706" />
-            <PagoLinea label="Sandra (0.75%)"    monto={d.ganancias2.sandra}     color="#d97706" />
-            <PagoLinea label="Comisiones (2.2%)" monto={d.ganancias2.comisiones} color="#7c3aed" />
+            <PagoLinea label="SBUG"       monto={d.ganancias2.sbug}       color="#dc2626" />
+            <PagoLinea label="Yolanda"    monto={d.ganancias2.yolanda}    color="#d97706" />
+            <PagoLinea label="Sandra"     monto={d.ganancias2.sandra}     color="#d97706" />
+            <PagoLinea label="Comisiones" monto={d.ganancias2.comisiones} color="#7c3aed" />
           </Section>
 
           {/* Comisiones vendedores */}
@@ -402,7 +402,7 @@ function ResumenTotal({ data: d }: { data: any }) {
     { label: "SBUG",                        monto: d.ganancias2.sbug },
     { label: "Yolanda",                     monto: d.ganancias2.yolanda },
     { label: "Sandra",                      monto: d.ganancias2.sandra },
-    { label: "Comisiones (2.2%)",           monto: d.ganancias2.comisiones },
+    { label: "Comisiones",                   monto: d.ganancias2.comisiones },
     ...(d.curvas.pagoFabrica > 0 ? [
       { label: "Pago Fábrica (Curvas)",     monto: d.curvas.pagoFabrica },
       { label: "Pago Muchachas (Curvas)",   monto: d.curvas.pagoMuchachas },

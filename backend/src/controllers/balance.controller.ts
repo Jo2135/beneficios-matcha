@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma";
 // ─── COSTOS FIJOS ────────────────────────────────────────────────────────────
 const COSTO_MAT_KG: Record<string, number> = {
   manguera34: 1.083, manguera13: 1.090,
-  azul: 1.580, negro: 1.280, blanco: 1.580, amarillo: 1.590,
+  azul: 1.580, negro: 1.280, gris: 1.280, blanco: 1.580, amarillo: 1.590,
 };
 const GANANCIA_KG: Record<string, number> = {
   manguera34: 0.125, manguera13: 0.200,
@@ -32,7 +32,8 @@ const CODO_COSTO_FABRICA: Record<string, number> = { "CO-2": 0.38, "CO-4": 1.90 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 function norm(s: string) {
-  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/["""'']/g, '"').trim();
 }
 function normCod(c: string | null | undefined) {
   return (c || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -52,7 +53,7 @@ function catMatByCode(c: string): string | null {
   if (/^MGR-(3\/8|1\/2|3\/4)/.test(c)) return "manguera34";
   if (/^MGR-/.test(c)) return "manguera13";
   if (/^(MGAZ|TUAZ)/.test(c)) return "azul";
-  if (/^TUGR-1/.test(c)) return "negro";
+  if (/^TUGR-1/.test(c)) return "gris";   // Tubo Gris Agua Blanca — separado de negro
   if (/^TUNG/.test(c)) return "negro";
   if (/^TUBL/.test(c)) return "blanco";
   if (/^(TUAM|TUNA|TUGR-2)/.test(c)) return "amarillo";
@@ -85,6 +86,84 @@ function nipleLengthCm(medida: string): number {
 function nipleDiameter(medida: string): string {
   const m = medida.match(/^([\d\s/]+)"?/);
   return m ? m[1].trim() : "1/2";
+}
+
+// ─── DETECCIÓN POR NOMBRE (para productos sin código en DB) ─────────────────
+
+function curvaKeyFromNombreB(nombre: string, medida: string): string {
+  const full = norm(nombre + " " + medida);
+  const blanca = full.includes("blanc");
+  const is34   = full.includes("3/4");
+  const is1    = /\b1\s*"/.test(nombre + " " + medida) ||
+                 (full.includes(" 1") && !full.includes("1/2") && !full.includes("11/2"));
+  if (blanca) return is34 ? "CVBL-3/4" : is1 ? "CVBL-1" : "CVBL-1/2";
+  return              is34 ? "CVNG-3/4" : is1 ? "CVNG-1" : "CVNG-1/2";
+}
+
+function pesoGananciaPead(codigo: string | null, nombre: string, medida: string, pesoUnitDB: number): number {
+  const c = normCod(codigo);
+  if (c && PEAD_PESO_CODE[c]) return PEAD_PESO_CODE[c];
+  const full = norm(nombre + " " + medida);
+  const reforzado = full.includes("pesado") || full.includes("reforzad");
+  const negra     = full.includes("gris") || (full.includes("negr") && !full.includes("naranja"));
+  const s6 = /6\s*["x]/.test(nombre + medida);
+  const s4 = /4\s*["x]/.test(nombre + medida);
+  const s3 = /3\s*["x]/.test(nombre + medida);
+  if (negra)     return s4 ? 2.2  : s3 ? 1.2  : 0.8;
+  if (reforzado) return s4 ? 2.45 : s3 ? 1.55 : 1.0;
+  if (s6) return 5.5;
+  if (s4) return 2.25;
+  if (s3) return 1.2;
+  return pesoUnitDB > 0 ? pesoUnitDB * 0.89 : 0.85;
+}
+
+interface DetB { catMat: string | null; catGan: string | null; esPead: boolean; curvaKey: string | null }
+
+/** Detecta categoría por código primero, luego por nombre (fallback para productos sin código) */
+function detectar(codigo: string | null, nombre: string, medida: string, catNombre: string): DetB {
+  const c = normCod(codigo);
+  // Manguera Verde y codos se manejan por separado fuera de este detector
+  if (c && (/^MGVD/.test(c) || /^CO-[24]/.test(c)))
+    return { catMat: null, catGan: null, esPead: false, curvaKey: null };
+  if (c) {
+    if (/^CV(BL|NG)/.test(c)) {
+      const ck = CURVA_COSTO_UNIT[c] ? c : curvaKeyFromNombreB(nombre, medida);
+      return { catMat: null, catGan: null, esPead: false, curvaKey: ck };
+    }
+    if (/^(TUAM|TUNA|TUGR-2)/.test(c))
+      return { catMat: "amarillo", catGan: null, esPead: true, curvaKey: null };
+    const catM = catMatByCode(c);
+    const catG = catGanByCode(c);
+    if (catM || catG) return { catMat: catM, catGan: catG, esPead: false, curvaKey: null };
+  }
+  // Sin código (o sin match) → detectar por nombre
+  const full = norm(nombre + " " + medida + " " + catNombre);
+  if (full.includes("curva") || full.includes("codo electr"))
+    return { catMat: null, catGan: null, esPead: false, curvaKey: curvaKeyFromNombreB(nombre, medida) };
+  if (full.includes("agua negra") || full.includes("aguas negras") || full.includes("pead") ||
+      (full.includes("amarill") && full.includes("tuber")) ||
+      (full.includes("naranja") && full.includes("tuber")) ||
+      (full.includes("negra") && full.includes("tuber") && !full.includes("electr")))
+    return { catMat: "amarillo", catGan: null, esPead: true, curvaKey: null };
+  if (full.includes("manguera") || full.includes("agricola") || full.includes("riego")) {
+    const verde = full.includes("verde"); // Manguera verde = compra externa, no suma a kgMat
+    if (verde) return { catMat: null, catGan: null, esPead: false, curvaKey: null };
+    const grande = /(?<![/\d])(1\s*1\/2|2\s*1\/2|[23])\s*["x]/i.test(nombre + " " + medida) ||
+                   (/(?<![/\d])1\s*["x]/i.test(nombre + " " + medida) && !/(1\/2|3\/4)/i.test(medida));
+    const cat = grande ? "manguera13" : "manguera34";
+    return { catMat: cat, catGan: cat, esPead: false, curvaKey: null };
+  }
+  if (full.includes("azul") && (full.includes("tubo") || full.includes("manguera") || full.includes("agua")))
+    return { catMat: "azul", catGan: "azul", esPead: false, curvaKey: null };
+  if (full.includes("gris") && (full.includes("agua") || full.includes("tubo")))
+    return { catMat: "gris", catGan: "gris", esPead: false, curvaKey: null };
+  if (full.includes("electr") && (full.includes("negr") || full.includes("negro")))
+    return { catMat: "negro", catGan: "negro_elec", esPead: false, curvaKey: null };
+  if (full.includes("electr") && full.includes("blanc"))
+    return { catMat: "blanco", catGan: "blanco_elec", esPead: false, curvaKey: null };
+  if (full.includes("electr") && full.includes("tubo"))
+    return { catMat: "negro", catGan: "negro_elec", esPead: false, curvaKey: null };
+  return { catMat: null, catGan: null, esPead: false, curvaKey: null };
 }
 
 // ─── CÁLCULO PRINCIPAL ──────────────────────────────────────────────────────
@@ -120,7 +199,7 @@ async function calcularDesdeDespacho(despachoId: number) {
   const gastos = gastosPorTotal(facturaTotal);
 
   // ── Material (kg × cost) ─────────────────────────────────────────────────
-  const kgMat: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, negro: 0, blanco: 0, amarillo: 0 };
+  const kgMat: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, negro: 0, gris: 0, blanco: 0, amarillo: 0 };
   const kgGan: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, gris: 0, negro_elec: 0, blanco_elec: 0 };
   let gananciaPEAD = 0;
   const cantCurvas: Record<string, number> = {};
@@ -153,23 +232,21 @@ async function calcularDesdeDespacho(despachoId: number) {
       totalServicioExterno += Number((linea as any).costoServicioExterno ?? 0);
     }
 
-    // Detección por código
-    if (c) {
-      if (/^CV(BL|NG)/.test(c)) {
-        cantCurvas[c] = (cantCurvas[c] ?? 0) + cantidad;
-        continue;
-      }
-      if (/^(TUAM|TUNA|TUGR-2)/.test(c)) {
-        const pesoGan = PEAD_PESO_CODE[c] ?? pesoUnit;
-        gananciaPEAD += cantidad * pesoGan * 0.49;
-        kgMat["amarillo"] = (kgMat["amarillo"] ?? 0) + totalKg;
-        continue;
-      }
-      const catM = catMatByCode(c);
-      const catG = catGanByCode(c);
-      if (catM) kgMat[catM] = (kgMat[catM] ?? 0) + totalKg;
-      if (catG) kgGan[catG] = (kgGan[catG] ?? 0) + totalKg;
+    // Detección por código con fallback por nombre (para productos sin código en DB)
+    const catNombre = linea.producto?.categoria?.nombre ?? "";
+    const det = detectar(codigo, nombre, medida, catNombre);
+    if (det.curvaKey) {
+      cantCurvas[det.curvaKey] = (cantCurvas[det.curvaKey] ?? 0) + cantidad;
+      continue;
     }
+    if (det.esPead) {
+      const pesoGan = pesoGananciaPead(codigo, nombre, medida, pesoUnit);
+      gananciaPEAD += cantidad * pesoGan * 0.49;
+      kgMat["amarillo"] = (kgMat["amarillo"] ?? 0) + totalKg;
+      continue;
+    }
+    if (det.catMat) kgMat[det.catMat] = (kgMat[det.catMat] ?? 0) + totalKg;
+    if (det.catGan) kgGan[det.catGan] = (kgGan[det.catGan] ?? 0) + totalKg;
   }
 
   let totalCostoMateria = 0;
