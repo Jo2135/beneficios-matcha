@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { despachosApi, cotizacionesApi } from "../api/endpoints";
@@ -496,7 +496,7 @@ export default function Despachos() {
                 </thead>
                 <tbody>
                   {lineasAgrupadas.map((grupo, gi) => (
-                    <>
+                    <React.Fragment key={grupo.cotizacion?.id ?? gi}>
                       {/* Encabezado de grupo — solo si hay más de una cotización */}
                       {lineasAgrupadas.length > 1 && (
                         <tr key={`g-${gi}`}>
@@ -549,7 +549,7 @@ export default function Despachos() {
                           </tr>
                         );
                       })}
-                    </>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
