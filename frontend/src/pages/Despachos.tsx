@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { despachosApi } from "../api/endpoints";
-import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X, BarChart2 } from "lucide-react";
+import { despachosApi, cotizacionesApi } from "../api/endpoints";
+import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X, BarChart2, Plus } from "lucide-react";
 import { pdfDespacho, pdfDespachoGandica } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -29,6 +29,7 @@ export default function Despachos() {
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [agregarCotModal, setAgregarCotModal] = useState(false);
 
   // Gandica PDF modal
   const [gandicaModal, setGandicaModal] = useState(false);
@@ -121,7 +122,9 @@ export default function Despachos() {
       qc.invalidateQueries({ queryKey: ["cotizaciones"] });
       qc.invalidateQueries({ queryKey: ["facturas"] });
       const est = data.estadoDespacho === "PARCIAL" ? "PARCIAL (con faltantes)" : "ENTREGADO";
-      alert(`Despacho finalizado como ${est}.\nFactura ${data.factura.numero} generada.`);
+      const facturas: any[] = data.facturas ?? (data.factura ? [data.factura] : []);
+      const numeros = facturas.map((f: any) => f.numero).join(", ");
+      alert(`Despacho finalizado como ${est}.\nFactura(s) generada(s): ${numeros}`);
       cerrar();
     },
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al finalizar"),
@@ -133,10 +136,49 @@ export default function Despachos() {
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al eliminar"),
   });
 
+  // ── Cotizaciones aprobadas disponibles para agregar al despacho ──────────────
+  const { data: cotsAprobadas = [] } = useQuery({
+    queryKey: ["cotizaciones-aprobadas"],
+    queryFn: () => cotizacionesApi.listar({ estado: "APROBADA" }),
+    enabled: agregarCotModal,
+  });
+
+  const cotIdsEnDespacho = useMemo(
+    () => new Set((despacho?.lineas ?? []).map((l: any) => l.cotizacion?.id).filter(Boolean)),
+    [despacho]
+  );
+  const cotsFiltradas = useMemo(
+    () => (cotsAprobadas as any[]).filter((c: any) => !cotIdsEnDespacho.has(c.id)),
+    [cotsAprobadas, cotIdsEnDespacho]
+  );
+
+  const agregarCot = useMutation({
+    mutationFn: (cotizacionId: number) => despachosApi.agregarCotizacion(despachoId!, cotizacionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["despacho", despachoId] });
+      qc.invalidateQueries({ queryKey: ["despachos"] });
+      qc.invalidateQueries({ queryKey: ["cotizaciones"] });
+      qc.invalidateQueries({ queryKey: ["cotizaciones-aprobadas"] });
+      setAgregarCotModal(false);
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al agregar cotización"),
+  });
+
   const hayEdits = Object.keys(cantidades).length > 0;
   const yaFinalizado = despacho?.estado === "ENTREGADO";
   const clienteNombre = despacho?.lineas?.[0]?.cotizacion?.cliente?.nombre ?? "—";
   const esGandica = clienteNombre.toLowerCase().includes("gandica");
+
+  // Agrupar líneas por cotización para mostrar separadas en la tabla
+  const lineasAgrupadas = useMemo(() => {
+    const grupos = new Map<number, { cotizacion: any; lineas: any[] }>();
+    for (const l of (despacho?.lineas ?? [])) {
+      const cotId = l.cotizacion?.id ?? 0;
+      if (!grupos.has(cotId)) grupos.set(cotId, { cotizacion: l.cotizacion, lineas: [] });
+      grupos.get(cotId)!.lineas.push(l);
+    }
+    return [...grupos.values()];
+  }, [despacho]);
 
   const generarPdfGandica = () => {
     if (!despacho) return;
@@ -342,6 +384,47 @@ export default function Despachos() {
         </div>
       )}
 
+      {/* Modal seleccionar cotización a agregar */}
+      {agregarCotModal && (
+        <div style={{ ...modalOverlay, zIndex: 100 }} onClick={() => setAgregarCotModal(false)}>
+          <div style={{ ...modalBox, width: "min(620px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1e293b" }}>Agregar Cotización al Despacho</h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>Cotizaciones aprobadas disponibles</p>
+              </div>
+              <button onClick={() => setAgregarCotModal(false)} style={btnClose}>✕</button>
+            </div>
+            {cotsFiltradas.length === 0 ? (
+              <div style={{ padding: "24px 0", textAlign: "center", color: "#94a3b8", fontSize: 14 }}>
+                No hay cotizaciones aprobadas disponibles para agregar
+              </div>
+            ) : (
+              <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 10 }}>
+                {cotsFiltradas.map((c: any) => (
+                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #f1f5f9" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: "#7c3aed", fontSize: 14 }}>{c.numero}</div>
+                      <div style={{ fontSize: 13, color: "#374151", marginTop: 2 }}>{c.cliente?.nombre ?? `Cliente #${c.clienteId}`}</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
+                        {c.lineas?.length ?? 0} productos · ${Number(c.total ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => agregarCot.mutate(c.id)}
+                      disabled={agregarCot.isPending}
+                      style={{ ...btnAction, background: "#2563eb", color: "#fff", fontSize: 13 }}
+                    >
+                      <Plus size={13} /> Agregar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Modal de detalle / edición */}
       {despachoId && despacho && (
         <div style={modalOverlay} onClick={cerrar}>
@@ -367,7 +450,12 @@ export default function Despachos() {
             <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
               {despacho.facturas?.length > 0 && (
                 <div style={{ flex: 1, background: "#dcfce7", border: "1px solid #86efac", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#166534" }}>
-                  ✓ Factura generada: <strong>{despacho.facturas[0].numero}</strong>
+                  ✓ {despacho.facturas.length > 1 ? `${despacho.facturas.length} facturas` : `Factura: ${despacho.facturas[0].numero}`}
+                  {despacho.facturas.length > 1 && (
+                    <span style={{ marginLeft: 6 }}>
+                      {despacho.facturas.map((f: any) => f.numero).join(", ")}
+                    </span>
+                  )}
                 </div>
               )}
               <button
@@ -376,6 +464,14 @@ export default function Despachos() {
               >
                 <Download size={14} /> Manifiesto PDF
               </button>
+              {!yaFinalizado && (
+                <button
+                  onClick={() => setAgregarCotModal(true)}
+                  style={{ ...btnAction, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
+                >
+                  <Plus size={14} /> Agregar Cotización
+                </button>
+              )}
               {esGandica && (
                 <button
                   onClick={() => setGandicaModal(true)}
@@ -386,7 +482,7 @@ export default function Despachos() {
               )}
             </div>
 
-            {/* Tabla de líneas */}
+            {/* Tabla de líneas — agrupadas por cotización */}
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -399,54 +495,62 @@ export default function Despachos() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(despacho.lineas ?? []).map((l: any) => {
-                    const cantDesp = getCantidad(l);
-                    const cantPedida = Number(l.cantidadPedida);
-                    const faltante = Math.max(0, cantPedida - cantDesp);
-                    const editado = cantidades[l.id] !== undefined;
-
-                    // Determinar estado visual en tiempo real
-                    let estLinea = "PENDIENTE";
-                    if (cantDesp === 0) estLinea = "FALTO";
-                    else if (cantDesp >= cantPedida) estLinea = "DESPACHADO";
-                    else if (cantDesp > 0) estLinea = "PARCIAL";
-
-                    const colorLinea = ESTADO_LINEA[estLinea]?.color;
-
-                    return (
-                      <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9", background: editado ? "#fffbeb" : "transparent" }}>
-                        <td style={tdStyle}>
-                          <div style={{ fontWeight: 600, color: "#1e293b" }}>{l.producto?.nombre}</div>
-                          {l.producto?.medida && <div style={{ fontSize: 11, color: "#94a3b8" }}>{l.producto.medida}</div>}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600 }}>{cantPedida}</td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          {yaFinalizado ? (
-                            <span style={{ fontWeight: 700, color: colorLinea }}>{Number(l.cantidadDespachada)}</span>
-                          ) : (
-                            <input
-                              type="number"
-                              min={0}
-                              max={cantPedida * 2}
-                              value={cantDesp}
-                              onChange={(e) => setCantidades((prev) => ({ ...prev, [l.id]: Math.max(0, Number(e.target.value)) }))}
-                              style={inputCant}
-                            />
-                          )}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          <span style={{ fontWeight: faltante > 0 ? 700 : 400, color: faltante > 0 ? "#dc2626" : "#94a3b8" }}>
-                            {faltante > 0 ? faltante : "—"}
-                          </span>
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          <span style={{ ...badge, color: colorLinea, background: colorLinea + "18" }}>
-                            {ESTADO_LINEA[estLinea]?.label}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {lineasAgrupadas.map((grupo, gi) => (
+                    <>
+                      {/* Encabezado de grupo — solo si hay más de una cotización */}
+                      {lineasAgrupadas.length > 1 && (
+                        <tr key={`g-${gi}`}>
+                          <td colSpan={5} style={{ padding: "8px 14px", background: "#eff6ff", borderTop: gi > 0 ? "2px solid #bfdbfe" : undefined, fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
+                            {grupo.cotizacion?.numero ?? "Sin cotización"} — {grupo.cotizacion?.cliente?.nombre ?? "—"}
+                          </td>
+                        </tr>
+                      )}
+                      {grupo.lineas.map((l: any) => {
+                        const cantDesp = getCantidad(l);
+                        const cantPedida = Number(l.cantidadPedida);
+                        const faltante = Math.max(0, cantPedida - cantDesp);
+                        const editado = cantidades[l.id] !== undefined;
+                        let estLinea = "PENDIENTE";
+                        if (cantDesp === 0) estLinea = "FALTO";
+                        else if (cantDesp >= cantPedida) estLinea = "DESPACHADO";
+                        else if (cantDesp > 0) estLinea = "PARCIAL";
+                        const colorLinea = ESTADO_LINEA[estLinea]?.color;
+                        return (
+                          <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9", background: editado ? "#fffbeb" : "transparent" }}>
+                            <td style={tdStyle}>
+                              <div style={{ fontWeight: 600, color: "#1e293b" }}>{l.producto?.nombre}</div>
+                              {l.producto?.medida && <div style={{ fontSize: 11, color: "#94a3b8" }}>{l.producto.medida}</div>}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600 }}>{cantPedida}</td>
+                            <td style={{ ...tdStyle, textAlign: "center" }}>
+                              {yaFinalizado ? (
+                                <span style={{ fontWeight: 700, color: colorLinea }}>{Number(l.cantidadDespachada)}</span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={cantPedida * 2}
+                                  value={cantDesp}
+                                  onChange={(e) => setCantidades((prev) => ({ ...prev, [l.id]: Math.max(0, Number(e.target.value)) }))}
+                                  style={inputCant}
+                                />
+                              )}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: "center" }}>
+                              <span style={{ fontWeight: faltante > 0 ? 700 : 400, color: faltante > 0 ? "#dc2626" : "#94a3b8" }}>
+                                {faltante > 0 ? faltante : "—"}
+                              </span>
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: "center" }}>
+                              <span style={{ ...badge, color: colorLinea, background: colorLinea + "18" }}>
+                                {ESTADO_LINEA[estLinea]?.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </>
+                  ))}
                 </tbody>
               </table>
             </div>

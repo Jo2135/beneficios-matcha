@@ -122,6 +122,8 @@ export const despachosApi = {
   obtener: (id: number) => api.get(`/despachos/${id}`).then((r) => r.data),
   crearDesdeCotizacion: (cotizacionId: number, data: any) =>
     api.post(`/despachos/desde-cotizacion/${cotizacionId}`, data).then((r) => r.data),
+  agregarCotizacion: (id: number, cotizacionId: number) =>
+    api.post(`/despachos/${id}/agregar-cotizacion`, { cotizacionId }).then((r) => r.data),
   actualizarLineas: (id: number, lineas: any[]) =>
     api.put(`/despachos/${id}/lineas`, lineas).then((r) => r.data),
   finalizar: (id: number, lineas?: { id: number; cantidadDespachada: number }[]) =>

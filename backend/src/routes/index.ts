@@ -121,6 +121,7 @@ router.post("/pagos/:id/asignar", requireRol("MASTER", "ADMIN"), w(pagos.asignar
 // ─── Despachos ────────────────────────────────────────────────────────────
 router.get("/despachos", w(despachos.listar));
 router.post("/despachos/desde-cotizacion/:cotizacionId", requireRol("MASTER", "ADMIN"), w(despachos.crearDesdeCotizacion));
+router.post("/despachos/:id/agregar-cotizacion", requireRol("MASTER", "ADMIN"), w(despachos.agregarCotizacion));
 router.post("/despachos/:id/finalizar", requireRol("MASTER", "ADMIN"), w(despachos.finalizar));
 router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.actualizarLineas));
 router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));

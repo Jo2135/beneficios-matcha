@@ -135,6 +135,55 @@ export async function actualizarLineas(req: Request, res: Response) {
   res.json({ ok: true });
 }
 
+export async function agregarCotizacion(req: Request, res: Response) {
+  const despachoId = Number(req.params.id);
+  const { cotizacionId } = req.body;
+
+  if (!cotizacionId) return res.status(400).json({ error: "cotizacionId requerido" });
+
+  const despacho = await prisma.ordenDespacho.findUnique({
+    where: { id: despachoId },
+    select: { estado: true, lineas: { select: { cotizacionId: true } } },
+  });
+  if (!despacho) return res.status(404).json({ error: "Despacho no encontrado" });
+  if (despacho.estado === "ENTREGADO") {
+    return res.status(400).json({ error: "El despacho ya fue finalizado" });
+  }
+
+  const cotIdsEnDespacho = new Set(despacho.lineas.map((l) => l.cotizacionId));
+  if (cotIdsEnDespacho.has(cotizacionId)) {
+    return res.status(400).json({ error: "Esta cotización ya está incluida en el despacho" });
+  }
+
+  const cotizacion = await prisma.cotizacion.findUnique({
+    where: { id: cotizacionId },
+    include: { lineas: { include: { producto: true }, orderBy: { orden: "asc" } } },
+  });
+  if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
+  if (cotizacion.estado !== "APROBADA") {
+    return res.status(400).json({ error: "Solo se pueden agregar cotizaciones aprobadas" });
+  }
+
+  await prisma.despachoLinea.createMany({
+    data: cotizacion.lineas.map((l) => ({
+      ordenDespachoId: despachoId,
+      cotizacionId,
+      productoId: l.productoId,
+      cantidadPedida: l.cantidad,
+      cantidadDespachada: 0,
+      cantidadFaltante: 0,
+      estado: "PENDIENTE" as const,
+    })),
+  });
+
+  await prisma.cotizacion.update({
+    where: { id: cotizacionId },
+    data: { estado: "EN_DESPACHO" },
+  });
+
+  res.json({ ok: true });
+}
+
 export async function finalizar(req: Request, res: Response) {
   const despachoId = Number(req.params.id);
 
@@ -183,72 +232,104 @@ export async function finalizar(req: Request, res: Response) {
     return res.status(400).json({ error: "El despacho ya fue finalizado" });
   }
 
-  const cotizacion = despacho.lineas.find((l) => l.cotizacion)?.cotizacion;
-  if (!cotizacion) return res.status(400).json({ error: "Despacho sin cotización asociada" });
+  // Agrupar líneas por cotización — soporta multi-cliente en un mismo despacho
+  type LineaDespacho = (typeof despacho.lineas)[number];
+  const cotizacionMap = new Map<number, {
+    cotizacion: NonNullable<LineaDespacho["cotizacion"]>;
+    lineas: LineaDespacho[];
+  }>();
 
-  const preciosPorProducto = new Map(cotizacion.lineas.map((l) => [l.productoId, l]));
+  for (const linea of despacho.lineas) {
+    if (!linea.cotizacion) continue;
+    const cotId = linea.cotizacion.id;
+    if (!cotizacionMap.has(cotId)) {
+      cotizacionMap.set(cotId, { cotizacion: linea.cotizacion, lineas: [] });
+    }
+    cotizacionMap.get(cotId)!.lineas.push(linea);
+  }
 
-  const lineasFactura = despacho.lineas
-    .filter((l) => Number(l.cantidadDespachada) > 0)
-    .map((l, idx) => {
-      const cotLinea = preciosPorProducto.get(l.productoId)!;
-      const cantDesp = Number(l.cantidadDespachada);
-      const precioUnit = Number(cotLinea.precioFinal);
-      return {
-        productoId: l.productoId,
-        cantidad: cantDesp,
-        precioUnitario: precioUnit,
-        descuentoPct: cotLinea.descuentoPct,
-        totalLinea: cantDesp * precioUnit,
-        origen: l.producto.origen,
-        pesoTotalKg: l.producto.pesoUnitarioKg
-          ? Number(l.producto.pesoUnitarioKg) * cantDesp
-          : null,
-        orden: idx,
-      };
+  if (cotizacionMap.size === 0) {
+    return res.status(400).json({ error: "Despacho sin cotizaciones asociadas" });
+  }
+
+  const facturasCreadas: any[] = [];
+
+  for (const [, { cotizacion, lineas }] of cotizacionMap) {
+    const preciosPorProducto = new Map<number, any>(
+      cotizacion.lineas.map((l) => [l.productoId, l])
+    );
+
+    const lineasFactura = lineas
+      .filter((l) => Number(l.cantidadDespachada) > 0)
+      .map((l, idx) => {
+        const cotLinea = preciosPorProducto.get(l.productoId);
+        if (!cotLinea) return null;
+        const cantDesp = Number(l.cantidadDespachada);
+        const precioUnit = Number(cotLinea.precioFinal);
+        return {
+          productoId: l.productoId,
+          cantidad: cantDesp,
+          precioUnitario: precioUnit,
+          descuentoPct: cotLinea.descuentoPct,
+          totalLinea: cantDesp * precioUnit,
+          origen: l.producto.origen,
+          pesoTotalKg: l.producto.pesoUnitarioKg
+            ? Number(l.producto.pesoUnitarioKg) * cantDesp
+            : null,
+          orden: idx,
+        };
+      })
+      .filter((l): l is NonNullable<typeof l> => l !== null);
+
+    if (lineasFactura.length === 0) continue;
+
+    const totalBruto = lineasFactura.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
+    const totalNeto  = lineasFactura.reduce((s, l) => s + l.totalLinea, 0);
+
+    const numero = await siguienteNumero("FAC");
+    const fechaVencimiento = cotizacion.cliente.diasCredito
+      ? new Date(Date.now() + cotizacion.cliente.diasCredito * 86400000)
+      : null;
+
+    const factura = await prisma.factura.create({
+      data: {
+        numero,
+        clienteId: cotizacion.clienteId,
+        ordenDespachoId: despachoId,
+        empresaId: cotizacion.empresaId,
+        fechaVencimiento,
+        totalBruto,
+        descuentoTotal: totalBruto - totalNeto,
+        totalNeto,
+        saldoPendiente: totalNeto,
+        lineas: { create: lineasFactura },
+      },
     });
 
-  if (lineasFactura.length === 0) {
+    facturasCreadas.push(factura);
+
+    await prisma.cotizacion.update({
+      where: { id: cotizacion.id },
+      data: { estado: "COMPLETADA" },
+    });
+  }
+
+  if (facturasCreadas.length === 0) {
     return res.status(400).json({ error: "No hay productos despachados para facturar" });
   }
 
-  const totalBruto = lineasFactura.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
-  const totalNeto = lineasFactura.reduce((s, l) => s + l.totalLinea, 0);
-
-  const numero = await siguienteNumero("FAC");
-  const fechaVencimiento = cotizacion.cliente.diasCredito
-    ? new Date(Date.now() + cotizacion.cliente.diasCredito * 86400000)
-    : null;
-
-  const factura = await prisma.factura.create({
-    data: {
-      numero,
-      clienteId: cotizacion.clienteId,
-      ordenDespachoId: despachoId,
-      empresaId: cotizacion.empresaId,
-      fechaVencimiento,
-      totalBruto,
-      descuentoTotal: totalBruto - totalNeto,
-      totalNeto,
-      saldoPendiente: totalNeto,
-      lineas: { create: lineasFactura },
-    },
-  });
-
   const algunoFalto = despacho.lineas.some((l) => Number(l.cantidadFaltante) > 0);
 
-  await prisma.$transaction([
-    prisma.ordenDespacho.update({
-      where: { id: despachoId },
-      data: { estado: algunoFalto ? "PARCIAL" : "ENTREGADO" },
-    }),
-    prisma.cotizacion.update({
-      where: { id: cotizacion.id },
-      data: { estado: "COMPLETADA" },
-    }),
-  ]);
+  await prisma.ordenDespacho.update({
+    where: { id: despachoId },
+    data: { estado: algunoFalto ? "PARCIAL" : "ENTREGADO" },
+  });
 
-  res.json({ factura, estadoDespacho: algunoFalto ? "PARCIAL" : "ENTREGADO" });
+  res.json({
+    facturas: facturasCreadas,
+    factura: facturasCreadas[0], // backward compat
+    estadoDespacho: algunoFalto ? "PARCIAL" : "ENTREGADO",
+  });
 }
 
 
