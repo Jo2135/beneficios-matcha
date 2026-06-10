@@ -20,7 +20,7 @@ const ESTADO_COLOR: Record<string, string> = { LIBRE: "#f59e0b", PARCIAL: "#3b82
 const ESTADO_LABEL: Record<string, string> = { LIBRE: "Sin asignar", PARCIAL: "Parcial", ASIGNADO: "Completo" };
 const ESTADO_ICON: Record<string, any> = { LIBRE: AlertCircle, PARCIAL: Clock, ASIGNADO: CheckCircle };
 
-const FORM_VACIO = { clienteId: "", cuentaId: "", moneda: "USD", monto: "", montousd: "", tasaCambioBs: "", tasaCambioCop: "", fecha: new Date().toISOString().split("T")[0], origenFondos: "", destinoUso: "", observaciones: "", fechaProximoAbono: "" };
+const FORM_VACIO = { clienteId: "", cuentaId: "", facturaId: "", moneda: "USD", monto: "", montousd: "", tasaCambioBs: "", tasaCambioCop: "", fecha: new Date().toISOString().split("T")[0], origenFondos: "", destinoUso: "", observaciones: "", fechaProximoAbono: "" };
 
 export default function Pagos() {
   const { esMaster, puedeEditar } = useAuth();
@@ -83,11 +83,14 @@ export default function Pagos() {
       }
       if (form.moneda === "USDT") payload.montousd = Number(form.monto);
       if (form.moneda === "USD") payload.montousd = Number(form.monto);
+      if (form.facturaId) payload.facturaId = Number(form.facturaId);
       return pagosApi.registrar(payload);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pagos"] });
       qc.invalidateQueries({ queryKey: ["pagos-pendientes"] });
+      qc.invalidateQueries({ queryKey: ["facturas-balance"] });
+      qc.invalidateQueries({ queryKey: ["facturas-abiertas"] });
       setModalPago(false);
       setForm(FORM_VACIO);
     },
@@ -331,6 +334,21 @@ export default function Pagos() {
                   </span>
                 )}
               </label>
+              {form.clienteId && (
+                <label style={{ ...lbl, gridColumn: "1/-1" }}>
+                  Aplicar a factura (opcional — descuenta el saldo automáticamente)
+                  <select style={inp} value={form.facturaId} onChange={(e) => setForm({ ...form, facturaId: e.target.value })}>
+                    <option value="">Sin asignar — registrar como pago libre</option>
+                    {(facturasAbiertas as any[])
+                      .filter((f: any) => f.clienteId === Number(form.clienteId) && Number(f.saldoPendiente) > 0.005)
+                      .map((f: any) => (
+                        <option key={f.id} value={f.id}>
+                          {f.numero} — Saldo: {usd(f.saldoPendiente)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
               <label style={{ ...lbl, gridColumn: "1/-1" }}>
                 Origen de los fondos
                 <input style={inp} value={form.origenFondos} placeholder='Ej: "Cobro Gandica — Despacho #22"' onChange={(e) => setForm({ ...form, origenFondos: e.target.value })} />

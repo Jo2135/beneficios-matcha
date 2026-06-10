@@ -22,28 +22,58 @@ export async function listar(req: Request, res: Response) {
 }
 
 export async function registrar(req: Request, res: Response) {
+  const { facturaId, ...body } = req.body;
+  const monto = Number(body.monto);
+
   const pago = await prisma.pago.create({
     data: {
-      clienteId: req.body.clienteId || null,
-      cuentaId: req.body.cuentaId || null,
-      monto: req.body.monto,
-      moneda: req.body.moneda || "USD",
-      montousd: req.body.montousd || null,
-      tasaCambioBs: req.body.tasaCambioBs || null,
-      tasaCambioCop: req.body.tasaCambioCop || null,
-      fecha: req.body.fecha ? new Date(req.body.fecha) : new Date(),
-      origenFondos: req.body.origenFondos,
-      destinoUso: req.body.destinoUso,
-      observaciones: req.body.observaciones,
-      fechaProximoAbono: req.body.fechaProximoAbono
-        ? new Date(req.body.fechaProximoAbono)
+      clienteId: body.clienteId || null,
+      cuentaId: body.cuentaId || null,
+      monto,
+      moneda: body.moneda || "USD",
+      montousd: body.montousd || null,
+      tasaCambioBs: body.tasaCambioBs || null,
+      tasaCambioCop: body.tasaCambioCop || null,
+      fecha: body.fecha ? new Date(body.fecha) : new Date(),
+      origenFondos: body.origenFondos,
+      destinoUso: body.destinoUso,
+      observaciones: body.observaciones,
+      fechaProximoAbono: body.fechaProximoAbono
+        ? new Date(body.fechaProximoAbono)
         : null,
+      estado: facturaId ? "ASIGNADO" : "LIBRE",
     },
     include: {
       cliente: { select: { nombre: true } },
       cuenta: { select: { nombre: true } },
     },
   });
+
+  // Auto-asignar a factura si se indicó
+  if (facturaId) {
+    const factId = Number(facturaId);
+    await prisma.pagoAsignacion.create({
+      data: { pagoId: pago.id, facturaId: factId, montoAsignado: monto },
+    });
+    await prisma.factura.update({
+      where: { id: factId },
+      data: {
+        totalPagado:    { increment: monto },
+        saldoPendiente: { decrement: monto },
+      },
+    });
+    const factura = await prisma.factura.findUnique({ where: { id: factId } });
+    if (factura) {
+      const nuevoEstado =
+        Number(factura.saldoPendiente) <= 0
+          ? "COBRADA"
+          : Number(factura.totalPagado) > 0
+          ? "COBRADA_PARCIAL"
+          : factura.estado;
+      await prisma.factura.update({ where: { id: factId }, data: { estado: nuevoEstado } });
+    }
+  }
+
   res.status(201).json(pago);
 }
 

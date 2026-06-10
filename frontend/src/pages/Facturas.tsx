@@ -33,7 +33,7 @@ function fecha(raw: any) {
 
 export default function Facturas() {
   const qc = useQueryClient();
-  const { esMaster } = useAuth();
+  const { esMaster, puedeEditar } = useAuth();
   const [filtro, setFiltro] = useState("TODAS");
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
@@ -586,7 +586,7 @@ export default function Facturas() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 14px", background: "#fff", borderTop: "1px solid #f1f5f9" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 500, color: "#374151", fontSize: 13 }}>{label}</div>
-                            {pa.notas && (
+                            {pa.notas && puedeEditar && (
                               <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, fontStyle: "italic" }}>{pa.notas}</div>
                             )}
                           </div>
