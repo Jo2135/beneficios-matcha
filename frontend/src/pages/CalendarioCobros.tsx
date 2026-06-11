@@ -19,6 +19,7 @@ export default function CalendarioCobros() {
   const { data: balance } = useQuery({
     queryKey: ["facturas-balance"],
     queryFn: facturasApi.balance,
+    enabled: !esVendedor,
   });
 
   const todasFacturas: any[] = balance?.facturas ?? [];
