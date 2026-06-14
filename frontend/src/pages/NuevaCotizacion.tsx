@@ -77,11 +77,12 @@ export default function NuevaCotizacion() {
   });
 
   const clienteSeleccionado: any = clientes.find((c: any) => c.id === clienteId);
+  const tieneListasAsignadas = (clienteSeleccionado?.listasAsignadas ?? []).length > 0;
 
-  const { data: listaPrecio } = useQuery({
-    queryKey: ["lista-precio-detalle", clienteSeleccionado?.listaPrecioId],
-    queryFn: () => listasApi.obtener(clienteSeleccionado.listaPrecioId),
-    enabled: !!clienteSeleccionado?.listaPrecioId,
+  const { data: catalogoCliente } = useQuery({
+    queryKey: ["catalogo-cliente", clienteId],
+    queryFn: () => listasApi.catalogoParaCliente(clienteId!),
+    enabled: !!clienteId && tieneListasAsignadas,
   });
 
   const productosFiltrados = useMemo(() => {
@@ -93,7 +94,7 @@ export default function NuevaCotizacion() {
   }, [productos, busqueda]);
 
   const getPrecio = (productoId: number): number | null => {
-    const d = (listaPrecio?.detalle ?? []).find((x: any) => x.productoId === productoId);
+    const d = (catalogoCliente?.detalle ?? []).find((x: any) => x.productoId === productoId);
     return d ? Number(d.precioUnitario) : null;
   };
 
@@ -223,10 +224,18 @@ export default function NuevaCotizacion() {
             </select>
             {clienteSeleccionado && (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                Lista:{" "}
-                <strong style={{ color: clienteSeleccionado.listaPrecioId ? "#1d4ed8" : "#dc2626" }}>
-                  {clienteSeleccionado.listaPrecio?.nombre ?? "Sin lista — asígnale una en Clientes"}
-                </strong>
+                {tieneListasAsignadas ? (
+                  <>
+                    Listas:{" "}
+                    {(clienteSeleccionado.listasAsignadas as any[]).map((a: any) => (
+                      <strong key={a.listaPrecio.id} style={{ color: "#1d4ed8", marginRight: 6 }}>
+                        {a.listaPrecio.nombre}
+                      </strong>
+                    ))}
+                  </>
+                ) : (
+                  <strong style={{ color: "#dc2626" }}>Sin lista — asígnale una en Clientes</strong>
+                )}
               </div>
             )}
           </div>

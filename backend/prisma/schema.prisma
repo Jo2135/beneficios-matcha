@@ -82,8 +82,19 @@ model ListaPrecio {
   activa        Boolean   @default(true)
   creadoEn      DateTime  @default(now())
 
-  detalle  ListaPrecioDetalle[]
-  clientes Cliente[]           @relation("ListaPredeterminada")
+  detalle           ListaPrecioDetalle[]
+  clientesAsignados ClienteListaPrecios[]
+}
+
+// Tabla de unión: qué listas de precios usa cada cliente
+model ClienteListaPrecios {
+  id            Int         @id @default(autoincrement())
+  clienteId     Int
+  cliente       Cliente     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  listaPrecioId Int
+  listaPrecio   ListaPrecio @relation(fields: [listaPrecioId], references: [id])
+
+  @@unique([clienteId, listaPrecioId])
 }
 
 model ListaPrecioDetalle {
@@ -109,8 +120,6 @@ model Cliente {
   email          String?
   vendedorId     Int?
   vendedor       Vendedor?    @relation(fields: [vendedorId], references: [id])
-  listaPrecioId  Int?
-  listaPrecio    ListaPrecio? @relation("ListaPredeterminada", fields: [listaPrecioId], references: [id])
   empresaFactura        String       @default("ECOPLAST F.P.")
   fletePct              Decimal      @db.Decimal(5, 2) @default(0)
   fleteTuberiaPct       Decimal      @db.Decimal(5, 2) @default(0)
@@ -122,9 +131,13 @@ model Cliente {
   observaciones  String?
   activo         Boolean      @default(true)
   creadoEn       DateTime     @default(now())
+  // Reglas de distribución de ganancias
+  socioEquivalente  String?  // null | "sbug" | "yolanda" | "sandra" | "comisiones"
+  vendedorEsMaster  Boolean  @default(false) // true = su comisión está en Ganancias_2
 
-  listasPrecios ListaPrecio[] @relation("ListasDelCliente")
-  cotizaciones  Cotizacion[]
+  listasPrecios   ListaPrecio[]         @relation("ListasDelCliente")
+  listasAsignadas ClienteListaPrecios[]
+  cotizaciones    Cotizacion[]
   facturas      Factura[]
   pagos         Pago[]
 }
@@ -493,4 +506,25 @@ enum TipoSeguimiento {
   SEGUIMIENTO
   RECORDATORIO
   MOTIVO_RECHAZO
+}
+
+// ─── CONFIGURACIÓN DE GANANCIAS (tablas editables + overrides por despacho) ──
+
+model ConfigGanancias {
+  id          Int       @id @default(autoincrement())
+  despachoId  Int?      // null = global; número = override solo para ese despacho
+  campo       String    // e.g. "costo_manguera34", "gan_gris", "g2_sandra", etc.
+  valor       Decimal   @db.Decimal(14, 6)
+  notas       String?
+  creadoEn    DateTime  @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([despachoId, campo])
+}
+
+// ─── CONFIGURACIÓN SISTEMA (singleton — PIN de tablas, etc.) ──────────────────
+
+model ConfiguracionSistema {
+  id           Int     @id @default(1) // siempre 1, singleton
+  pinTablaHash String? // bcrypt hash del PIN de Tablas de Distribución
 }

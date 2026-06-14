@@ -33,39 +33,86 @@ export async function obtener(req: Request, res: Response) {
   res.json(lista);
 }
 
+/**
+ * Devuelve el catálogo combinado de todas las listas asignadas a un cliente.
+ * Incluye de qué lista viene cada precio (para diagnóstico).
+ */
+export async function catalogoParaCliente(req: Request, res: Response) {
+  const clienteId = Number(req.params.clienteId);
+
+  const asignaciones = await prisma.clienteListaPrecios.findMany({
+    where: { clienteId },
+    include: {
+      listaPrecio: {
+        include: {
+          detalle: {
+            include: {
+              producto: { include: { categoria: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { listaPrecio: { nombre: "asc" } },
+  });
+
+  // Construir detalle combinado (productoId → precio)
+  // Si por error hubiera el mismo producto en dos listas, gana la primera
+  const detalleMap = new Map<number, any>();
+  const listas: { id: number; nombre: string }[] = [];
+
+  for (const asig of asignaciones) {
+    listas.push({ id: asig.listaPrecio.id, nombre: asig.listaPrecio.nombre });
+    for (const d of asig.listaPrecio.detalle) {
+      if (!detalleMap.has(d.productoId)) {
+        detalleMap.set(d.productoId, { ...d, listaNombre: asig.listaPrecio.nombre });
+      }
+    }
+  }
+
+  res.json({
+    listas,
+    detalle: Array.from(detalleMap.values()),
+  });
+}
+
+/**
+ * Devuelve el precio de un producto para un cliente buscando en TODAS sus listas.
+ */
 export async function precioParaCliente(req: Request, res: Response) {
   const { clienteId, productoId } = req.params;
 
-  const cliente = await prisma.cliente.findUnique({
-    where: { id: Number(clienteId) },
-    select: { listaPrecioId: true },
-  });
-
-  if (!cliente?.listaPrecioId) {
-    return res.status(404).json({ error: "Cliente sin lista de precios asignada" });
-  }
-
-  const detalle = await prisma.listaPrecioDetalle.findUnique({
+  // Buscar en todas las listas asignadas al cliente
+  const asignacion = await prisma.clienteListaPrecios.findFirst({
     where: {
-      listaPrecioId_productoId: {
-        listaPrecioId: cliente.listaPrecioId,
-        productoId: Number(productoId),
+      clienteId: Number(clienteId),
+      listaPrecio: {
+        detalle: { some: { productoId: Number(productoId) } },
       },
     },
     include: {
-      producto: { select: { nombre: true, medida: true } },
+      listaPrecio: {
+        include: {
+          detalle: {
+            where: { productoId: Number(productoId) },
+            include: { producto: { select: { nombre: true, medida: true } } },
+          },
+        },
+      },
     },
   });
 
-  if (!detalle) {
-    return res.status(404).json({ error: "Producto no encontrado en la lista del cliente" });
+  if (!asignacion || asignacion.listaPrecio.detalle.length === 0) {
+    return res.status(404).json({ error: "Producto no encontrado en ninguna lista del cliente" });
   }
 
+  const detalle = asignacion.listaPrecio.detalle[0];
   res.json({
     precioUnitario: detalle.precioUnitario,
     descuentoPct: detalle.descuentoPct,
     precioFinal: Number(detalle.precioUnitario) * (1 - Number(detalle.descuentoPct) / 100),
-    listaPrecioId: cliente.listaPrecioId,
+    listaPrecioId: asignacion.listaPrecioId,
+    listaNombre: asignacion.listaPrecio.nombre,
     producto: detalle.producto,
   });
 }
@@ -85,6 +132,19 @@ export async function crear(req: Request, res: Response) {
 export async function upsertDetalle(req: Request, res: Response) {
   const listaId = Number(req.params.id);
   const lineas: { productoId: number; precioUnitario: number; descuentoPct?: number }[] = req.body;
+
+  // Validar que ningún producto exista en OTRA lista
+  for (const l of lineas) {
+    const enOtraLista = await prisma.listaPrecioDetalle.findFirst({
+      where: { productoId: l.productoId, listaPrecioId: { not: listaId } },
+      include: { listaPrecio: { select: { nombre: true } } },
+    });
+    if (enOtraLista) {
+      return res.status(409).json({
+        error: `El producto ya existe en la lista "${enOtraLista.listaPrecio.nombre}". Los productos no se pueden repetir entre listas.`,
+      });
+    }
+  }
 
   const ops = lineas.map((l) =>
     prisma.listaPrecioDetalle.upsert({

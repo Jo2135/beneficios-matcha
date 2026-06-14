@@ -68,6 +68,7 @@ router.delete("/productos/:id/imagen", requireRol("MASTER", "ADMIN"), w(eliminar
 // ─── Listas de precios ────────────────────────────────────────────────────
 router.get("/listas-precios", w(listaPrecios.listar));
 router.get("/listas-precios/precio/:clienteId/:productoId", w(listaPrecios.precioParaCliente));
+router.get("/listas-precios/cliente/:clienteId", w(listaPrecios.catalogoParaCliente));
 router.get("/listas-precios/:id", w(listaPrecios.obtener));
 router.post("/listas-precios", requireRol("MASTER", "ADMIN"), w(listaPrecios.crear));
 router.put("/listas-precios/:id/detalle", requireRol("MASTER", "ADMIN"), w(listaPrecios.upsertDetalle));

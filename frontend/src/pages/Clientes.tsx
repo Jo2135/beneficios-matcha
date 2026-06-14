@@ -60,8 +60,22 @@ export default function Clientes() {
   );
 
   const abrir = (cliente?: any) => {
-    setForm(cliente ?? { empresaFactura: "ECOPLAST F.P.", diasCredito: 0, fleteTuberiaPct: 0, fleteConexionesPct: 0, comisionTuberiaPct: 0, comisionConexionesPct: 0, socioEquivalente: null, vendedorEsMaster: false });
+    const listasIds = cliente
+      ? (cliente.listasAsignadas ?? []).map((a: any) => a.listaPrecio.id)
+      : [];
+    setForm(cliente
+      ? { ...cliente, listasIds }
+      : { empresaFactura: "ECOPLAST F.P.", diasCredito: 0, fleteTuberiaPct: 0, fleteConexionesPct: 0, comisionTuberiaPct: 0, comisionConexionesPct: 0, socioEquivalente: null, vendedorEsMaster: false, listasIds: [] });
     setModal({ abierto: true, datos: cliente ?? null });
+  };
+
+  const toggleLista = (listaId: number) => {
+    const current: number[] = form.listasIds ?? [];
+    if (current.includes(listaId)) {
+      setForm({ ...form, listasIds: current.filter((id: number) => id !== listaId) });
+    } else {
+      setForm({ ...form, listasIds: [...current, listaId] });
+    }
   };
 
   return (
@@ -118,9 +132,14 @@ export default function Clientes() {
                   </div>
                 </td>
                 <td style={tdStyle}>
-                  <span style={{ ...tagStyle, background: "#dbeafe", color: "#1d4ed8" }}>
-                    {c.listaPrecio?.nombre || "Sin asignar"}
-                  </span>
+                  {(c.listasAsignadas ?? []).length === 0
+                    ? <span style={{ ...tagStyle, background: "#fee2e2", color: "#dc2626" }}>Sin asignar</span>
+                    : (c.listasAsignadas as any[]).map((a: any) => (
+                      <span key={a.listaPrecio.id} style={{ ...tagStyle, background: "#dbeafe", color: "#1d4ed8", marginRight: 4, marginBottom: 2, display: "inline-block" }}>
+                        {a.listaPrecio.nombre}
+                      </span>
+                    ))
+                  }
                 </td>
                 <td style={tdStyle}>
                   <span style={{ ...tagStyle, background: c.empresaFactura === "MAXPLASTIC F.P." ? "#fef3c7" : "#dcfce7", color: c.empresaFactura === "MAXPLASTIC F.P." ? "#92400e" : "#166534", fontSize: 11 }}>
@@ -284,12 +303,33 @@ export default function Clientes() {
                   {(vendedores as any[]).map((v: any) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={labelStyle}>Lista de Precios</label>
-                <select style={inputStyle} value={form.listaPrecioId || ""} onChange={(e) => setForm({ ...form, listaPrecioId: Number(e.target.value) || null })}>
-                  <option value="">Sin asignar</option>
-                  {listas.map((l: any) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-                </select>
+              <div style={{ gridColumn: "1/-1" }}>
+                <label style={labelStyle}>Listas de Precios</label>
+                <div style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", background: "#fafafa", display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  {(listas as any[]).length === 0 && (
+                    <span style={{ fontSize: 13, color: "#94a3b8" }}>No hay listas de precios registradas</span>
+                  )}
+                  {(listas as any[]).map((l: any) => {
+                    const seleccionada = (form.listasIds ?? []).includes(l.id);
+                    return (
+                      <label key={l.id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "4px 10px", borderRadius: 6, background: seleccionada ? "#dbeafe" : "#fff", border: `1px solid ${seleccionada ? "#3b82f6" : "#e2e8f0"}`, fontSize: 13, fontWeight: seleccionada ? 600 : 400, color: seleccionada ? "#1d4ed8" : "#374151" }}>
+                        <input
+                          type="checkbox"
+                          checked={seleccionada}
+                          onChange={() => toggleLista(l.id)}
+                          style={{ cursor: "pointer" }}
+                        />
+                        {l.nombre}
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>({l._count?.detalle ?? 0} prod.)</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {(form.listasIds ?? []).length === 0 && (
+                  <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
+                    Sin listas asignadas — el cliente no tendrá precios disponibles en cotizaciones.
+                  </div>
+                )}
               </div>
               <div>
                 <label style={labelStyle}>Empresa en Factura</label>

@@ -2,6 +2,27 @@ import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { siguienteNumero } from "../utils/secuencia";
 
+/** Construye un mapa productoId → precio buscando en TODAS las listas asignadas al cliente */
+async function getPrecioMap(clienteId: number): Promise<Map<number, { precioUnitario: number; descuentoPct: number; listaPrecioId: number }>> {
+  const asignaciones = await prisma.clienteListaPrecios.findMany({
+    where: { clienteId },
+    include: { listaPrecio: { include: { detalle: true } } },
+  });
+  const map = new Map<number, { precioUnitario: number; descuentoPct: number; listaPrecioId: number }>();
+  for (const asig of asignaciones) {
+    for (const d of asig.listaPrecio.detalle) {
+      if (!map.has(d.productoId)) {
+        map.set(d.productoId, {
+          precioUnitario: Number(d.precioUnitario),
+          descuentoPct: Number(d.descuentoPct),
+          listaPrecioId: asig.listaPrecioId,
+        });
+      }
+    }
+  }
+  return map;
+}
+
 interface LineaInput {
   productoId: number;
   cantidad: number;
@@ -37,7 +58,12 @@ export async function obtener(req: Request, res: Response) {
   const cotizacion = await prisma.cotizacion.findUnique({
     where: { id: Number(req.params.id) },
     include: {
-      cliente: { include: { vendedor: true, listaPrecio: true } },
+      cliente: {
+        include: {
+          vendedor: true,
+          listasAsignadas: { include: { listaPrecio: { select: { id: true, nombre: true } } } },
+        },
+      },
       vendedor: true,
       empresa: true,
       lineas: {
@@ -60,10 +86,7 @@ export async function crear(req: Request, res: Response) {
     lineas: LineaInput[];
   };
 
-  const cliente = await prisma.cliente.findUnique({
-    where: { id: clienteId },
-    include: { listaPrecio: { include: { detalle: true } } },
-  });
+  const cliente = await prisma.cliente.findUnique({ where: { id: clienteId } });
   if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" });
 
   if (req.usuario!.rol === "VENDEDOR" && req.usuario!.vendedorId) {
@@ -72,6 +95,7 @@ export async function crear(req: Request, res: Response) {
     }
   }
 
+  const precioMap = await getPrecioMap(clienteId);
   const numero = await siguienteNumero("COT");
   const fechaVencimiento = new Date();
   fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));
@@ -79,16 +103,14 @@ export async function crear(req: Request, res: Response) {
   // Resolver precios con snapshot
   const lineasConPrecios = await Promise.all(
     lineas.map(async (linea, idx) => {
-      const detallePrecio = cliente.listaPrecio?.detalle.find(
-        (d) => d.productoId === linea.productoId
-      );
+      const detallePrecio = precioMap.get(linea.productoId);
 
       if (!detallePrecio) {
-        throw new Error(`Producto ${linea.productoId} no tiene precio en la lista del cliente`);
+        throw new Error(`Producto ${linea.productoId} no tiene precio en ninguna lista del cliente`);
       }
 
-      const descuento = linea.descuentoPct ?? Number(detallePrecio.descuentoPct);
-      const precioBase = Number(detallePrecio.precioUnitario);
+      const descuento = linea.descuentoPct ?? detallePrecio.descuentoPct;
+      const precioBase = detallePrecio.precioUnitario;
       const precioFinal = precioBase * (1 - descuento / 100);
       const totalLinea = precioFinal * linea.cantidad;
 
@@ -105,7 +127,7 @@ export async function crear(req: Request, res: Response) {
         descuentoPct: descuento,
         precioFinal,
         totalLinea,
-        listaPrecioOrigenId: cliente.listaPrecioId,
+        listaPrecioOrigenId: detallePrecio.listaPrecioId,
         pesoTotalKg,
         orden: idx,
       };
@@ -170,19 +192,18 @@ export async function actualizar(req: Request, res: Response) {
     return res.status(403).json({ error: "Solo puedes editar tus propias cotizaciones" });
   }
 
-  const cliente = await prisma.cliente.findUnique({
-    where: { id: clienteId },
-    include: { listaPrecio: { include: { detalle: true } } },
-  });
+  const cliente = await prisma.cliente.findUnique({ where: { id: clienteId } });
   if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" });
+
+  const precioMap = await getPrecioMap(clienteId);
 
   const lineasConPrecios = await Promise.all(
     lineas.map(async (linea, idx) => {
-      const detallePrecio = cliente.listaPrecio?.detalle.find((d) => d.productoId === linea.productoId);
-      if (!detallePrecio) throw new Error(`Producto ${linea.productoId} no tiene precio en la lista del cliente`);
+      const detallePrecio = precioMap.get(linea.productoId);
+      if (!detallePrecio) throw new Error(`Producto ${linea.productoId} no tiene precio en ninguna lista del cliente`);
 
-      const descuento = linea.descuentoPct ?? Number(detallePrecio.descuentoPct);
-      const precioBase = Number(detallePrecio.precioUnitario);
+      const descuento = linea.descuentoPct ?? detallePrecio.descuentoPct;
+      const precioBase = detallePrecio.precioUnitario;
       const precioFinal = precioBase * (1 - descuento / 100);
       const totalLinea = precioFinal * linea.cantidad;
 
@@ -197,7 +218,7 @@ export async function actualizar(req: Request, res: Response) {
         descuentoPct: descuento,
         precioFinal,
         totalLinea,
-        listaPrecioOrigenId: cliente.listaPrecioId,
+        listaPrecioOrigenId: detallePrecio.listaPrecioId,
         pesoTotalKg,
         orden: idx,
       };
@@ -309,10 +330,7 @@ export async function recalcularDesdeListaPrecios(req: Request, res: Response) {
   const usuario = req.usuario!;
   const cotizacion = await prisma.cotizacion.findUnique({
     where: { id: cotizacionId },
-    include: {
-      cliente: { include: { listaPrecio: { include: { detalle: true } } } },
-      lineas: true,
-    },
+    include: { lineas: true },
   });
   if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
   if (cotizacion.estado === "COMPLETADA") {
@@ -323,22 +341,22 @@ export async function recalcularDesdeListaPrecios(req: Request, res: Response) {
     return res.status(403).json({ error: "Solo puedes modificar tus propias cotizaciones" });
   }
 
-  const detalleLista = cotizacion.cliente.listaPrecio?.detalle ?? [];
+  const precioMap = await getPrecioMap(cotizacion.clienteId);
   const actualizados: string[] = [];
   const sinPrecio: string[] = [];
 
   for (const linea of cotizacion.lineas) {
-    const detalle = detalleLista.find((d: any) => d.productoId === linea.productoId);
+    const detalle = precioMap.get(linea.productoId);
     if (!detalle) { sinPrecio.push(String(linea.productoId)); continue; }
 
-    const precio = Number(detalle.precioUnitario);
+    const precio = detalle.precioUnitario;
     const dto = Number(linea.descuentoPct);
     const precioFinal = precio * (1 - dto / 100);
     const totalLinea = precioFinal * Number(linea.cantidad);
 
     await prisma.cotizacionLinea.update({
       where: { id: linea.id },
-      data: { precioUnitarioAplicado: precio, precioFinal, totalLinea, listaPrecioOrigenId: cotizacion.cliente.listaPrecio?.id },
+      data: { precioUnitarioAplicado: precio, precioFinal, totalLinea, listaPrecioOrigenId: detalle.listaPrecioId },
     });
     actualizados.push(String(linea.id));
   }

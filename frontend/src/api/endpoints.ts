@@ -44,6 +44,8 @@ export const categoriasApi = {
 export const listasApi = {
   listar: () => api.get("/listas-precios").then((r) => r.data),
   obtener: (id: number) => api.get(`/listas-precios/${id}`).then((r) => r.data),
+  catalogoParaCliente: (clienteId: number) =>
+    api.get(`/listas-precios/cliente/${clienteId}`).then((r) => r.data),
   crear: (data: any) => api.post("/listas-precios", data).then((r) => r.data),
   actualizarDetalle: (id: number, lineas: any[]) =>
     api.put(`/listas-precios/${id}/detalle`, lineas).then((r) => r.data),

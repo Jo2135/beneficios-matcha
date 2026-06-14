@@ -1,6 +1,13 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 
+const INCLUDE_LISTAS = {
+  listasAsignadas: {
+    include: { listaPrecio: { select: { id: true, nombre: true } } },
+    orderBy: { listaPrecio: { nombre: "asc" as const } },
+  },
+};
+
 export async function listar(req: Request, res: Response) {
   const usuario = req.usuario!;
   const where: any = { activo: true };
@@ -11,7 +18,7 @@ export async function listar(req: Request, res: Response) {
     where,
     include: {
       vendedor: { select: { id: true, nombre: true } },
-      listaPrecio: { select: { id: true, nombre: true } },
+      ...INCLUDE_LISTAS,
     },
     orderBy: { nombre: "asc" },
   });
@@ -32,7 +39,7 @@ export async function buscar(req: Request, res: Response) {
     where,
     include: {
       vendedor: { select: { id: true, nombre: true } },
-      listaPrecio: { select: { id: true, nombre: true } },
+      ...INCLUDE_LISTAS,
     },
     take: 10,
     orderBy: { nombre: "asc" },
@@ -45,9 +52,13 @@ export async function obtener(req: Request, res: Response) {
     where: { id: Number(req.params.id) },
     include: {
       vendedor: true,
-      listaPrecio: {
+      listasAsignadas: {
         include: {
-          detalle: { include: { producto: true } },
+          listaPrecio: {
+            include: {
+              detalle: { include: { producto: true } },
+            },
+          },
         },
       },
     },
@@ -58,19 +69,35 @@ export async function obtener(req: Request, res: Response) {
 
 export async function actualizar(req: Request, res: Response) {
   try {
+    const clienteId = Number(req.params.id);
     const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-            condicionPago, observaciones, vendedorId, listaPrecioId,
+            condicionPago, observaciones, vendedorId, listasIds,
             socioEquivalente, vendedorEsMaster } = req.body;
-    console.log("[actualizar cliente]", req.params.id, { nombre, fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct, socioEquivalente, vendedorEsMaster });
+
+    console.log("[actualizar cliente]", clienteId, { nombre, listasIds });
+
     const cliente = await prisma.cliente.update({
-      where: { id: Number(req.params.id) },
-      data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito: Number(diasCredito) || 0,
+      where: { id: clienteId },
+      data: { nombre, rif, telefono, direccion, empresaFactura,
+              diasCredito: Number(diasCredito) || 0,
               fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null,
+              condicionPago, observaciones, vendedorId: vendedorId || null,
               socioEquivalente: socioEquivalente || null,
               vendedorEsMaster: Boolean(vendedorEsMaster) },
     });
+
+    // Actualizar listas asignadas si se envió el campo
+    if (Array.isArray(listasIds)) {
+      // Eliminar asignaciones actuales y reemplazar
+      await prisma.clienteListaPrecios.deleteMany({ where: { clienteId } });
+      if (listasIds.length > 0) {
+        await prisma.clienteListaPrecios.createMany({
+          data: listasIds.map((id: number) => ({ clienteId, listaPrecioId: id })),
+        });
+      }
+    }
+
     res.json(cliente);
   } catch (e: any) {
     console.error("[error actualizar cliente]", e.message);
@@ -82,20 +109,30 @@ export async function crear(req: Request, res: Response) {
   try {
     const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-            condicionPago, observaciones, vendedorId, listaPrecioId,
+            condicionPago, observaciones, vendedorId, listasIds,
             socioEquivalente, vendedorEsMaster } = req.body;
-    console.log("[crear cliente] body:", JSON.stringify({ nombre, rif, vendedorId, listaPrecioId }));
+
+    console.log("[crear cliente] body:", JSON.stringify({ nombre, rif, vendedorId, listasIds }));
+
     const cliente = await prisma.cliente.create({
-      data: { nombre, rif, telefono, direccion, empresaFactura, diasCredito: Number(diasCredito) || 0,
+      data: { nombre, rif, telefono, direccion, empresaFactura,
+              diasCredito: Number(diasCredito) || 0,
               fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
-              condicionPago, observaciones, vendedorId: vendedorId || null, listaPrecioId: listaPrecioId || null,
+              condicionPago, observaciones, vendedorId: vendedorId || null,
               socioEquivalente: socioEquivalente || null,
               vendedorEsMaster: Boolean(vendedorEsMaster) },
     });
+
+    // Crear listas asignadas
+    if (Array.isArray(listasIds) && listasIds.length > 0) {
+      await prisma.clienteListaPrecios.createMany({
+        data: listasIds.map((id: number) => ({ clienteId: cliente.id, listaPrecioId: id })),
+      });
+    }
+
     res.status(201).json(cliente);
   } catch (e: any) {
     console.error("[error crear cliente] code:", e.code, "meta:", JSON.stringify(e.meta), "msg:", e.message);
-    // Unique constraint: campo duplicado
     if (e.code === "P2002") {
       const campo = e.meta?.target ?? "desconocido";
       return res.status(409).json({ error: `Ya existe un registro con ese valor en el campo: ${campo}. Verifica los datos.` });
