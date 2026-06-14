@@ -25,6 +25,7 @@ export const productosApi = {
   buscar: (q: string) => api.get(`/productos/buscar?q=${q}`).then((r) => r.data),
   crear: (data: any) => api.post("/productos", data).then((r) => r.data),
   actualizar: (id: number, data: any) => api.put(`/productos/${id}`, data).then((r) => r.data),
+  importar: (filas: any[]) => api.post("/productos/importar", filas).then((r) => r.data),
   subirImagen: (id: number, file: File) => {
     const form = new FormData();
     form.append("imagen", file);
