@@ -4,7 +4,6 @@ import { prisma } from "../lib/prisma";
 const INCLUDE_LISTAS = {
   listasAsignadas: {
     include: { listaPrecio: { select: { id: true, nombre: true } } },
-    orderBy: { listaPrecio: { nombre: "asc" as const } },
   },
 };
 
@@ -55,9 +54,7 @@ export async function obtener(req: Request, res: Response) {
       listasAsignadas: {
         include: {
           listaPrecio: {
-            include: {
-              detalle: { include: { producto: true } },
-            },
+            include: { detalle: { include: { producto: true } } },
           },
         },
       },
