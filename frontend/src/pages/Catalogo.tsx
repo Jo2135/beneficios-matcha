@@ -21,6 +21,8 @@ export default function Catalogo() {
   const [modalImport, setModalImport] = useState(false);
   const [filasPreview, setFilasPreview] = useState<any[]>([]);
   const [resultImport, setResultImport] = useState<any>(null);
+  const [omitidasSinCodigo, setOmitidasSinCodigo] = useState(0);
+  const [categoriaDefault, setCategoriaDefault] = useState("Externo");
 
   const { data: productos = [] } = useQuery({
     queryKey: ["productos"],
@@ -83,13 +85,27 @@ export default function Catalogo() {
   };
 
   const importarMutation = useMutation({
-    mutationFn: () => productosApi.importar(filasPreview),
+    mutationFn: () => {
+      // Resolver categoría: si la fila trae una válida la usa; si no, la categoría por defecto
+      const validNames = new Map((categorias as any[]).map((c: any) => [c.nombre.toLowerCase().trim(), c.nombre]));
+      const payload = filasPreview.map((f) => {
+        const propia = validNames.get(String(f.categoria ?? "").toLowerCase().trim());
+        return { ...f, categoria: propia ?? categoriaDefault };
+      });
+      return productosApi.importar(payload);
+    },
     onSuccess: (data) => {
       setResultImport(data);
       qc.invalidateQueries({ queryKey: ["productos"] });
     },
     onError: (e: any) => alert(e.response?.data?.error ?? e.message),
   });
+
+  // Normaliza texto: minúsculas, sin tildes, sin espacios extra
+  const norm = (s: any) =>
+    String(s ?? "").toLowerCase().trim()
+      .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
+      .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u");
 
   const onArchivoImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -103,43 +119,66 @@ export default function Catalogo() {
       const wb = XLSX.read(data, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-      if (rows.length < 2) { alert("El archivo está vacío o sin datos."); return; }
+      if (rows.length === 0) { alert("El archivo está vacío."); return; }
 
-      // Primera fila = encabezados
-      const headers = (rows[0] as any[]).map((h) => String(h).toLowerCase().trim());
-      const col = (nombre: string) => {
+      // 1) Detectar la fila de encabezados: la primera (de las primeras 15) que tenga la columna "codigo"
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(rows.length, 15); i++) {
+        const celdas = (rows[i] as any[]).map(norm);
+        if (celdas.some((c) => c === "codigo" || c === "code")) { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) {
+        alert('No encontré una columna llamada "codigo".\n\nEl archivo debe tener una fila de encabezado que incluya la columna "codigo". Revisa el formato que se muestra en la ventana.');
+        return;
+      }
+
+      const headers = (rows[headerIdx] as any[]).map(norm);
+      const col = (key: string) => {
         const variantes: Record<string, string[]> = {
-          codigo:       ["codigo", "código", "code"],
-          nombre:       ["nombre", "producto", "name"],
-          medida:       ["medida", "tamaño", "tamaño", "size"],
-          categoria:    ["categoria", "categoría", "category", "cat"],
-          origen:       ["origen", "origin", "tipo"],
-          pesoUnitarioKg: ["peso", "peso kg", "peso/kg", "peso unitario", "pesounitariokg", "kg"],
-          descripcion:  ["descripcion", "descripción", "description", "desc"],
+          codigo:       ["codigo", "code"],
+          nombre:       ["nombre", "producto", "name", "conexion", "descripcion producto"],
+          medida:       ["medida", "diametro", "tipo", "tamano", "size", "dimension", "pulgada", "pulgadas"],
+          categoria:    ["categoria", "category", "cat"],
+          origen:       ["origen", "origin"],
+          peso:         ["peso", "kg", "peso kg", "peso unitario", "pesounitariokg"],
+          descripcion:  ["descripcion", "description", "desc", "observacion", "observaciones", "nota"],
         };
-        for (const v of variantes[nombre] ?? [nombre]) {
+        for (const v of variantes[key] ?? [key]) {
           const idx = headers.indexOf(v);
           if (idx !== -1) return idx;
         }
         return -1;
       };
 
-      const filas = rows.slice(1).map((row: any[]) => {
-        const get = (key: string) => {
-          const idx = col(key);
-          return idx !== -1 ? String(row[idx] ?? "").trim() : "";
-        };
-        return {
-          codigo: get("codigo") || undefined,
-          nombre: get("nombre"),
-          medida: get("medida"),
-          categoria: get("categoria"),
-          origen: get("origen") || "INTERNO",
-          pesoUnitarioKg: get("pesoUnitarioKg") ? Number(get("pesoUnitarioKg")) || undefined : undefined,
-          descripcion: get("descripcion") || undefined,
-        };
-      }).filter((f) => f.nombre || f.medida);
+      const cCod = col("codigo"), cNom = col("nombre"), cMed = col("medida"),
+            cCat = col("categoria"), cOri = col("origen"), cPeso = col("peso"), cDesc = col("descripcion");
 
+      // 2) Tomar SOLO filas con código (después del encabezado). Las demás se ignoran.
+      const dataRows = rows.slice(headerIdx + 1);
+      let conContenidoSinCodigo = 0;
+      const filas = dataRows.map((row: any[]) => {
+        const get = (idx: number) => (idx !== -1 ? String(row[idx] ?? "").trim() : "");
+        return {
+          codigo: get(cCod),
+          nombre: get(cNom),
+          medida: get(cMed),
+          categoria: get(cCat),
+          origen: get(cOri) || "INTERNO",
+          pesoUnitarioKg: get(cPeso) ? Number(get(cPeso)) || undefined : undefined,
+          descripcion: get(cDesc) || undefined,
+        };
+      }).filter((f) => {
+        if (f.codigo) return true;
+        if (f.nombre) conContenidoSinCodigo++; // filas con texto pero sin código (se ignoran)
+        return false;
+      });
+
+      if (filas.length === 0) {
+        alert("No encontré ninguna fila con código para importar.\n\nSolo se importan las filas que tengan un código en la columna 'codigo'.");
+        return;
+      }
+
+      setOmitidasSinCodigo(conContenidoSinCodigo);
       setFilasPreview(filas);
       setModalImport(true);
     };
@@ -260,29 +299,31 @@ export default function Catalogo() {
               <button onClick={() => { setModalImport(false); setResultImport(null); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 18 }}>✕</button>
             </div>
 
-            {/* Formato esperado */}
+            {/* Formato esperado — SIEMPRE visible */}
             <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><FileText size={13} /> Formato de columnas en el Excel:</div>
+              <div style={{ fontWeight: 600, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><FileText size={13} /> Orden de columnas que debes seguir en el Excel:</div>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead>
                   <tr style={{ background: "#dcfce7" }}>
-                    {["codigo", "nombre *", "medida *", "categoria *", "origen", "peso", "descripcion"].map((h) => (
+                    {["codigo *", "nombre *", "medida", "categoria", "origen", "peso", "descripcion"].map((h) => (
                       <th key={h} style={{ padding: "3px 8px", fontSize: 11, fontFamily: "monospace", textAlign: "left", fontWeight: 700 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    {["TUAZ-1/2", "Tubo Azul", '1/2"', "Manguera Azul", "INTERNO", "0.25", "Agua fría"].map((v, i) => (
+                    {["TUAZ-1/2", "Tubo Azul", '1/2"', "Azul", "INTERNO", "0.25", "Agua fría"].map((v, i) => (
                       <td key={i} style={{ padding: "3px 8px", fontSize: 11, fontFamily: "monospace", color: "#166534" }}>{v}</td>
                     ))}
                   </tr>
                 </tbody>
               </table>
-              <div style={{ marginTop: 8, fontSize: 12, color: "#374151" }}>
-                * Obligatorios. <strong>categoria</strong> debe coincidir exactamente con las categorías del sistema.
-                Si el código o nombre+medida ya existe, el producto se <em>actualiza</em>.
-              </div>
+              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#374151", lineHeight: 1.6 }}>
+                <li><strong>Solo se importan las filas que tengan código</strong> (las demás se ignoran: títulos, filas vacías, etc.).</li>
+                <li>Si el <strong>código</strong> ya existe, el producto se <em>actualiza</em>; si no existe, se <em>crea</em>.</li>
+                <li>Los encabezados pueden estar en cualquier fila. Acepta nombres flexibles: <code>diametro</code>/<code>tipo</code> = medida.</li>
+                <li>Si una fila no trae <strong>categoria</strong> válida, se usa la <strong>categoría por defecto</strong> de abajo.</li>
+              </ul>
             </div>
 
             {/* Resultado */}
@@ -302,12 +343,17 @@ export default function Catalogo() {
                     <div style={{ fontSize: 12, color: resultImport.errores.length > 0 ? "#dc2626" : "#64748b", fontWeight: 600 }}>Errores</div>
                   </div>
                 </div>
+                {resultImport.omitidasSinCodigo > 0 && (
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10, textAlign: "center" }}>
+                    {resultImport.omitidasSinCodigo} fila(s) sin código fueron ignoradas.
+                  </div>
+                )}
                 {resultImport.errores.length > 0 && (
                   <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: 12, maxHeight: 150, overflowY: "auto" }}>
                     {resultImport.errores.map((e: any, i: number) => (
                       <div key={i} style={{ fontSize: 12, color: "#dc2626", marginBottom: 4, display: "flex", gap: 6 }}>
                         <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                        Fila {e.fila}: {e.mensaje}
+                        {e.mensaje}
                       </div>
                     ))}
                   </div>
@@ -320,9 +366,25 @@ export default function Catalogo() {
               </div>
             ) : (
               <>
+                {/* Categoría por defecto */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, padding: "10px 12px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#1e3a8a", whiteSpace: "nowrap" }}>Categoría por defecto:</label>
+                  <select style={{ ...inputStyle, width: "auto", flex: 1 }} value={categoriaDefault} onChange={(e) => setCategoriaDefault(e.target.value)}>
+                    {(categorias as any[]).map((c: any) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                  </select>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>se aplica a filas sin categoría válida</span>
+                </div>
+
+                {/* Aviso de filas ignoradas */}
+                {omitidasSinCodigo > 0 && (
+                  <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+                    {omitidasSinCodigo} fila(s) con texto pero <strong>sin código</strong> serán ignoradas (no se importan).
+                  </div>
+                )}
+
                 {/* Preview de filas */}
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>
-                  {filasPreview.length} productos detectados — vista previa:
+                  {filasPreview.length} productos con código — vista previa:
                 </div>
                 <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", maxHeight: 240, overflowY: "auto", marginBottom: 16 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -334,17 +396,21 @@ export default function Catalogo() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasPreview.slice(0, 50).map((f, i) => (
+                      {filasPreview.slice(0, 50).map((f, i) => {
+                        const catValida = (categorias as any[]).find((c: any) => c.nombre.toLowerCase().trim() === String(f.categoria ?? "").toLowerCase().trim());
+                        const catFinal = catValida ? catValida.nombre : categoriaDefault;
+                        return (
                         <tr key={i} style={{ borderBottom: "1px solid #f8fafc" }}>
                           <td style={{ padding: "5px 10px", color: "#94a3b8" }}>{i + 1}</td>
                           <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 11, color: "#1d4ed8" }}>{f.codigo || "—"}</td>
                           <td style={{ padding: "5px 10px", fontWeight: 500 }}>{f.nombre}</td>
                           <td style={{ padding: "5px 10px" }}>{f.medida}</td>
-                          <td style={{ padding: "5px 10px", color: "#7c3aed" }}>{f.categoria}</td>
+                          <td style={{ padding: "5px 10px", color: catValida ? "#7c3aed" : "#94a3b8" }}>{catFinal}{!catValida && " (def.)"}</td>
                           <td style={{ padding: "5px 10px" }}>{f.origen}</td>
                           <td style={{ padding: "5px 10px" }}>{f.pesoUnitarioKg ?? "—"}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {filasPreview.length > 50 && (
                         <tr><td colSpan={7} style={{ padding: "8px 10px", color: "#94a3b8", textAlign: "center" }}>... y {filasPreview.length - 50} más</td></tr>
                       )}

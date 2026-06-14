@@ -91,11 +91,11 @@ export async function eliminar(req: Request, res: Response) {
 }
 
 /**
- * Importación masiva desde Excel.
- * Cada fila: { codigo?, nombre, medida, categoria, origen?, pesoUnitarioKg?, descripcion? }
- * - Si existe un producto con el mismo código → actualiza
- * - Si existe uno con mismo nombre+medida → actualiza
- * - Si no existe → crea
+ * Importación masiva desde Excel — ENFOCADA EN EL CÓDIGO.
+ * Cada fila: { codigo, nombre, medida, categoria, origen?, pesoUnitarioKg?, descripcion? }
+ * - SOLO se procesan filas que tengan código (las demás se omiten en silencio).
+ * - Si el código ya existe en la BD → actualiza ese producto.
+ * - Si el código no existe → crea uno nuevo.
  */
 export async function importar(req: Request, res: Response) {
   const filas: {
@@ -119,24 +119,32 @@ export async function importar(req: Request, res: Response) {
   const creados: string[] = [];
   const actualizados: string[] = [];
   const errores: { fila: number; mensaje: string }[] = [];
+  let omitidasSinCodigo = 0;
 
   for (let i = 0; i < filas.length; i++) {
     const fila = filas[i];
-    const numFila = i + 2; // +2 porque fila 1 es el encabezado
+    const numFila = i + 2; // referencia aproximada de fila
+
+    const codigo = fila.codigo ? String(fila.codigo).trim().toUpperCase() || null : null;
+
+    // ENFOQUE EN CÓDIGO: sin código → se omite (no es error)
+    if (!codigo) {
+      omitidasSinCodigo++;
+      continue;
+    }
 
     const nombre = String(fila.nombre ?? "").trim();
     const medida = String(fila.medida ?? "").trim();
     const categoriaNombre = String(fila.categoria ?? "").trim().toLowerCase();
-    const codigo = fila.codigo ? String(fila.codigo).trim().toUpperCase() || null : null;
 
-    if (!nombre || !medida) {
-      errores.push({ fila: numFila, mensaje: "Nombre y Medida son obligatorios" });
+    if (!nombre) {
+      errores.push({ fila: numFila, mensaje: `Código ${codigo}: falta el nombre del producto` });
       continue;
     }
 
     const categoriaId = catMap.get(categoriaNombre);
     if (!categoriaId) {
-      errores.push({ fila: numFila, mensaje: `Categoría "${fila.categoria}" no existe. Disponibles: ${[...catMap.keys()].join(", ")}` });
+      errores.push({ fila: numFila, mensaje: `Código ${codigo}: categoría "${fila.categoria}" no existe. Disponibles: ${[...catMap.keys()].join(", ")}` });
       continue;
     }
 
@@ -145,33 +153,31 @@ export async function importar(req: Request, res: Response) {
     const descripcion = fila.descripcion ? String(fila.descripcion).trim() || null : null;
 
     try {
-      // Buscar por código primero, luego por nombre+medida
-      let existente = null;
-      if (codigo) {
-        existente = await prisma.producto.findFirst({ where: { codigo } });
-      }
-      if (!existente) {
-        existente = await prisma.producto.findFirst({
-          where: { nombre: { equals: nombre, mode: "insensitive" }, medida: { equals: medida, mode: "insensitive" } },
-        });
-      }
+      // Buscar SOLO por código
+      const existente = await prisma.producto.findFirst({ where: { codigo } });
 
       if (existente) {
         await prisma.producto.update({
           where: { id: existente.id },
           data: { nombre, medida, codigo, categoriaId, origen: origen as any, pesoUnitarioKg, descripcion, activo: true },
         });
-        actualizados.push(`${nombre} ${medida}`);
+        actualizados.push(`${codigo} — ${nombre} ${medida}`);
       } else {
         await prisma.producto.create({
           data: { nombre, medida, codigo, categoriaId, origen: origen as any, pesoUnitarioKg, descripcion },
         });
-        creados.push(`${nombre} ${medida}`);
+        creados.push(`${codigo} — ${nombre} ${medida}`);
       }
     } catch (e: any) {
-      errores.push({ fila: numFila, mensaje: e.message });
+      errores.push({ fila: numFila, mensaje: `Código ${codigo}: ${e.message}` });
     }
   }
 
-  res.json({ creados: creados.length, actualizados: actualizados.length, errores, total: filas.length });
+  res.json({
+    creados: creados.length,
+    actualizados: actualizados.length,
+    omitidasSinCodigo,
+    errores,
+    total: filas.length,
+  });
 }
