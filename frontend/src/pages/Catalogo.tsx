@@ -141,6 +141,7 @@ export default function Catalogo() {
           categoria:    ["categoria", "category", "cat"],
           origen:       ["origen", "origin"],
           peso:         ["peso", "kg", "peso kg", "peso unitario", "pesounitariokg"],
+          costocompra:  ["costocompra", "costo compra", "costo", "costo $", "costo$", "precio compra", "costo de compra"],
           descripcion:  ["descripcion", "description", "desc", "observacion", "observaciones", "nota"],
         };
         for (const v of variantes[key] ?? [key]) {
@@ -151,7 +152,8 @@ export default function Catalogo() {
       };
 
       const cCod = col("codigo"), cNom = col("nombre"), cMed = col("medida"),
-            cCat = col("categoria"), cOri = col("origen"), cPeso = col("peso"), cDesc = col("descripcion");
+            cCat = col("categoria"), cOri = col("origen"), cPeso = col("peso"),
+            cCosto = col("costocompra"), cDesc = col("descripcion");
 
       // 2) Tomar SOLO filas con código (después del encabezado). Las demás se ignoran.
       const dataRows = rows.slice(headerIdx + 1);
@@ -165,6 +167,7 @@ export default function Catalogo() {
           categoria: get(cCat),
           origen: get(cOri) || "INTERNO",
           pesoUnitarioKg: get(cPeso) ? Number(get(cPeso)) || undefined : undefined,
+          costoCompra: get(cCosto) ? Number(get(cCosto)) || undefined : undefined,
           descripcion: get(cDesc) || undefined,
         };
       }).filter((f) => {
@@ -472,6 +475,11 @@ export default function Catalogo() {
               <div>
                 <label style={labelStyle}>Peso por Unidad (kg)</label>
                 <input type="number" style={inputStyle} value={form.pesoUnitarioKg || ""} step="0.001" placeholder="0.000" onChange={(e) => setForm({ ...form, pesoUnitarioKg: e.target.value ? Number(e.target.value) : null })} />
+              </div>
+              <div>
+                <label style={labelStyle}>Costo de Compra ($)</label>
+                <input type="number" style={inputStyle} value={form.costoCompra ?? ""} step="0.0001" placeholder="0.0000" onChange={(e) => setForm({ ...form, costoCompra: e.target.value ? Number(e.target.value) : null })} />
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>Precio publicado del proveedor (para conexiones)</div>
               </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>Descripción</label>

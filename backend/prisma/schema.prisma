@@ -55,6 +55,7 @@ model Producto {
   categoriaId    Int
   categoria      CategoriaCosto @relation(fields: [categoriaId], references: [id])
   pesoUnitarioKg Decimal?       @db.Decimal(8, 4)
+  costoCompra    Decimal?       @db.Decimal(12, 4)  // precio publicado de compra (proveedor) — usado para Conexiones
   imagenUrl      String?
   activo         Boolean        @default(true)
   creadoEn       DateTime       @default(now())

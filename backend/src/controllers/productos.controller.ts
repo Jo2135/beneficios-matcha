@@ -43,7 +43,7 @@ export async function obtener(req: Request, res: Response) {
 }
 
 export async function crear(req: Request, res: Response) {
-  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, descripcion, activo, imagenUrl } = req.body;
+  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, costoCompra, descripcion, activo, imagenUrl } = req.body;
   const producto = await prisma.producto.create({
     data: {
       nombre,
@@ -52,6 +52,7 @@ export async function crear(req: Request, res: Response) {
       origen: origen ?? "INTERNO",
       categoriaId: categoriaId ? Number(categoriaId) : undefined,
       pesoUnitarioKg: pesoUnitarioKg !== undefined ? pesoUnitarioKg : undefined,
+      costoCompra: costoCompra !== undefined && costoCompra !== null && costoCompra !== "" ? Number(costoCompra) : null,
       descripcion: descripcion ?? null,
       activo: activo ?? true,
       imagenUrl: imagenUrl ?? null,
@@ -63,7 +64,7 @@ export async function crear(req: Request, res: Response) {
 
 export async function actualizar(req: Request, res: Response) {
   // Extraer solo los campos planos — excluir relaciones anidadas (categoria, etc.)
-  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, descripcion, activo, imagenUrl } = req.body;
+  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, costoCompra, descripcion, activo, imagenUrl } = req.body;
   const producto = await prisma.producto.update({
     where: { id: Number(req.params.id) },
     data: {
@@ -73,6 +74,7 @@ export async function actualizar(req: Request, res: Response) {
       origen,
       categoriaId: categoriaId ? Number(categoriaId) : undefined,
       pesoUnitarioKg: pesoUnitarioKg !== undefined ? pesoUnitarioKg : undefined,
+      costoCompra: costoCompra !== undefined && costoCompra !== null && costoCompra !== "" ? Number(costoCompra) : null,
       descripcion: descripcion ?? null,
       activo,
       imagenUrl: imagenUrl ?? null,
@@ -105,6 +107,7 @@ export async function importar(req: Request, res: Response) {
     categoria: string;
     origen?: string;
     pesoUnitarioKg?: number;
+    costoCompra?: number;
     descripcion?: string;
   }[] = req.body;
 
@@ -150,6 +153,7 @@ export async function importar(req: Request, res: Response) {
 
     const origen = (fila.origen ?? "INTERNO").toString().toUpperCase() === "EXTERNO" ? "EXTERNO" : "INTERNO";
     const pesoUnitarioKg = fila.pesoUnitarioKg ? Number(fila.pesoUnitarioKg) : null;
+    const costoCompra = fila.costoCompra ? Number(fila.costoCompra) : null;
     const descripcion = fila.descripcion ? String(fila.descripcion).trim() || null : null;
 
     try {
@@ -159,12 +163,14 @@ export async function importar(req: Request, res: Response) {
       if (existente) {
         await prisma.producto.update({
           where: { id: existente.id },
-          data: { nombre, medida, codigo, categoriaId, origen: origen as any, pesoUnitarioKg, descripcion, activo: true },
+          // costoCompra: solo lo sobreescribe si la fila trae valor (no borra el existente)
+          data: { nombre, medida, codigo, categoriaId, origen: origen as any, pesoUnitarioKg,
+                  ...(costoCompra !== null ? { costoCompra } : {}), descripcion, activo: true },
         });
         actualizados.push(`${codigo} — ${nombre} ${medida}`);
       } else {
         await prisma.producto.create({
-          data: { nombre, medida, codigo, categoriaId, origen: origen as any, pesoUnitarioKg, descripcion },
+          data: { nombre, medida, codigo, categoriaId, origen: origen as any, pesoUnitarioKg, costoCompra, descripcion },
         });
         creados.push(`${codigo} — ${nombre} ${medida}`);
       }
