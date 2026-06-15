@@ -17,6 +17,7 @@ interface Item {
 interface Balance {
   id: number; nombre?: string; items: Item[];
   calculadoEn?: string;   // ISO timestamp del último cálculo
+  gananciaVendedor?: number;  // comisión del vendedor — sección superior independiente
 }
 
 const fmtFecha = (iso?: string) => {
@@ -177,6 +178,21 @@ export default function BalancePago() {
           )}
         </div>
       </div>
+
+      {/* Sección superior: Comisión del Vendedor (independiente, no suma en el balance) */}
+      {(balance.gananciaVendedor ?? 0) > 0 && (
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          background: "#ecfeff", border: "1px solid #a5f3fc", borderRadius: 10,
+          padding: "12px 18px", marginBottom: 16,
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0e7490" }}>Ganancia del Vendedor</div>
+            <div style={{ fontSize: 11, color: "#64748b" }}>Comisión del vendedor — pago independiente, no se incluye en el total del balance</div>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0891b2" }}>${fmt(Number(balance.gananciaVendedor))}</div>
+        </div>
+      )}
 
       {/* Contador de estado */}
       {(() => {

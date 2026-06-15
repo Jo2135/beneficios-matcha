@@ -90,7 +90,7 @@ const CURVA_TUBO_COSTO: Record<string, number> = {
 };
 const CURVA_MAT_FACTOR: Record<string, { kg: number; cKg: number }> = {
   "CVBL-1/2": { kg: 0.28, cKg: 1.583 }, "CVBL-3/4": { kg: 0.30, cKg: 1.583 }, "CVBL-1": { kg: 0.50, cKg: 1.583 },
-  "CVNG-1/2": { kg: 0.24, cKg: 1.283 }, "CVNG-3/4": { kg: 0.28, cKg: 1.283 }, "CVNG-1": { kg: 0.35, cKg: 1.283 },
+  "CVNG-1/2": { kg: 0.24, cKg: 1.283 }, "CVNG-3/4": { kg: 0.28, cKg: 1.283 }, "CVNG-1": { kg: 0.40, cKg: 1.283 },
 };
 
 // ─── NORMALIZACIÓN ────────────────────────────────────────────────────────────
@@ -316,9 +316,9 @@ const CODO_INTERNO: Record<string, number> = {
 
 // ─── CONTROLLER ──────────────────────────────────────────────────────────────
 
-export async function calcular(req: Request, res: Response) {
-  const id = Number(req.params.id);
-
+/** Calcula todas las ganancias de un despacho. Devuelve el objeto de resultado
+ *  o null si el despacho no existe. Reutilizable por el módulo de Balance. */
+export async function calcularGananciasDespacho(id: number): Promise<any | null> {
   // Cargar tablas (con posibles overrides de ConfigGanancias)
   const tablas = await cargarTablas(id);
   const CM = tablas.costoMat;
@@ -361,7 +361,7 @@ export async function calcular(req: Request, res: Response) {
     },
   });
 
-  if (!despacho) return res.status(404).json({ error: "Despacho no encontrado" });
+  if (!despacho) return null;
 
   const facturaTotal = despacho.facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
 
@@ -722,7 +722,7 @@ export async function calcular(req: Request, res: Response) {
     - conexCostoAlirio      // costo real (proveedor)
     - conexCodosInternos;   // costo real (producción interna)
 
-  res.json({
+  return {
     despacho: { id: despacho.id, numero: despacho.numero },
     facturaTotal,
     costoMateria: { ...costoMateria, total: totalCostoMateria },
@@ -773,7 +773,14 @@ export async function calcular(req: Request, res: Response) {
     extraMaterial,
     servicioExterno,
     lineas: lineasDetalle,
-  });
+  };
+}
+
+/** Handler HTTP: GET /despachos/:id/ganancias */
+export async function calcular(req: Request, res: Response) {
+  const result = await calcularGananciasDespacho(Number(req.params.id));
+  if (!result) return res.status(404).json({ error: "Despacho no encontrado" });
+  res.json(result);
 }
 
 export async function actualizarServicioExterno(req: Request, res: Response) {

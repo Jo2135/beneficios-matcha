@@ -417,6 +417,7 @@ model BalancePago {
   ordenDespachoId Int               @unique
   ordenDespacho   OrdenDespacho     @relation(fields: [ordenDespachoId], references: [id], onDelete: Cascade)
   nombre          String?
+  gananciaVendedor Decimal?         @db.Decimal(12, 2) @default(0) // comisión del vendedor — sección superior, NO suma en el balance
   // Snapshot del cálculo — preserva los valores aunque cambien tasas en el código
   calculadoEn     DateTime?
   calculosJson    String?           @db.Text   // JSON con el resultado completo de ganancias
