@@ -344,7 +344,12 @@ export async function calcular(req: Request, res: Response) {
       facturas: {
         select: {
           totalNeto: true,
-          cliente: { select: { nombre: true, comisionConexionesPct: true, fleteConexionesPct: true } },
+          cliente: {
+            select: {
+              nombre: true, comisionConexionesPct: true, fleteConexionesPct: true,
+              vendedor: { select: { nombre: true, gananciaMuchachosPct: true } },
+            },
+          },
           lineas: {
             select: {
               totalLinea: true, cantidad: true, productoId: true,
@@ -561,27 +566,24 @@ export async function calcular(req: Request, res: Response) {
   const totalFlete = fletesCliente.reduce((s, f) => s + f.monto, 0);
 
   // ── Ganancia Muchachos (equipo de flete) — gasto extra independiente ───────
-  // % sobre TODA la venta del vendedor (tubería + conexiones). Misma fórmula que
-  // comisión: x − x/(1+%). No afecta la comisión del vendedor; es un pago aparte.
+  // % sobre TODA la venta (tubería + conexiones) de los clientes cuyo VENDEDOR
+  // tenga gananciaMuchachosPct > 0. Misma fórmula que comisión: x − x/(1+%).
+  // Se basa en el vendedor del CLIENTE (asignación permanente), no en quién
+  // tecleó la cotización. No afecta la comisión del vendedor; es un pago aparte.
   interface MuchachosItem { vendedorNombre: string; clienteNombre: string; pct: number; ventaTotal: number; monto: number; }
   const muchachosDetalle: MuchachosItem[] = [];
-  const cotVistasM = new Set<number>();
-  for (const linea of despacho.lineas) {
-    const cot = (linea as any).cotizacion;
-    if (!cot || cotVistasM.has(cot.id)) continue;
-    cotVistasM.add(cot.id);
-
-    const pct = Number(cot.vendedor?.gananciaMuchachosPct ?? 0);
+  for (const factura of despacho.facturas as any[]) {
+    const vend = factura.cliente?.vendedor;
+    const pct = Number(vend?.gananciaMuchachosPct ?? 0);
     if (pct <= 0) continue;
 
-    // Base = toda la venta de la cotización (todos los productos)
-    const ventaTotal = (cot.lineas ?? []).reduce((s: number, cl: any) => s + Number(cl.totalLinea ?? 0), 0);
+    const ventaTotal = Number(factura.totalNeto);  // toda la venta de esa factura
     if (ventaTotal <= 0) continue;
 
     const monto = ventaTotal * pct / (100 + pct);
     muchachosDetalle.push({
-      vendedorNombre: cot.vendedor?.nombre ?? "—",
-      clienteNombre:  cot.cliente?.nombre  ?? `Cot #${cot.id}`,
+      vendedorNombre: vend?.nombre ?? "—",
+      clienteNombre:  factura.cliente?.nombre ?? "—",
       pct, ventaTotal, monto,
     });
   }
