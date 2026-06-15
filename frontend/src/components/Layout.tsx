@@ -29,6 +29,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: "/facturas",    label: "Facturas",            icon: Receipt,   roles: ["MASTER","ADMIN"] },
     { path: "/pagos",       label: "Pagos",               icon: Banknote,  roles: ["MASTER","ADMIN"] },
     { path: "/reportes",    label: "Reportes",            icon: BarChart3, roles: ["MASTER","ADMIN"] },
+    { path: "/estadisticas",label: "Estadísticas",        icon: BarChart3, roles: ["MASTER","ADMIN"] },
     { path: "/usuarios",    label: "Usuarios",            icon: UserCog,   roles: ["MASTER","ADMIN"] },
     { path: "/vendedores",  label: "Vendedores",          icon: Users,     roles: ["MASTER","ADMIN"] },
     { path: "/configuracion",label: "Configuración",     icon: Settings,  roles: ["MASTER"] },

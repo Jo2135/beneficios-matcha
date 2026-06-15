@@ -106,6 +106,7 @@ router.get("/facturas/balance", requireRol("MASTER", "ADMIN"), w(facturas.balanc
 router.get("/facturas/cliente/:clienteId/resumen", requireRol("MASTER", "ADMIN"), w(facturas.resumenCliente));
 router.get("/facturas/cliente/:clienteId/con-pagos", requireRol("MASTER", "ADMIN"), w(facturas.listarClienteConPagos));
 router.post("/facturas/manual", requireRol("MASTER", "ADMIN"), w(facturas.crearManual));
+router.post("/facturas/importar-historico", requireRol("MASTER", "ADMIN"), w(facturas.importarHistorico));
 router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));
 router.delete("/facturas/:id", requireRol("MASTER"), w(facturas.eliminar));
@@ -145,6 +146,7 @@ router.get("/despachos/:id", w(despachos.obtener));
 
 // ─── Reportes ─────────────────────────────────────────────────────────────
 router.get("/reportes/ventas-producto", requireRol("MASTER", "ADMIN"), w(reportes.ventasProducto));
+router.get("/reportes/ventas-facturas", requireRol("MASTER", "ADMIN"), w(reportes.ventasFacturas));
 router.get("/reportes/estado-cuenta/:clienteId", requireRol("MASTER", "ADMIN"), w(reportes.estadoCuenta));
 router.get("/reportes/cuentas-cobrar", requireRol("MASTER", "ADMIN"), w(reportes.cuentasCobrar));
 

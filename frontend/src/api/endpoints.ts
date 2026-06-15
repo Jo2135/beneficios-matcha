@@ -96,6 +96,8 @@ export const facturasApi = {
   actualizarNotas: (id: number, notas: string) =>
     api.patch(`/facturas/${id}/notas`, { notas }).then((r) => r.data),
   crearManual: (data: any) => api.post("/facturas/manual", data).then((r) => r.data),
+  importarHistorico: (data: { anio: number; facturas: any[] }) =>
+    api.post("/facturas/importar-historico", data).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/facturas/${id}`).then((r) => r.data),
   listarConPagos: (clienteId: number) =>
     api.get(`/facturas/cliente/${clienteId}/con-pagos`).then((r) => r.data),
@@ -159,6 +161,8 @@ export const pagosApi = {
 export const reportesApi = {
   ventasProducto: (params: { q?: string; desde?: string; hasta?: string }) =>
     api.get("/reportes/ventas-producto", { params }).then((r) => r.data),
+  ventasFacturas: (params?: { desde?: string; hasta?: string }) =>
+    api.get("/reportes/ventas-facturas", { params }).then((r) => r.data),
   estadoCuenta: (clienteId: number, params: { desde?: string; hasta?: string }) =>
     api.get(`/reportes/estado-cuenta/${clienteId}`, { params }).then((r) => r.data),
   cuentasCobrar: (params?: { producto?: string }) =>

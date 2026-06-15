@@ -42,6 +42,60 @@ export async function ventasProducto(req: Request, res: Response) {
   res.json(lineas);
 }
 
+/** Estadísticas de ventas basadas en FACTURAS: top productos, top clientes, ventas por mes */
+export async function ventasFacturas(req: Request, res: Response) {
+  const { desde, hasta } = req.query;
+  const where: any = { estado: { not: "ANULADA" } };
+  if (desde || hasta) {
+    where.fechaEmision = {};
+    if (desde) where.fechaEmision.gte = new Date(desde as string);
+    if (hasta) { const h = new Date(hasta as string); h.setHours(23, 59, 59, 999); where.fechaEmision.lte = h; }
+  }
+
+  const facturas = await prisma.factura.findMany({
+    where,
+    select: {
+      id: true, fechaEmision: true, totalNeto: true,
+      cliente: { select: { id: true, nombre: true } },
+      lineas: { select: { cantidad: true, totalLinea: true, producto: { select: { id: true, nombre: true, medida: true } } } },
+    },
+  });
+
+  const prodMap = new Map<number, { nombre: string; monto: number; unidades: number }>();
+  const cliMap = new Map<number, { nombre: string; monto: number; facturas: number }>();
+  const mesMap = new Map<string, number>();
+  let totalVentas = 0;
+
+  for (const f of facturas) {
+    const monto = Number(f.totalNeto);
+    totalVentas += monto;
+    if (f.cliente) {
+      const c = cliMap.get(f.cliente.id) ?? { nombre: f.cliente.nombre, monto: 0, facturas: 0 };
+      c.monto += monto; c.facturas += 1;
+      cliMap.set(f.cliente.id, c);
+    }
+    const d = new Date(f.fechaEmision);
+    const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    mesMap.set(mk, (mesMap.get(mk) ?? 0) + monto);
+    for (const l of f.lineas) {
+      if (!l.producto) continue;
+      const p = prodMap.get(l.producto.id) ?? { nombre: `${l.producto.nombre} ${l.producto.medida}`.trim(), monto: 0, unidades: 0 };
+      p.monto += Number(l.totalLinea);
+      p.unidades += Number(l.cantidad);
+      prodMap.set(l.producto.id, p);
+    }
+  }
+
+  res.json({
+    totalFacturas: facturas.length,
+    totalVentas,
+    topProductosMonto:    [...prodMap.values()].sort((a, b) => b.monto - a.monto).slice(0, 15),
+    topProductosUnidades: [...prodMap.values()].sort((a, b) => b.unidades - a.unidades).slice(0, 15),
+    topClientes:          [...cliMap.values()].sort((a, b) => b.monto - a.monto).slice(0, 15),
+    ventasPorMes:         [...mesMap.entries()].sort().map(([mes, monto]) => ({ mes, monto })),
+  });
+}
+
 export async function estadoCuenta(req: Request, res: Response) {
   const clienteId = Number(req.params.clienteId);
   const { desde, hasta } = req.query;
