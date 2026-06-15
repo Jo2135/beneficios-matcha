@@ -9,6 +9,15 @@ export const authApi = {
     api.post(`/auth/usuarios/${id}/vincular-vendedor`).then((r) => r.data),
 };
 
+// Administración de Vendedores
+export const vendedoresApi = {
+  listarAdmin: () => api.get("/auth/vendedores/admin").then((r) => r.data),
+  crear: (data: any) => api.post("/auth/vendedores", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.patch(`/auth/vendedores/${id}`, data).then((r) => r.data),
+  fusionar: (id: number, destinoId: number) =>
+    api.post(`/auth/vendedores/${id}/fusionar`, { destinoId }).then((r) => r.data),
+};
+
 // Clientes
 export const clientesApi = {
   listar: () => api.get("/clientes").then((r) => r.data),

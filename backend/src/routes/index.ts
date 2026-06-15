@@ -39,6 +39,10 @@ router.use(requireAuth);
 // ─── AUTH (privado) ───────────────────────────────────────────────────────
 router.get("/auth/me", w(auth.me));
 router.get("/auth/vendedores", w(auth.listarVendedores));
+router.get("/auth/vendedores/admin", requireRol("MASTER", "ADMIN"), w(auth.listarVendedoresAdmin));
+router.post("/auth/vendedores", requireRol("MASTER", "ADMIN"), w(auth.crearVendedor));
+router.patch("/auth/vendedores/:id", requireRol("MASTER"), w(auth.actualizarVendedor));
+router.post("/auth/vendedores/:id/fusionar", requireRol("MASTER"), w(auth.fusionarVendedor));
 router.get("/auth/usuarios", requireRol("MASTER", "ADMIN"), w(auth.listarUsuarios));
 router.post("/auth/usuarios", requireRol("MASTER", "ADMIN"), w(auth.crearUsuario));
 router.put("/auth/usuarios/:id", requireRol("MASTER"), w(auth.actualizarUsuario));

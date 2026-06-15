@@ -256,3 +256,66 @@ export async function setup(req: Request, res: Response) {
 
   res.status(201).json({ token, usuario: sinPassword(usuario) });
 }
+
+// ─── ADMINISTRACIÓN DE VENDEDORES ────────────────────────────────────────────
+
+/** Lista TODOS los vendedores (activos e inactivos) con referencias, para administrar */
+export async function listarVendedoresAdmin(_req: Request, res: Response) {
+  const vendedores = await prisma.vendedor.findMany({
+    orderBy: [{ activo: "desc" }, { nombre: "asc" }],
+    select: {
+      id: true, nombre: true, comisionPct: true, comisionReferidoPct: true,
+      gananciaMuchachosPct: true, activo: true,
+      usuario: { select: { id: true, nombre: true, email: true } },
+      _count: { select: { clientes: true, cotizaciones: true } },
+    },
+  });
+  res.json(vendedores);
+}
+
+/** Crea un vendedor manualmente (sin usuario asociado) */
+export async function crearVendedor(req: Request, res: Response) {
+  const { nombre, comisionPct, comisionReferidoPct, gananciaMuchachosPct } = req.body;
+  if (!nombre || !String(nombre).trim()) return res.status(400).json({ error: "El nombre es requerido" });
+  const vendedor = await prisma.vendedor.create({
+    data: {
+      nombre: String(nombre).trim(),
+      comisionPct: Number(comisionPct) || 0,
+      comisionReferidoPct: Number(comisionReferidoPct) || 0,
+      gananciaMuchachosPct: Number(gananciaMuchachosPct) || 0,
+    },
+  });
+  res.status(201).json(vendedor);
+}
+
+/** Actualiza nombre, comisiones, % muchachos y estado activo de un vendedor */
+export async function actualizarVendedor(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const { nombre, comisionPct, comisionReferidoPct, gananciaMuchachosPct, activo } = req.body;
+  const data: any = {};
+  if (nombre !== undefined)               data.nombre = String(nombre).trim();
+  if (comisionPct !== undefined)          data.comisionPct = Number(comisionPct) || 0;
+  if (comisionReferidoPct !== undefined)  data.comisionReferidoPct = Number(comisionReferidoPct) || 0;
+  if (gananciaMuchachosPct !== undefined) data.gananciaMuchachosPct = Number(gananciaMuchachosPct) || 0;
+  if (activo !== undefined)               data.activo = Boolean(activo);
+  const vendedor = await prisma.vendedor.update({ where: { id }, data });
+  res.json(vendedor);
+}
+
+/** Fusiona un vendedor (origen) en otro (destino): reasigna clientes y cotizaciones,
+ *  y desactiva el origen. Útil para depurar duplicados con nombres distintos. */
+export async function fusionarVendedor(req: Request, res: Response) {
+  const origenId = Number(req.params.id);
+  const destinoId = Number(req.body.destinoId);
+  if (!destinoId || destinoId === origenId) {
+    return res.status(400).json({ error: "Selecciona un vendedor destino distinto al origen" });
+  }
+  const destino = await prisma.vendedor.findUnique({ where: { id: destinoId } });
+  if (!destino) return res.status(404).json({ error: "Vendedor destino no encontrado" });
+
+  const cli = await prisma.cliente.updateMany({ where: { vendedorId: origenId }, data: { vendedorId: destinoId } });
+  const cot = await prisma.cotizacion.updateMany({ where: { vendedorId: origenId }, data: { vendedorId: destinoId } });
+  await prisma.vendedor.update({ where: { id: origenId }, data: { activo: false } });
+
+  res.json({ ok: true, clientesMovidos: cli.count, cotizacionesMovidas: cot.count, destino: destino.nombre });
+}

@@ -13,6 +13,7 @@ import Despachos from "./pages/Despachos";
 import Pagos from "./pages/Pagos";
 import Facturas from "./pages/Facturas";
 import Usuarios from "./pages/Usuarios";
+import Vendedores from "./pages/Vendedores";
 import OrdenDespachos from "./pages/OrdenDespachos";
 import ReporteComisiones from "./pages/ReporteComisiones";
 import Configuracion from "./pages/Configuracion";
@@ -82,6 +83,7 @@ function AppRoutes() {
         {puedeEditar && <Route path="/pagos" element={<Pagos />} />}
         {puedeEditar && <Route path="/reportes" element={<ReporteComisiones />} />}
         {puedeEditar && <Route path="/usuarios" element={<Usuarios />} />}
+        {puedeEditar && <Route path="/vendedores" element={<Vendedores />} />}
 
         {/* Solo MASTER */}
         {esMaster && <Route path="/configuracion" element={<Configuracion />} />}
