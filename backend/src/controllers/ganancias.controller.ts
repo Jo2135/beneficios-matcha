@@ -604,21 +604,6 @@ export async function calcular(req: Request, res: Response) {
   const comisionesFinal = comisiones - (socioRedireccion.comisiones ?? 0);
   const totalSocioRedirigido = Object.values(socioRedireccion).reduce((s, v) => s + v, 0);
 
-  // ── Extra de material (fondo reserva) ────────────────────────────────────
-  // = Venta total − costos identificados − ganancias distribuidas
-  // curvaTotalVenta ya engloba curvaMaterial + curvaAlberto + curvaMuchachas
-  const gastosTotal = gastos.obreros + gastos.pigmento + gastos.electricidad;
-  const g2Sum = sbugFinal + yolandaFinal + sandraFinal + comisionesFinal;
-  const extraMaterial = facturaTotal
-    - totalCostoMateria
-    - curvaTotalVenta
-    - gastosTotal
-    - totalGananciaGeneral
-    - gananciaPEAD
-    - g2Sum
-    - totalComisionVendedores
-    - totalFlete;
-
   // ── GANANCIA CONEXIONES (cálculo independiente) ──────────────────────────────
   // Fórmula (Excel "Ejemplo calculo gastos conexiones"):
   //   Ganancia = Facturado − CostoAlirio − 5% − ComisiónVend − Flete − CodosInternos
@@ -683,6 +668,30 @@ export async function calcular(req: Request, res: Response) {
   const gananciaConexiones =
     conexFacturado - conexCostoAlirio - conexCinco - conexComisionVend - conexFlete - conexCodosInternos;
 
+  // El 5% de descuento se suma a la fila "Comisiones"
+  const comisionesConCinco = comisionesFinal + conexCinco;
+
+  // ── Extra de material (fondo reserva) ────────────────────────────────────
+  // = Venta total − costos identificados − ganancias distribuidas.
+  // Las conexiones se sacan aquí (su ganancia, 5%, costo Alirio y codos internos
+  // se distribuyen/cuestan en sus propias líneas) para no contarlas doble.
+  const gastosTotal = gastos.obreros + gastos.pigmento + gastos.electricidad;
+  const g2Sum = sbugFinal + yolandaFinal + sandraFinal + comisionesFinal;
+  const extraMaterial = facturaTotal
+    - totalCostoMateria
+    - curvaTotalVenta
+    - gastosTotal
+    - totalGananciaGeneral
+    - gananciaPEAD
+    - g2Sum
+    - totalComisionVendedores
+    - totalFlete
+    // conexiones (ya están en facturaTotal vía sus ventas; se retiran del reserva):
+    - conexCinco            // → va a Comisiones
+    - gananciaConexiones    // → línea propia
+    - conexCostoAlirio      // costo real (proveedor)
+    - conexCodosInternos;   // costo real (producción interna)
+
   res.json({
     despacho: { id: despacho.id, numero: despacho.numero },
     facturaTotal,
@@ -711,6 +720,8 @@ export async function calcular(req: Request, res: Response) {
     ganancias2: {
       base: totalSinConexiones, conexionesExcluidas: totalConexiones,
       sbug: sbugFinal, yolanda: yolandaFinal, sandra: sandraFinal, comisiones: comisionesFinal,
+      comisionesConCinco,            // comisiones (2.2%) + 5% descuento conexiones
+      comisionesCinco: conexCinco,   // solo el 5% de conexiones que se suma a Comisiones
       // montos brutos (antes de redirección) — para referencia
       sbugBruto: sbug, yolandaBruto: yolanda, sandraBruto: sandra, comisionesBruto: comisiones,
     },

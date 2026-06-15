@@ -235,7 +235,14 @@ export default function GananciasDespacho() {
             <PagoLinea label="SBUG"       monto={d.ganancias2.sbug}       color="#dc2626" />
             <PagoLinea label="Yolanda"    monto={d.ganancias2.yolanda}    color="#d97706" />
             <PagoLinea label="Sandra"     monto={d.ganancias2.sandra}     color="#d97706" />
-            <PagoLinea label="Comisiones" monto={d.ganancias2.comisiones} color="#7c3aed" />
+            <PagoLinea
+              label="Comisiones"
+              monto={d.ganancias2.comisionesConCinco ?? d.ganancias2.comisiones}
+              color="#7c3aed"
+              detalle={(d.ganancias2.comisionesCinco ?? 0) > 0
+                ? `${usd(d.ganancias2.comisiones)} (2.2%) + ${usd(d.ganancias2.comisionesCinco)} (5% conexiones)`
+                : undefined}
+            />
           </Section>
 
           {/* Ganancia Conexiones */}
@@ -468,7 +475,7 @@ function ResumenTotal({ data: d }: { data: any }) {
     { label: "SBUG",                        monto: d.ganancias2.sbug },
     { label: "Yolanda",                     monto: d.ganancias2.yolanda },
     { label: "Sandra",                      monto: d.ganancias2.sandra },
-    { label: "Comisiones",                   monto: d.ganancias2.comisiones },
+    { label: "Comisiones",                   monto: d.ganancias2.comisionesConCinco ?? d.ganancias2.comisiones },
     ...(d.curvas.pagoFabrica > 0 ? [
       { label: "Pago Fábrica (Curvas)",     monto: d.curvas.pagoFabrica },
       { label: "Pago Muchachas (Curvas)",   monto: d.curvas.pagoMuchachas },
@@ -483,6 +490,11 @@ function ResumenTotal({ data: d }: { data: any }) {
     ...(d.servicioExterno as any[]).map((s: any) => ({
       label: `Mano de obra — ${s.nombre}`,  monto: s.costo,
     })),
+    ...(d.gananciaConexiones && d.gananciaConexiones.facturado > 0 ? [
+      { label: "Ganancia Conexiones",          monto: d.gananciaConexiones.ganancia },
+      { label: "Costo Conexiones (Alirio)",    monto: d.gananciaConexiones.costoAlirio },
+      { label: 'Codos 2" y 4" (interno)',      monto: d.gananciaConexiones.codosInternos },
+    ] : []),
   ];
 
   const totalPagos = pagos.reduce((s, p) => s + p.monto, 0);
