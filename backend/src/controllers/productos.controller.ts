@@ -65,23 +65,43 @@ export async function crear(req: Request, res: Response) {
 export async function actualizar(req: Request, res: Response) {
   // Extraer solo los campos planos — excluir relaciones anidadas (categoria, etc.)
   const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, costoCompra, descripcion, activo, imagenUrl } = req.body;
-  const producto = await prisma.producto.update({
-    where: { id: Number(req.params.id) },
-    data: {
-      nombre,
-      codigo: codigo ?? null,
-      medida,
-      origen,
-      categoriaId: categoriaId ? Number(categoriaId) : undefined,
-      pesoUnitarioKg: pesoUnitarioKg !== undefined ? pesoUnitarioKg : undefined,
-      costoCompra: costoCompra !== undefined && costoCompra !== null && costoCompra !== "" ? Number(costoCompra) : null,
-      descripcion: descripcion ?? null,
-      activo,
-      imagenUrl: imagenUrl ?? null,
-    },
-    include: { categoria: true },
-  });
-  res.json(producto);
+  const codigoNorm = codigo ? String(codigo).trim().toUpperCase() : null;
+  try {
+    // Validar código duplicado con mensaje claro (en vez de un 409 críptico)
+    if (codigoNorm) {
+      const enUso = await prisma.producto.findFirst({
+        where: { codigo: codigoNorm, id: { not: Number(req.params.id) } },
+        select: { nombre: true, medida: true },
+      });
+      if (enUso) {
+        return res.status(409).json({
+          error: `El código "${codigoNorm}" ya lo usa otro producto: ${enUso.nombre} ${enUso.medida}. Usa un código distinto o revisa si es un producto duplicado.`,
+        });
+      }
+    }
+    const producto = await prisma.producto.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        nombre,
+        codigo: codigoNorm,
+        medida,
+        origen,
+        categoriaId: categoriaId ? Number(categoriaId) : undefined,
+        pesoUnitarioKg: pesoUnitarioKg !== undefined ? pesoUnitarioKg : undefined,
+        costoCompra: costoCompra !== undefined && costoCompra !== null && costoCompra !== "" ? Number(costoCompra) : null,
+        descripcion: descripcion ?? null,
+        activo,
+        imagenUrl: imagenUrl ?? null,
+      },
+      include: { categoria: true },
+    });
+    res.json(producto);
+  } catch (e: any) {
+    if (e.code === "P2002") {
+      return res.status(409).json({ error: `El código "${codigoNorm}" ya está en uso por otro producto.` });
+    }
+    res.status(500).json({ error: e.message });
+  }
 }
 
 export async function eliminar(req: Request, res: Response) {

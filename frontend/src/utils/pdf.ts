@@ -201,7 +201,7 @@ function cabeceraEcoplast(
   const M = 14;
   const [r, g, b] = tema.primary;
 
-  const logoW = 40;
+  const logoW = (W - M * 2) / 3;   // un tercio del ancho útil (entre márgenes)
   const boxH = 34;
   const boxW = W - M * 2 - logoW - 4;
   const boxX = M;
@@ -708,7 +708,7 @@ export function pdfCotizacionGanancia(cot: any) {
   // Ganancia breakdown box
   const bY = fy + 46;
   if (bY < 250) {
-    const boxRows = (costoFlete > 0 ? 1 : 0) + (gananciaVendedor > 0 ? 1 : 0);
+    const boxRows = (gananciaVendedor > 0 ? 1 : 0);
     const boxH = 14 + boxRows * 10;
     doc.setFillColor(240, 253, 244);
     doc.roundedRect(14, bY, 182, boxH, 3, 3, "F");
@@ -741,11 +741,6 @@ export function pdfCotizacionGanancia(cot: any) {
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
 
-    if (costoFlete > 0) {
-      doc.text("Costo Flete", col1, rowY);
-      doc.text(usd(costoFlete), col2, rowY, { align: "right" });
-      rowY += 6;
-    }
     if (gananciaVendedor > 0) {
       const vendLabel = labelVendedor ? `Ganancia Vendedor  (${labelVendedor})` : "Ganancia Vendedor";
       doc.text(vendLabel, col1, rowY);
