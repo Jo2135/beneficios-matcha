@@ -333,7 +333,7 @@ export async function calcular(req: Request, res: Response) {
           cotizacion: {
           select: {
             id: true, totalNeto: true,
-            vendedor: { select: { nombre: true } },
+            vendedor: { select: { nombre: true, gananciaMuchachosPct: true } },
             cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true } },
             lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } } },
           },
@@ -560,6 +560,33 @@ export async function calcular(req: Request, res: Response) {
   }
   const totalFlete = fletesCliente.reduce((s, f) => s + f.monto, 0);
 
+  // ── Ganancia Muchachos (equipo de flete) — gasto extra independiente ───────
+  // % sobre TODA la venta del vendedor (tubería + conexiones). Misma fórmula que
+  // comisión: x − x/(1+%). No afecta la comisión del vendedor; es un pago aparte.
+  interface MuchachosItem { vendedorNombre: string; clienteNombre: string; pct: number; ventaTotal: number; monto: number; }
+  const muchachosDetalle: MuchachosItem[] = [];
+  const cotVistasM = new Set<number>();
+  for (const linea of despacho.lineas) {
+    const cot = (linea as any).cotizacion;
+    if (!cot || cotVistasM.has(cot.id)) continue;
+    cotVistasM.add(cot.id);
+
+    const pct = Number(cot.vendedor?.gananciaMuchachosPct ?? 0);
+    if (pct <= 0) continue;
+
+    // Base = toda la venta de la cotización (todos los productos)
+    const ventaTotal = (cot.lineas ?? []).reduce((s: number, cl: any) => s + Number(cl.totalLinea ?? 0), 0);
+    if (ventaTotal <= 0) continue;
+
+    const monto = ventaTotal * pct / (100 + pct);
+    muchachosDetalle.push({
+      vendedorNombre: cot.vendedor?.nombre ?? "—",
+      clienteNombre:  cot.cliente?.nombre  ?? `Cot #${cot.id}`,
+      pct, ventaTotal, monto,
+    });
+  }
+  const totalMuchachos = muchachosDetalle.reduce((s, m) => s + m.monto, 0);
+
   // ── socioEquivalente: redirigir parte de Ganancias_2 a Extra de Material ──
   // Cuando un cliente tiene socioEquivalente, la fracción de G2 que le correspondería
   // a ese socio (calculada sobre las ventas de ESA cotización) va a Extra de Material
@@ -686,6 +713,7 @@ export async function calcular(req: Request, res: Response) {
     - g2Sum
     - totalComisionVendedores
     - totalFlete
+    - totalMuchachos        // pago extra al equipo de flete
     // conexiones (ya están en facturaTotal vía sus ventas; se retiran del reserva):
     - conexCinco            // → va a Comisiones
     - gananciaConexiones    // → línea propia
@@ -728,6 +756,7 @@ export async function calcular(req: Request, res: Response) {
     socioRedireccion: { detalle: socioRedireccionDetalle, total: totalSocioRedirigido },
     comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
     fletesCliente: { detalle: fletesCliente, total: totalFlete },
+    gananciaMuchachos: { detalle: muchachosDetalle, total: totalMuchachos },
     gananciaConexiones: {
       facturado:        conexFacturado,       // Paso 1
       costoAlirio:      conexCostoAlirio,      // Paso 2 (excl. codos 2"/4")

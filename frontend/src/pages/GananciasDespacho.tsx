@@ -307,6 +307,24 @@ export default function GananciasDespacho() {
             </Section>
           )}
 
+          {/* Ganancia Muchachos (flete) */}
+          {(d.gananciaMuchachos?.detalle?.length ?? 0) > 0 && (
+            <Section titulo="Ganancia Muchachos (equipo de flete)">
+              <div style={{ padding: "4px 12px 8px", fontSize: 12, color: "#64748b" }}>
+                Pago extra independiente sobre toda la venta del vendedor · fórmula x − x/(1+%)
+              </div>
+              {(d.gananciaMuchachos.detalle as any[]).map((m: any, i: number) => (
+                <PagoLinea
+                  key={i}
+                  label={`Muchachos — ${m.clienteNombre}`}
+                  monto={m.monto}
+                  color="#0d9488"
+                  detalle={`${m.pct}% sobre ${usd(m.ventaTotal)} · Vendedor: ${m.vendedorNombre}`}
+                />
+              ))}
+            </Section>
+          )}
+
           {/* Comisiones por cliente */}
           {(d.comisionesVendedores?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Comisiones Vendedores">
@@ -486,6 +504,9 @@ function ResumenTotal({ data: d }: { data: any }) {
     })),
     ...((d.comisionesVendedores?.detalle ?? []) as any[]).map((c: any) => ({
       label: `Comisión — ${c.clienteNombre}`, monto: c.monto,
+    })),
+    ...((d.gananciaMuchachos?.detalle ?? []) as any[]).map((m: any) => ({
+      label: `Muchachos — ${m.clienteNombre}`, monto: m.monto,
     })),
     ...(d.servicioExterno as any[]).map((s: any) => ({
       label: `Mano de obra — ${s.nombre}`,  monto: s.costo,

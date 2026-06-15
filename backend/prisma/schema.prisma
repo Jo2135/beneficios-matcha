@@ -23,6 +23,7 @@ model Vendedor {
   nombre              String
   comisionPct         Decimal   @db.Decimal(5, 2) @default(0)
   comisionReferidoPct Decimal   @db.Decimal(5, 2) @default(0)
+  gananciaMuchachosPct Decimal  @db.Decimal(5, 2) @default(0) // % pago a "los muchachos" (flete) sobre la venta — gasto extra independiente
   referidoPorId       Int?
   referidoPor         Vendedor? @relation("Referidos", fields: [referidoPorId], references: [id])
   referidos           Vendedor[] @relation("Referidos")
