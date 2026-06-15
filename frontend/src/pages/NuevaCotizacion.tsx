@@ -350,8 +350,17 @@ export default function NuevaCotizacion() {
                         <input
                           type="number"
                           min={1}
-                          value={l.cantidad}
-                          onChange={(e) => actualizarLinea(idx, "cantidad", Math.max(1, Number(e.target.value)))}
+                          value={l.cantidad === 0 ? "" : l.cantidad}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            // Permite borrar y escribir libremente; vacío = 0 temporal
+                            actualizarLinea(idx, "cantidad", v === "" ? 0 : Math.max(0, Number(v)));
+                          }}
+                          onBlur={(e) => {
+                            // Al salir, si quedó vacío o 0, vuelve a 1
+                            if (e.target.value === "" || Number(e.target.value) < 1) actualizarLinea(idx, "cantidad", 1);
+                          }}
                           style={{ ...inputSmall, width: 70 }}
                         />
                       </td>
