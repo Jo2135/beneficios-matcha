@@ -166,7 +166,7 @@ export default function BalancePago() {
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button
-            onClick={() => pdfBalancePago({ despachoId, calculadoEn: balance?.calculadoEn, items: balance?.items ?? [] })}
+            onClick={() => pdfBalancePago({ despachoId, calculadoEn: balance?.calculadoEn, items: balance?.items ?? [], gananciaVendedor: balance?.gananciaVendedor })}
             title="Exportar balance como PDF"
             style={{ display: "flex", alignItems: "center", gap: 6,
               background: "#fef9c3", border: "1px solid #fde047", borderRadius: 8,

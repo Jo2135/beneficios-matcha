@@ -1622,10 +1622,11 @@ interface BalancePDFData {
   despachoId: number;
   calculadoEn?: string;
   items: BalancePDFItem[];
+  gananciaVendedor?: number;
 }
 
 export function pdfBalancePago(data: BalancePDFData) {
-  const { despachoId, calculadoEn, items } = data;
+  const { despachoId, calculadoEn, items, gananciaVendedor } = data;
   const [r, g, b]: [number, number, number] = [22, 101, 52];
 
   // Collect unique dates sorted ascending
@@ -1672,6 +1673,31 @@ export function pdfBalancePago(data: BalancePDFData) {
   doc.setDrawColor(r, g, b);
   doc.setLineWidth(0.5);
   doc.line(M, 36, W - M, 36);
+
+  // ── Ganancia del Vendedor (sección superior independiente) ─────────────────
+  const fmtUsd0 = (n: number) =>
+    `$${Number(n).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  let tableStartY = 40;
+  if ((gananciaVendedor ?? 0) > 0.005) {
+    const bw = W - M * 2;
+    doc.setFillColor(236, 254, 255);            // cyan claro
+    doc.setDrawColor(165, 243, 252);
+    doc.roundedRect(M, 39, bw, 12, 2, 2, "FD");
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(14, 116, 144);
+    doc.text("Ganancia del Vendedor", M + 4, 44.5);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Comisión del vendedor — pago independiente, no se incluye en el total del balance", M + 4, 48.8);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(8, 145, 178);
+    doc.text(fmtUsd0(gananciaVendedor!), W - M - 4, 47, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    tableStartY = 56;
+  }
 
   // ── Compute totals for footer ─────────────────────────────────────────────
   const totalGeneral = items.reduce((s, i) => s + Number(i.montoTotal), 0);
@@ -1742,7 +1768,7 @@ export function pdfBalancePago(data: BalancePDFData) {
   const saldoColIdx = 2 + fechas.length;
 
   autoTable(doc, {
-    startY: 40,
+    startY: tableStartY,
     head: [head],
     body: [...body, footerRow],
     headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
