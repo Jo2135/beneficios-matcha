@@ -71,9 +71,20 @@ export default function BalancePago() {
 
   // ── Mutations ───────────────────────────────────────────────────────────
   const generar = useMutation({
-    mutationFn: () => apiClient.post(`/despachos/${despachoId}/balance/generar`),
+    mutationFn: (ayudante: number) => apiClient.post(`/despachos/${despachoId}/balance/generar`, { ayudante }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["balance", despachoId] }),
   });
+
+  // Pregunta si hay ayudante (y su costo) y luego genera el balance
+  const preguntarAyudanteYGenerar = () => {
+    let ayudante = 0;
+    if (window.confirm("¿Hay ayudante en este despacho?")) {
+      const resp = window.prompt("¿Cuál es el costo del ayudante? ($)", "0");
+      if (resp === null) return; // canceló
+      ayudante = Number(resp.replace(",", ".")) || 0;
+    }
+    generar.mutate(ayudante);
+  };
 
   const handleRegenerar = () => {
     const hayPagos = balance?.items.some(i => i.cuotas.length > 0);
@@ -82,7 +93,7 @@ export default function BalancePago() {
       const msg = "⚠️ ATENCIÓN\n\nRegenerar recalculará todos los montos con las tasas actuales.\n\nLos pagos ya registrados se conservan, pero cualquier monto editado manualmente volverá al valor calculado.\n\n¿Deseas continuar?";
       if (!window.confirm(msg)) return;
     }
-    generar.mutate();
+    preguntarAyudanteYGenerar();
   };
 
   const actualizarItem = useMutation({
@@ -110,7 +121,7 @@ export default function BalancePago() {
       <div style={{ padding: 40, maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
         <p style={{ color: "#64748b", marginBottom: 20 }}>El balance aún no ha sido generado para este despacho.</p>
         <button
-          onClick={() => generar.mutate()}
+          onClick={preguntarAyudanteYGenerar}
           disabled={generar.isPending}
           style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", cursor: "pointer", fontSize: 15 }}
         >

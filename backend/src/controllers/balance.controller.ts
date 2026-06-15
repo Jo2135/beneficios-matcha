@@ -21,8 +21,14 @@ export async function generarBalance(req: Request, res: Response) {
     // ── Comisión del vendedor → sección SUPERIOR (no entra en la suma del balance)
     const gananciaVendedor = r2(g.comisionesVendedores?.total ?? 0);
 
+    // Ayudante (se pregunta al generar; 0 si no hay)
+    const ayudante = Number(req.body?.ayudante ?? 0) || 0;
+
     // ── Filas del balance (orden según la referencia del usuario) ───────────────
-    add("Material",              g.costoMateria.total);
+    // El "Material" del balance = Materia Prima − Gastos Generales (los gastos se
+    // listan aparte; así no se cuentan dos veces).
+    const gastosTotal = g.gastos.obreros + g.gastos.pigmento + g.gastos.electricidad;
+    add("Material",              g.costoMateria.total - gastosTotal);
     add("Obreros",               g.gastos.obreros);
     add("Pigmento",              g.gastos.pigmento);
     add("Electricidad y Gasoil", g.gastos.electricidad);
@@ -61,9 +67,9 @@ export async function generarBalance(req: Request, res: Response) {
       add("Material Curvas",    g.curvas.costoMaterial);
     }
 
-    // Flete + Ayudante (Ayudante es manual)
+    // Flete + Ayudante (Ayudante se pregunta al generar)
     add("Flete",    g.fletesCliente?.total ?? 0);
-    add("Ayudante", 0);
+    add("Ayudante", ayudante);
 
     // Ganancia Muchachos (equipo de flete)
     if ((g.gananciaMuchachos?.total ?? 0) > 0) {
