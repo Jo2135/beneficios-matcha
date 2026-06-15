@@ -642,13 +642,14 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   //   Comisión/Flete = por cliente (comisionConexionesPct / fleteConexionesPct)
   //   El 5% se suma además a la fila "Comisiones".
   let conexFacturado = 0, conexCostoAlirio = 0, conexCinco = 0, conexCodosInternos = 0;
-  let conexComisionVend = 0, conexFlete = 0;
+  let conexComisionVend = 0, conexFlete = 0, conexMuchachos = 0;
   const conexLineasDetalle: { codigo: string | null; nombre: string; cantidad: number; costoUnit: number; facturado: number; alirio: number; cinco: number; esCodoInterno: boolean }[] = [];
-  const conexClientesDetalle: { cliente: string; facturado: number; ccPct: number; fcPct: number; comision: number; flete: number }[] = [];
+  const conexClientesDetalle: { cliente: string; facturado: number; ccPct: number; fcPct: number; muchPct: number; comision: number; flete: number; muchachos: number }[] = [];
 
   for (const factura of despacho.facturas as any[]) {
     const ccPct = Number(factura.cliente?.comisionConexionesPct ?? 0);
     const fcPct = Number(factura.cliente?.fleteConexionesPct ?? 0);
+    const muchPct = Number(factura.cliente?.vendedor?.gananciaMuchachosPct ?? 0);
     let facturadoClienteConex = 0;
 
     for (const fl of (factura.lineas ?? [])) {
@@ -686,16 +687,18 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     }
 
     if (facturadoClienteConex > 0) {
-      const comision = ccPct > 0 ? facturadoClienteConex * ccPct / (100 + ccPct) : 0;
-      const flete    = fcPct > 0 ? facturadoClienteConex * fcPct / (100 + fcPct) : 0;
+      const comision  = ccPct  > 0 ? facturadoClienteConex * ccPct  / (100 + ccPct)  : 0;
+      const flete     = fcPct  > 0 ? facturadoClienteConex * fcPct  / (100 + fcPct)  : 0;
+      const muchachos = muchPct > 0 ? facturadoClienteConex * muchPct / (100 + muchPct) : 0;
       conexComisionVend += comision;
       conexFlete        += flete;
-      conexClientesDetalle.push({ cliente: factura.cliente?.nombre ?? "—", facturado: facturadoClienteConex, ccPct, fcPct, comision, flete });
+      conexMuchachos    += muchachos;
+      conexClientesDetalle.push({ cliente: factura.cliente?.nombre ?? "—", facturado: facturadoClienteConex, ccPct, fcPct, muchPct, comision, flete, muchachos });
     }
   }
 
   const gananciaConexiones =
-    conexFacturado - conexCostoAlirio - conexCinco - conexComisionVend - conexFlete - conexCodosInternos;
+    conexFacturado - conexCostoAlirio - conexCinco - conexComisionVend - conexFlete - conexMuchachos - conexCodosInternos;
 
   // El 5% de descuento se suma a la fila "Comisiones"
   const comisionesConCinco = comisionesFinal + conexCinco;
@@ -765,6 +768,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       cinco:            conexCinco,            // Paso 3 (→ se suma a Comisiones)
       comisionVendedor: conexComisionVend,     // Paso 4 (por cliente)
       flete:            conexFlete,            // Paso 5 (por cliente)
+      muchachos:        conexMuchachos,        // 2% Muchachos sobre conexiones (Henry)
       codosInternos:    conexCodosInternos,    // Paso 6 (CO-2-90, CO-4-90)
       ganancia:         gananciaConexiones,    // Resultado
       lineas:   conexLineasDetalle,

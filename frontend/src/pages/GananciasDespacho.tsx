@@ -256,7 +256,10 @@ export default function GananciasDespacho() {
               <FilaCosto label="3 · Descuento 5% → Comisiones (−)" valor={usd(d.gananciaConexiones.cinco)} />
               <FilaCosto label="4 · Comisión vendedor  (−)"        valor={usd(d.gananciaConexiones.comisionVendedor)} />
               <FilaCosto label="5 · Flete  (−)"                    valor={usd(d.gananciaConexiones.flete)} />
-              <FilaCosto label={'6 · Codos 2" y 4" interno (−)'}   valor={usd(d.gananciaConexiones.codosInternos)} />
+              {(d.gananciaConexiones.muchachos ?? 0) > 0 && (
+                <FilaCosto label="6 · Muchachos 2%  (−)"           valor={usd(d.gananciaConexiones.muchachos)} />
+              )}
+              <FilaCosto label={'7 · Codos 2" y 4" interno (−)'}   valor={usd(d.gananciaConexiones.codosInternos)} />
               <PagoLinea label="Ganancia Conexiones" monto={d.gananciaConexiones.ganancia} color="#16a34a" />
               {(d.gananciaConexiones.clientes as any[]).length > 0 && (
                 <div style={{ padding: "8px 16px", borderTop: "1px solid #f1f5f9" }}>
