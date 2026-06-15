@@ -122,11 +122,19 @@ export async function crearUsuario(req: Request, res: Response) {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  // Si es VENDEDOR y no se vincula a uno existente, crear el registro Vendedor automáticamente
+  // Si es VENDEDOR y no se vincula a uno existente, reutilizar un vendedor activo
+  // sin usuario con el mismo nombre (evita duplicados) o crear uno nuevo.
   let vendedorIdFinal: number | null = vendedorId ? Number(vendedorId) : null;
   if ((rol === "VENDEDOR" || !rol) && !vendedorIdFinal) {
-    const nuevoVendedor = await prisma.vendedor.create({ data: { nombre } });
-    vendedorIdFinal = nuevoVendedor.id;
+    const existente = await prisma.vendedor.findFirst({
+      where: { nombre: { equals: String(nombre).trim(), mode: "insensitive" }, activo: true, usuario: { is: null } },
+    });
+    if (existente) {
+      vendedorIdFinal = existente.id;
+    } else {
+      const nuevoVendedor = await prisma.vendedor.create({ data: { nombre } });
+      vendedorIdFinal = nuevoVendedor.id;
+    }
   }
 
   const usuario = await prisma.usuario.create({
@@ -153,7 +161,13 @@ export async function vincularVendedor(req: Request, res: Response) {
   if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
   if (usuario.vendedorId) return res.status(400).json({ error: "El usuario ya tiene un vendedor vinculado" });
 
-  const vendedor = await prisma.vendedor.create({ data: { nombre: usuario.nombre } });
+  // Reutilizar un vendedor activo sin usuario con el mismo nombre (evita duplicados) o crear uno nuevo
+  let vendedor = await prisma.vendedor.findFirst({
+    where: { nombre: { equals: usuario.nombre.trim(), mode: "insensitive" }, activo: true, usuario: { is: null } },
+  });
+  if (!vendedor) {
+    vendedor = await prisma.vendedor.create({ data: { nombre: usuario.nombre } });
+  }
   const actualizado = await prisma.usuario.update({
     where: { id: usuarioId },
     data: { vendedorId: vendedor.id },
