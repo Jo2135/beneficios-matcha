@@ -172,8 +172,9 @@ export async function crear(req: Request, res: Response) {
 
 export async function actualizar(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const { clienteId, notas, validezDias, lineas } = req.body as {
+  const { clienteId, vendedorId, notas, validezDias, lineas } = req.body as {
     clienteId: number;
+    vendedorId?: number;
     notas?: string;
     validezDias?: number;
     lineas: LineaInput[];
@@ -232,12 +233,21 @@ export async function actualizar(req: Request, res: Response) {
   const fechaVencimiento = new Date();
   fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));
 
+  // Vendedor: MASTER/ADMIN pueden cambiarlo; si no eligen, quedan ellos como vendedor.
+  // VENDEDOR no puede reasignar (se conserva el vendedor actual).
+  let vendedorFinal: number | null | undefined = undefined;
+  if (usuario.rol !== "VENDEDOR") {
+    const creadorDb = await prisma.usuario.findUnique({ where: { id: usuario.id }, select: { vendedorId: true } });
+    vendedorFinal = vendedorId ?? creadorDb?.vendedorId ?? null;
+  }
+
   await prisma.cotizacionLinea.deleteMany({ where: { cotizacionId: id } });
 
   const cotizacion = await prisma.cotizacion.update({
     where: { id },
     data: {
       clienteId,
+      ...(vendedorFinal !== undefined ? { vendedorId: vendedorFinal } : {}),
       notas,
       validezDias: validezDias ?? 30,
       fechaVencimiento,

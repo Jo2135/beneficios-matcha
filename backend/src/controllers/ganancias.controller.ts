@@ -301,6 +301,18 @@ function esConexion(codigo: string | null, nombre: string, categoriaNombre?: str
   );
 }
 
+/** Manguera Verde / Manguera Amarilla (gas): producto EXTERNO con lógica de tubería.
+ *  Solo gana el vendedor; se le saca flete y G2 (SBUG/Yolanda/Sandra/Comisiones).
+ *  El remanente va a la fila "Costo Manguera Verde". */
+function esMangueraVerdeAmarilla(codigo: string | null, nombre: string): boolean {
+  const c = normCodigo(codigo);
+  if (/^(MGVD|MGAM)/.test(c)) return true;
+  const n = norm(nombre);
+  if (!n.includes("manguera")) return false;
+  return n.includes("verde") || n.includes("gas") ||
+    (n.includes("amarill") && !n.includes("pead") && !n.includes("agua negra"));
+}
+
 // ─── CONEXIONES: configuración del cálculo de Ganancia Conexiones ──────────────
 // Descuentos de compra al mayor: 5% sobre el publicado, luego se PAGA 60% del resto.
 // Costo real = publicado × (1 − 0.05) × 0.60 = publicado × 0.57
@@ -346,7 +358,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
           totalNeto: true,
           cliente: {
             select: {
-              nombre: true, comisionConexionesPct: true, fleteConexionesPct: true,
+              nombre: true,
+              comisionTuberiaPct: true, comisionConexionesPct: true,
+              fleteTuberiaPct: true, fleteConexionesPct: true,
               vendedor: { select: { nombre: true, gananciaMuchachosPct: true } },
             },
           },
@@ -700,6 +714,28 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const gananciaConexiones =
     conexFacturado - conexCostoAlirio - conexCinco - conexComisionVend - conexFlete - conexMuchachos - conexCodosInternos;
 
+  // ── Manguera Verde / Amarilla (externa, lógica de tubería) ─────────────────
+  // Costo Manguera Verde = venta − flete − comisión vendedor − SBUG − Yolanda − Sandra − Comisiones
+  let mvVenta = 0, mvFlete = 0, mvComisionVend = 0;
+  for (const factura of despacho.facturas as any[]) {
+    const ftPct = Number(factura.cliente?.fleteTuberiaPct ?? 0);
+    const ctPct = Number(factura.cliente?.comisionTuberiaPct ?? 0);
+    let mvFact = 0;
+    for (const fl of (factura.lineas ?? [])) {
+      if (esMangueraVerdeAmarilla(fl.producto?.codigo ?? null, fl.producto?.nombre ?? ""))
+        mvFact += Number(fl.totalLinea);
+    }
+    if (mvFact <= 0) continue;
+    mvVenta        += mvFact;
+    mvFlete        += ftPct > 0 ? mvFact * ftPct / (100 + ftPct) : 0;
+    mvComisionVend += ctPct > 0 ? mvFact * ctPct / (100 + ctPct) : 0;
+  }
+  const mvSbug = mvVenta - mvVenta / (1 + tablas.g2.sbug);
+  const mvYol  = mvVenta - mvVenta / (1 + tablas.g2.yolanda);
+  const mvSan  = mvVenta - mvVenta / (1 + tablas.g2.sandra);
+  const mvCom  = mvVenta - mvVenta / (1 + tablas.g2.comisiones);
+  const costoMangueraVerde = mvVenta - mvFlete - mvComisionVend - mvSbug - mvYol - mvSan - mvCom;
+
   // El 5% de descuento se suma a la fila "Comisiones"
   const comisionesConCinco = comisionesFinal + conexCinco;
 
@@ -720,10 +756,12 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     - totalFlete
     - totalMuchachos        // pago extra al equipo de flete
     // conexiones (ya están en facturaTotal vía sus ventas; se retiran del reserva):
+    // (conexMuchachos NO se resta aquí: ya está dentro de totalMuchachos)
     - conexCinco            // → va a Comisiones
     - gananciaConexiones    // → línea propia
     - conexCostoAlirio      // costo real (proveedor)
-    - conexCodosInternos;   // costo real (producción interna)
+    - conexCodosInternos    // costo real (producción interna)
+    - costoMangueraVerde;   // → fila propia "Costo Manguera Verde"
 
   return {
     despacho: { id: despacho.id, numero: despacho.numero },
@@ -762,6 +800,11 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
     fletesCliente: { detalle: fletesCliente, total: totalFlete },
     gananciaMuchachos: { detalle: muchachosDetalle, total: totalMuchachos },
+    mangueraVerde: {
+      venta: mvVenta, flete: mvFlete, comisionVendedor: mvComisionVend,
+      sbug: mvSbug, yolanda: mvYol, sandra: mvSan, comisiones: mvCom,
+      costo: costoMangueraVerde,
+    },
     gananciaConexiones: {
       facturado:        conexFacturado,       // Paso 1
       costoAlirio:      conexCostoAlirio,      // Paso 2 (excl. codos 2"/4")

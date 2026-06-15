@@ -76,6 +76,11 @@ export async function generarBalance(req: Request, res: Response) {
       add("Ganancia Muchachos", g.gananciaMuchachos.total);
     }
 
+    // Costo Manguera Verde / Amarilla (producto externo con lógica de tubería)
+    if ((g.mangueraVerde?.costo ?? 0) > 0.005) {
+      add("Costo Manguera Verde", g.mangueraVerde.costo);
+    }
+
     // ── Extra Material = (venta total − comisión vendedor) − suma de las filas ──
     const sumaFilas = items.reduce((s, i) => s + i.montoTotal, 0);
     const extraMaterial = r2(g.facturaTotal - gananciaVendedor - sumaFilas);

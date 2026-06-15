@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { clientesApi, productosApi, listasApi, cotizacionesApi } from "../api/endpoints";
+import { clientesApi, productosApi, listasApi, cotizacionesApi, authApi } from "../api/endpoints";
 import { Search, Trash2, ArrowLeft, FileText, Truck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -31,13 +31,21 @@ export default function NuevaCotizacion() {
   const navigate = useNavigate();
   const { id: editIdStr } = useParams<{ id?: string }>();
   const editId = editIdStr ? Number(editIdStr) : null;
-  const { usuario, esVendedor } = useAuth();
+  const { usuario, esVendedor, puedeEditar } = useAuth();
   const [clienteId, setClienteId] = useState<number | null>(null);
+  const [vendedorIdSel, setVendedorIdSel] = useState<number | null>(null);
   const [notas, setNotas] = useState("");
   const [validezDias, setValidezDias] = useState(30);
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [dropdownAbierto, setDropdownAbierto] = useState(false);
+
+  // Vendedores (solo MASTER/ADMIN pueden elegir el vendedor de la cotización)
+  const { data: vendedores = [] } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["vendedores"],
+    queryFn: authApi.listarVendedores,
+    enabled: puedeEditar,
+  });
 
   // Cargar cotización existente si estamos en modo edición
   const { data: cotExistente } = useQuery({
@@ -49,6 +57,7 @@ export default function NuevaCotizacion() {
   useEffect(() => {
     if (!cotExistente) return;
     setClienteId(cotExistente.clienteId);
+    setVendedorIdSel(cotExistente.vendedorId ?? null);
     setNotas(cotExistente.notas ?? "");
     setValidezDias(cotExistente.validezDias ?? 30);
     setLineas((cotExistente.lineas ?? []).map((l: any) => {
@@ -170,13 +179,13 @@ export default function NuevaCotizacion() {
   }));
 
   const crear = useMutation({
-    mutationFn: () => cotizacionesApi.crear({ clienteId, notas: notas || undefined, validezDias, lineas: lineasPayload }),
+    mutationFn: () => cotizacionesApi.crear({ clienteId, vendedorId: vendedorIdSel || undefined, notas: notas || undefined, validezDias, lineas: lineasPayload }),
     onSuccess: () => navigate("/cotizaciones"),
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al crear la cotización"),
   });
 
   const guardarEdicion = useMutation({
-    mutationFn: () => cotizacionesApi.actualizar(editId!, { clienteId, notas: notas || undefined, validezDias, lineas: lineasPayload }),
+    mutationFn: () => cotizacionesApi.actualizar(editId!, { clienteId, vendedorId: vendedorIdSel || undefined, notas: notas || undefined, validezDias, lineas: lineasPayload }),
     onSuccess: () => navigate("/cotizaciones"),
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al guardar la cotización"),
   });
@@ -257,6 +266,24 @@ export default function NuevaCotizacion() {
               readOnly
             />
           </div>
+          {puedeEditar && (
+            <div>
+              <label style={labelStyle}>Vendedor</label>
+              <select
+                style={inputStyle}
+                value={vendedorIdSel ?? ""}
+                onChange={(e) => setVendedorIdSel(Number(e.target.value) || null)}
+              >
+                <option value="">Yo ({usuario?.nombre ?? "Master/Admin"})</option>
+                {(vendedores as any[]).map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
+                Si no eliges, tú quedas como vendedor
+              </div>
+            </div>
+          )}
           <div style={{ gridColumn: "1/-1" }}>
             <label style={labelStyle}>Notas / Condiciones de Pago</label>
             <textarea

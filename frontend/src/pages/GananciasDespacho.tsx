@@ -310,6 +310,23 @@ export default function GananciasDespacho() {
             </Section>
           )}
 
+          {/* Costo Manguera Verde / Amarilla */}
+          {(d.mangueraVerde?.venta ?? 0) > 0 && (
+            <Section titulo="Manguera Verde / Amarilla (externa)">
+              <div style={{ padding: "4px 12px 8px", fontSize: 12, color: "#64748b" }}>
+                Lógica de tubería · solo gana el vendedor · resta flete y SBUG/Yolanda/Sandra/Comisiones
+              </div>
+              <FilaCosto label="Venta"                 valor={usd(d.mangueraVerde.venta)} />
+              <FilaCosto label="Flete  (−)"            valor={usd(d.mangueraVerde.flete)} />
+              <FilaCosto label="Comisión vendedor  (−)" valor={usd(d.mangueraVerde.comisionVendedor)} />
+              <FilaCosto label="SBUG  (−)"             valor={usd(d.mangueraVerde.sbug)} />
+              <FilaCosto label="Yolanda  (−)"          valor={usd(d.mangueraVerde.yolanda)} />
+              <FilaCosto label="Sandra  (−)"           valor={usd(d.mangueraVerde.sandra)} />
+              <FilaCosto label="Comisiones  (−)"       valor={usd(d.mangueraVerde.comisiones)} />
+              <PagoLinea label="Costo Manguera Verde" monto={d.mangueraVerde.costo} color="#16a34a" />
+            </Section>
+          )}
+
           {/* Ganancia Muchachos (flete) */}
           {(d.gananciaMuchachos?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Ganancia Muchachos (equipo de flete)">
