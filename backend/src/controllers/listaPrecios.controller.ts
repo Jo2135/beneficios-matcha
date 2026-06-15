@@ -133,18 +133,9 @@ export async function upsertDetalle(req: Request, res: Response) {
   const listaId = Number(req.params.id);
   const lineas: { productoId: number; precioUnitario: number; descuentoPct?: number }[] = req.body;
 
-  // Validar que ningún producto exista en OTRA lista
-  for (const l of lineas) {
-    const enOtraLista = await prisma.listaPrecioDetalle.findFirst({
-      where: { productoId: l.productoId, listaPrecioId: { not: listaId } },
-      include: { listaPrecio: { select: { nombre: true } } },
-    });
-    if (enOtraLista) {
-      return res.status(409).json({
-        error: `El producto ya existe en la lista "${enOtraLista.listaPrecio.nombre}". Los productos no se pueden repetir entre listas.`,
-      });
-    }
-  }
+  // Nota: un mismo producto SÍ puede estar en varias listas (cada cliente tiene su precio).
+  // La regla "no repetir entre listas" aplica solo entre las listas de UN MISMO cliente, y
+  // se resuelve al combinar el catálogo del cliente (gana la primera lista). No se bloquea aquí.
 
   const ops = lineas.map((l) =>
     prisma.listaPrecioDetalle.upsert({

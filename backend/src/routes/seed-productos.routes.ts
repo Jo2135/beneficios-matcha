@@ -221,12 +221,21 @@ seedProductosRouter.post("/", async (_req, res) => {
   let omitidos = 0;
 
   for (const p of productos) {
+    // 1) Si ya existe un producto con ese código → no tocar (evita choque de unicidad)
+    if (p.codigo) {
+      const yaPorCodigo = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(
+        `SELECT id FROM "Producto" WHERE "codigo" = $1`, p.codigo
+      );
+      if (yaPorCodigo[0]?.id) { omitidos++; continue; }
+    }
+
+    // 2) Buscar por nombre + medida
     const existente = await prisma.producto.findFirst({
       where: { nombre: p.nombre, medida: p.medida },
     });
     if (existente) {
       if (p.codigo) {
-        // Leer codigo via SQL directo (no requiere prisma generate)
+        // Solo asignar el código si el producto no tiene uno (y el código está libre, ya verificado)
         const rows = await prisma.$queryRawUnsafe<{ codigo: string | null }[]>(
           `SELECT "codigo" FROM "Producto" WHERE id = $1`, existente.id
         );
