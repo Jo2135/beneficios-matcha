@@ -238,6 +238,33 @@ export default function GananciasDespacho() {
             <PagoLinea label="Comisiones" monto={d.ganancias2.comisiones} color="#7c3aed" />
           </Section>
 
+          {/* Ganancia Conexiones */}
+          {d.gananciaConexiones && d.gananciaConexiones.facturado > 0 && (
+            <Section titulo="Ganancia Conexiones">
+              <div style={{ padding: "6px 12px 8px", fontSize: 12, color: "#64748b" }}>
+                Costo de compra con descuento mayorista (5% + se paga 60% del resto). Comisión y flete por cliente.
+              </div>
+              <FilaCosto label="1 · Facturado conexiones"          valor={usd(d.gananciaConexiones.facturado)} />
+              <FilaCosto label="2 · Costo donde Alirio  (−)"       valor={usd(d.gananciaConexiones.costoAlirio)} />
+              <FilaCosto label="3 · Descuento 5% → Comisiones (−)" valor={usd(d.gananciaConexiones.cinco)} />
+              <FilaCosto label="4 · Comisión vendedor  (−)"        valor={usd(d.gananciaConexiones.comisionVendedor)} />
+              <FilaCosto label="5 · Flete  (−)"                    valor={usd(d.gananciaConexiones.flete)} />
+              <FilaCosto label={'6 · Codos 2" y 4" interno (−)'}   valor={usd(d.gananciaConexiones.codosInternos)} />
+              <PagoLinea label="Ganancia Conexiones" monto={d.gananciaConexiones.ganancia} color="#16a34a" />
+              {(d.gananciaConexiones.clientes as any[]).length > 0 && (
+                <div style={{ padding: "8px 16px", borderTop: "1px solid #f1f5f9" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>Comisión / Flete por cliente</div>
+                  {(d.gananciaConexiones.clientes as any[]).map((c: any, i: number) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", padding: "2px 0" }}>
+                      <span>{c.cliente} ({usd(c.facturado)})</span>
+                      <span>com {c.ccPct}% · flete {c.fcPct}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
+
           {/* Redirección de socio a Extra de Material */}
           {(d.socioRedireccion?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Redirección a Extra de Material (Socio Equivalente)">

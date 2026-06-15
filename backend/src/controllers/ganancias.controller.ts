@@ -279,12 +279,15 @@ function elegibleServicio(codigo: string | null, nombre: string): boolean {
          (n.includes("negr") && n.includes("electr")) || (n.includes("blanc") && n.includes("electr"));
 }
 
-/** Detecta si un producto es "conexión" — excluido de Ganancias_2 */
-function esConexion(codigo: string | null, nombre: string): boolean {
+/** Detecta si un producto es "conexión" — excluido de Ganancias_2.
+ *  Prioridad: categoría "Conexiones" → código → nombre (fallback). */
+function esConexion(codigo: string | null, nombre: string, categoriaNombre?: string): boolean {
+  // 1) Por categoría (lo más confiable ahora que existe la categoría Conexiones)
+  if (categoriaNombre && norm(categoriaNombre) === "conexiones") return true;
   const c = normCodigo(codigo);
-  // Por código: Codo, Semi Codo, Sifón, Tee PVC, Yee, Yee Reducida
-  if (c && /^(CO-|SC-|SI-|TE-|YE-|YR-)/.test(c)) return true;
-  // Por nombre (productos sin código aún)
+  // 2) Por código: Codo, Semi Codo, Sifón, Tee PVC, Yee, Yee Reducida + abrazaderas, tee rápidas, etc.
+  if (c && /^(CO-|SC-|SI-|TE-|YE-|YR-|ABS-|TR-|UR-|URR-|AM-|AH-|TAR-|COR-|ASP-|CA-)/.test(c)) return true;
+  // 3) Por nombre (productos sin código aún)
   const n = norm(nombre);
   return (
     n.includes("abrazadera") ||
@@ -297,6 +300,19 @@ function esConexion(codigo: string | null, nombre: string): boolean {
     n.includes("aspersor")
   );
 }
+
+// ─── CONEXIONES: configuración del cálculo de Ganancia Conexiones ──────────────
+// Descuentos de compra al mayor: 5% sobre el publicado, luego se PAGA 60% del resto.
+// Costo real = publicado × (1 − 0.05) × 0.60 = publicado × 0.57
+const CONEX_DESC1 = 0.05;   // primer descuento (se suma a Comisiones)
+const CONEX_PAGA2 = 0.60;   // fracción que se paga tras el 2º descuento (Excel: *0.95*0.6)
+
+// Codos fabricados internamente (2" y 4"): costo real de producción por unidad.
+// Se EXCLUYEN del "Costo donde Alirio" y se restan aparte por su costo interno.
+const CODO_INTERNO: Record<string, number> = {
+  "CO-2-90": 0.38,
+  "CO-4-90": 1.90,
+};
 
 // ─── CONTROLLER ──────────────────────────────────────────────────────────────
 
@@ -319,7 +335,7 @@ export async function calcular(req: Request, res: Response) {
             id: true, totalNeto: true,
             vendedor: { select: { nombre: true } },
             cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true } },
-            lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true } } } },
+            lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } } },
           },
         },
         },
@@ -328,8 +344,12 @@ export async function calcular(req: Request, res: Response) {
       facturas: {
         select: {
           totalNeto: true,
+          cliente: { select: { nombre: true, comisionConexionesPct: true, fleteConexionesPct: true } },
           lineas: {
-            select: { totalLinea: true, productoId: true, producto: { select: { codigo: true, nombre: true } } },
+            select: {
+              totalLinea: true, cantidad: true, productoId: true,
+              producto: { select: { codigo: true, nombre: true, costoCompra: true, categoria: { select: { nombre: true } } } },
+            },
           },
         },
       },
@@ -443,7 +463,7 @@ export async function calcular(req: Request, res: Response) {
   for (const factura of despacho.facturas) {
     for (const fl of (factura as any).lineas ?? []) {
       const monto = Number(fl.totalLinea);
-      if (esConexion(fl.producto?.codigo ?? null, fl.producto?.nombre ?? "")) {
+      if (esConexion(fl.producto?.codigo ?? null, fl.producto?.nombre ?? "", fl.producto?.categoria?.nombre)) {
         totalConexiones += monto;
       } else {
         totalSinConexiones += monto;
@@ -482,7 +502,7 @@ export async function calcular(req: Request, res: Response) {
     let totalTuberia = 0, totalConexiones = 0;
     for (const cl of (cot.lineas ?? []) as any[]) {
       const monto = Number(cl.totalLinea ?? 0);
-      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "")) {
+      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre)) {
         totalConexiones += monto;
       } else {
         totalTuberia += monto;
@@ -520,7 +540,7 @@ export async function calcular(req: Request, res: Response) {
     let totalTuberia = 0, totalConexiones = 0;
     for (const cl of (cot.lineas ?? []) as any[]) {
       const monto = Number(cl.totalLinea ?? 0);
-      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "")) {
+      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre)) {
         totalConexiones += monto;
       } else {
         totalTuberia += monto;
@@ -563,7 +583,7 @@ export async function calcular(req: Request, res: Response) {
     // Calcular tubería de esta cotización (sin conexiones)
     let cotSinCon = 0;
     for (const cl of (cot.lineas ?? []) as any[]) {
-      if (!esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? ""))
+      if (!esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre))
         cotSinCon += Number(cl.totalLinea ?? 0);
     }
     if (cotSinCon <= 0) continue;
@@ -599,6 +619,70 @@ export async function calcular(req: Request, res: Response) {
     - totalComisionVendedores
     - totalFlete;
 
+  // ── GANANCIA CONEXIONES (cálculo independiente) ──────────────────────────────
+  // Fórmula (Excel "Ejemplo calculo gastos conexiones"):
+  //   Ganancia = Facturado − CostoAlirio − 5% − ComisiónVend − Flete − CodosInternos
+  //   CostoAlirio = Σ costoCompra×cant×0.95×0.60   (EXCLUYE codos 2"/4" internos)
+  //   5%          = Σ costoCompra×cant×0.05         (INCLUYE codos, con su costo interno)
+  //   Codos       = Σ cant × costoInterno (CO-2-90=0.38, CO-4-90=1.90)
+  //   Comisión/Flete = por cliente (comisionConexionesPct / fleteConexionesPct)
+  //   El 5% se suma además a la fila "Comisiones".
+  let conexFacturado = 0, conexCostoAlirio = 0, conexCinco = 0, conexCodosInternos = 0;
+  let conexComisionVend = 0, conexFlete = 0;
+  const conexLineasDetalle: { codigo: string | null; nombre: string; cantidad: number; costoUnit: number; facturado: number; alirio: number; cinco: number; esCodoInterno: boolean }[] = [];
+  const conexClientesDetalle: { cliente: string; facturado: number; ccPct: number; fcPct: number; comision: number; flete: number }[] = [];
+
+  for (const factura of despacho.facturas as any[]) {
+    const ccPct = Number(factura.cliente?.comisionConexionesPct ?? 0);
+    const fcPct = Number(factura.cliente?.fleteConexionesPct ?? 0);
+    let facturadoClienteConex = 0;
+
+    for (const fl of (factura.lineas ?? [])) {
+      const codigo    = fl.producto?.codigo ?? null;
+      const nombre    = fl.producto?.nombre ?? "";
+      const catNombre = fl.producto?.categoria?.nombre;
+      if (!esConexion(codigo, nombre, catNombre)) continue;
+
+      const cant           = Number(fl.cantidad);
+      const facturadoLinea = Number(fl.totalLinea);
+      const cod            = normCodigo(codigo);
+      const esCodoInterno  = Object.prototype.hasOwnProperty.call(CODO_INTERNO, cod);
+      // Codos internos usan su costo de producción; el resto, el costoCompra publicado
+      const costoUnit = esCodoInterno ? CODO_INTERNO[cod] : Number(fl.producto?.costoCompra ?? 0);
+
+      conexFacturado        += facturadoLinea;
+      facturadoClienteConex += facturadoLinea;
+
+      const cincoLinea = costoUnit * cant * CONEX_DESC1;
+      conexCinco += cincoLinea;
+
+      let alirioLinea = 0;
+      if (esCodoInterno) {
+        conexCodosInternos += costoUnit * cant;                       // costo interno de codos 2"/4"
+      } else {
+        alirioLinea = costoUnit * cant * (1 - CONEX_DESC1) * CONEX_PAGA2;
+        conexCostoAlirio += alirioLinea;
+      }
+
+      conexLineasDetalle.push({
+        codigo, nombre: `${nombre} ${fl.producto?.medida ?? ""}`.trim(),
+        cantidad: cant, costoUnit, facturado: facturadoLinea,
+        alirio: alirioLinea, cinco: cincoLinea, esCodoInterno,
+      });
+    }
+
+    if (facturadoClienteConex > 0) {
+      const comision = ccPct > 0 ? facturadoClienteConex * ccPct / (100 + ccPct) : 0;
+      const flete    = fcPct > 0 ? facturadoClienteConex * fcPct / (100 + fcPct) : 0;
+      conexComisionVend += comision;
+      conexFlete        += flete;
+      conexClientesDetalle.push({ cliente: factura.cliente?.nombre ?? "—", facturado: facturadoClienteConex, ccPct, fcPct, comision, flete });
+    }
+  }
+
+  const gananciaConexiones =
+    conexFacturado - conexCostoAlirio - conexCinco - conexComisionVend - conexFlete - conexCodosInternos;
+
   res.json({
     despacho: { id: despacho.id, numero: despacho.numero },
     facturaTotal,
@@ -633,6 +717,17 @@ export async function calcular(req: Request, res: Response) {
     socioRedireccion: { detalle: socioRedireccionDetalle, total: totalSocioRedirigido },
     comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
     fletesCliente: { detalle: fletesCliente, total: totalFlete },
+    gananciaConexiones: {
+      facturado:        conexFacturado,       // Paso 1
+      costoAlirio:      conexCostoAlirio,      // Paso 2 (excl. codos 2"/4")
+      cinco:            conexCinco,            // Paso 3 (→ se suma a Comisiones)
+      comisionVendedor: conexComisionVend,     // Paso 4 (por cliente)
+      flete:            conexFlete,            // Paso 5 (por cliente)
+      codosInternos:    conexCodosInternos,    // Paso 6 (CO-2-90, CO-4-90)
+      ganancia:         gananciaConexiones,    // Resultado
+      lineas:   conexLineasDetalle,
+      clientes: conexClientesDetalle,
+    },
     extraMaterial,
     servicioExterno,
     lineas: lineasDetalle,
