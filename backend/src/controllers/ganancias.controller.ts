@@ -89,8 +89,8 @@ const CURVA_TUBO_COSTO: Record<string, number> = {
   "CVNG-1/2": 0.36*0.92, "CVNG-3/4": 0.45*0.92, "CVNG-1": 0.78*0.92,
 };
 const CURVA_MAT_FACTOR: Record<string, { kg: number; cKg: number }> = {
-  "CVBL-1/2": { kg: 0.26, cKg: 1.583 }, "CVBL-3/4": { kg: 0.29, cKg: 1.583 }, "CVBL-1": { kg: 0.38, cKg: 1.583 },
-  "CVNG-1/2": { kg: 0.22, cKg: 1.283 }, "CVNG-3/4": { kg: 0.28, cKg: 1.283 }, "CVNG-1": { kg: 0.35, cKg: 1.283 },
+  "CVBL-1/2": { kg: 0.28, cKg: 1.583 }, "CVBL-3/4": { kg: 0.30, cKg: 1.583 }, "CVBL-1": { kg: 0.50, cKg: 1.583 },
+  "CVNG-1/2": { kg: 0.24, cKg: 1.283 }, "CVNG-3/4": { kg: 0.28, cKg: 1.283 }, "CVNG-1": { kg: 0.35, cKg: 1.283 },
 };
 
 // ─── NORMALIZACIÓN ────────────────────────────────────────────────────────────
