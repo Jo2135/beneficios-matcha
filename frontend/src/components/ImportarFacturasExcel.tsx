@@ -9,10 +9,15 @@ const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFrac
 // Lee un archivo "PLANTILLA GENERAL" y extrae cliente, fecha y líneas vendidas
 function parsePlantilla(rows: any[][]): { cliente: string; fecha: string; lineas: any[] } {
   let cliente = "", fecha = "";
+  const fmtCelda = (v: any): string => {
+    if (v == null || v === "") return "";
+    if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+    return String(v).trim();
+  };
   for (let i = 0; i < Math.min(rows.length, 8); i++) {
     const b = String(rows[i]?.[1] ?? "").toLowerCase().trim();
     if (b === "cliente" && !cliente) cliente = String(rows[i]?.[2] ?? "").trim();
-    if (b === "fecha" && !fecha) fecha = String(rows[i]?.[2] ?? "").trim();
+    if (b === "fecha" && !fecha) fecha = fmtCelda(rows[i]?.[2]);
   }
   const lineas: any[] = [];
   for (let i = 8; i < rows.length; i++) {
@@ -54,7 +59,7 @@ export default function ImportarFacturasExcel({ label = "Importar histórico (Ex
     for (const file of files) {
       try {
         const buf = await file.arrayBuffer();
-        const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+        const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
         const { cliente, fecha, lineas } = parsePlantilla(rows);

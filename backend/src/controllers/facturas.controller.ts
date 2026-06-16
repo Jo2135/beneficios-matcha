@@ -238,9 +238,26 @@ export async function importarHistorico(req: Request, res: Response) {
     return { crearNombre: target };
   }
 
-  const parseFecha = (f: string): Date => {
-    const m = String(f).match(/(\d{1,2})[-/](\d{1,2})/);
-    if (m) return new Date(year, Number(m[2]) - 1, Number(m[1]), 12);
+  const MESES_NOMBRE: Record<string, number> = {
+    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+    julio: 6, agosto: 7, septiembre: 8, setiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+  };
+  const parseFecha = (f: string, archivo: string): Date => {
+    const s = String(f ?? "").trim();
+    // Fecha completa ISO: 2025-01-28
+    const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), 12);
+    // DD-MM o DD/MM (con año opcional)
+    const dm = s.match(/(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?/);
+    if (dm) {
+      const y = dm[3] ? (dm[3].length === 2 ? 2000 + Number(dm[3]) : Number(dm[3])) : year;
+      return new Date(y, Number(dm[2]) - 1, Number(dm[1]), 12);
+    }
+    // Sin fecha legible: usar el mes que aparezca en la fecha o en el NOMBRE del archivo
+    const txt = (s + " " + archivo).toLowerCase();
+    for (const [nombre, idx] of Object.entries(MESES_NOMBRE)) {
+      if (txt.includes(nombre)) return new Date(year, idx, 15, 12);
+    }
     return new Date(year, 0, 1, 12);
   };
   const sanit = (s: string) => String(s).replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
@@ -298,7 +315,7 @@ export async function importarHistorico(req: Request, res: Response) {
       const totalNeto = lineasData.reduce((s, l) => s + l.totalLinea, 0);
       await prisma.factura.create({
         data: {
-          numero, clienteId, fechaEmision: parseFecha(fac.fecha),
+          numero, clienteId, fechaEmision: parseFecha(fac.fecha, fac.archivo),
           totalBruto: totalNeto, totalNeto, totalPagado: totalNeto, saldoPendiente: 0,
           estado: "COBRADA", notas: `Histórico: ${fac.archivo}`,
           lineas: { create: lineasData },
@@ -364,11 +381,16 @@ export async function listarClienteConPagos(req: Request, res: Response) {
 
 export async function eliminar(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const factura = await prisma.factura.findUnique({ where: { id }, select: { numero: true, totalPagado: true } });
+  const factura = await prisma.factura.findUnique({
+    where: { id },
+    select: { numero: true, pagos: { select: { id: true } } },
+  });
   if (!factura) return res.status(404).json({ error: "Factura no encontrada" });
-  if (Number(factura.totalPagado) > 0) {
-    return res.status(400).json({ error: "No se puede eliminar una factura con pagos registrados" });
-  }
+  // La ruta es solo-MASTER. Se permite eliminar aunque figure como cobrada.
+  // Se quitan las referencias (asignaciones de pago, gastos y distribuciones) primero.
+  await prisma.pagoAsignacion.deleteMany({ where: { facturaId: id } });
+  await prisma.despachoGasto.deleteMany({ where: { facturaId: id } });
+  await prisma.distribucionGanancia.deleteMany({ where: { facturaId: id } });
   await prisma.facturaLinea.deleteMany({ where: { facturaId: id } });
   await prisma.factura.delete({ where: { id } });
   res.json({ ok: true });
