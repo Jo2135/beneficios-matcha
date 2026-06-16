@@ -4,6 +4,7 @@ import { facturasApi, clientesApi, cuentasApi, empresasApi } from "../api/endpoi
 import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus } from "lucide-react";
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
+import ImportarFacturasExcel from "../components/ImportarFacturasExcel";
 
 const ESTADO: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   EMITIDA:         { label: "Emitida",       color: "#475569", bg: "#f1f5f9", icon: FileText },
@@ -128,12 +129,15 @@ export default function Facturas() {
           </p>
         </div>
         {esMaster && (
-          <button
-            onClick={() => { setMForm({ pagos: [] }); setModalManual(true); }}
-            style={{ display: "flex", alignItems: "center", gap: 6, background: "#7c3aed", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-          >
-            <Plus size={15} /> Importar Factura Histórica
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <ImportarFacturasExcel label="Importar Excel (despachos)" />
+            <button
+              onClick={() => { setMForm({ pagos: [] }); setModalManual(true); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "#7c3aed", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+            >
+              <Plus size={15} /> Factura manual
+            </button>
+          </div>
         )}
       </div>
 
