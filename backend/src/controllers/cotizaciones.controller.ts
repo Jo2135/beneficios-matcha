@@ -466,9 +466,9 @@ export async function eliminar(req: Request, res: Response) {
   const id = Number(req.params.id);
   const cot = await prisma.cotizacion.findUnique({ where: { id }, select: { estado: true, numero: true } });
   if (!cot) return res.status(404).json({ error: "Cotización no encontrada" });
-  if (["EN_DESPACHO", "COMPLETADA"].includes(cot.estado)) {
-    return res.status(400).json({ error: `No se puede eliminar una cotización en estado ${cot.estado}` });
-  }
+  // La ruta es solo-MASTER: puede eliminar en cualquier estado (incl. EN_DESPACHO/COMPLETADA).
+  // Se desvinculan las líneas de despacho que apunten a esta cotización (el despacho/factura NO se borran).
+  await prisma.despachoLinea.updateMany({ where: { cotizacionId: id }, data: { cotizacionId: null } });
   await prisma.cotizacionLinea.deleteMany({ where: { cotizacionId: id } });
   await prisma.cotizacion.delete({ where: { id } });
   res.json({ ok: true });

@@ -238,7 +238,11 @@ export default function Cotizaciones() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!window.confirm(`¿Eliminar ${c.numero}? Esta acción no se puede deshacer.`)) return;
+                            const enUso = ["EN_DESPACHO", "COMPLETADA"].includes(c.estado);
+                            const msg = enUso
+                              ? `⚠️ ${c.numero} está ${ESTADOS[c.estado]?.label ?? c.estado}. Se desvincula del despacho/factura (que NO se borran). ¿Eliminar?`
+                              : `¿Eliminar ${c.numero}? Esta acción no se puede deshacer.`;
+                            if (!window.confirm(msg)) return;
                             eliminarCot.mutate(c.id);
                           }}
                           style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", color: "#dc2626", display: "flex", alignItems: "center" }}
@@ -619,12 +623,16 @@ export default function Cotizaciones() {
                 </>
               )}
             </div>
-            {/* Eliminar — solo MASTER */}
-            {esMaster && !["EN_DESPACHO", "COMPLETADA"].includes(detalle.estado) && (
+            {/* Eliminar — solo MASTER (cualquier estado) */}
+            {esMaster && (
               <div style={{ marginTop: 12 }}>
                 <button
                   onClick={() => {
-                    if (!window.confirm(`¿Eliminar ${detalle.numero} permanentemente?`)) return;
+                    const enUso = ["EN_DESPACHO", "COMPLETADA"].includes(detalle.estado);
+                    const msg = enUso
+                      ? `⚠️ ${detalle.numero} está en estado ${detalle.estado}. Al eliminarla se desvincula del despacho/factura (el despacho y la factura NO se borran). ¿Continuar?`
+                      : `¿Eliminar ${detalle.numero} permanentemente?`;
+                    if (!window.confirm(msg)) return;
                     eliminarCot.mutate(detalle.id);
                   }}
                   style={{ display: "flex", alignItems: "center", gap: 6, background: "#fee2e2", color: "#991b1b", border: "none", padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
