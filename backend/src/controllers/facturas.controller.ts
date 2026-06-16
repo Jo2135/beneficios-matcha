@@ -1,6 +1,62 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 
+// ─── TRADUCTOR DE PRODUCTOS HISTÓRICOS (PLANTILLA → CATÁLOGO) ─────────────────
+function _norm(s: string): string {
+  return String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+}
+/** Forma canónica del nombre: sin acentos, sin "de", en singular (quita 's' final
+ *  de cada palabra). Tolera variaciones manuales: "Manguera de Riego" == "Manguera Riego",
+ *  "Curva Electrica Blancas" == "Curva Eléctrica Blanca". */
+function _canon(s: string): string {
+  return _norm(s)
+    .replace(/\bde\b/g, " ")
+    .replace(/\s+/g, " ").trim()
+    .split(" ").filter(Boolean).map((w) => w.replace(/s$/, "")).join(" ");
+}
+// Nombre en los despachos → nombre en el catálogo
+const ALIAS_NOMBRE: Record<string, string> = {
+  "manguera agricola": "Manguera Riego",
+  "manguera tubo": "Manguera Azul Agua Blanca",
+  "curvas electricas blancas": "Curva Eléctrica Blanca",
+  "curvas electricas negras": "Curva Eléctrica Negra",
+  "niples": "Niple Azul",
+  "tubo azul agua blanca": "Tubo Azul Agua Blanca",
+  "tubo gris agua blanca": "Tubo Gris Agua Blanca PVC",
+  "tubo electrico negro": "Tubo Eléctrico Negro",
+  "tubo electrico blanco pesado": "Tubo Eléctrico Blanco Pesado",
+  "tubo electrico blanco liviano": "Tubo Eléctrico Blanco Liviano",
+  "tuberia agua negra": "Tubería Agua Negra Amarilla PEAD",
+  "tuberia agua negra pesado": "Tubería Agua Negra Amarilla PEAD Reforzada",
+  "tuberia agua negra naranja": "Tubería Agua Negra Naranja PEAD Reforzada",
+  "tuberia agua negra - gris": "Tubería Agua Negra Gris",
+};
+const IGNORAR_NOMBRE = new Set(["estantillo plastico", "codo amarillo", "descripcion producto"]);
+
+function _frac(t: string): number {
+  t = t.replace(/½/g, " 1/2").replace(/¼/g, " 1/4").replace(/¾/g, " 3/4").replace(/\s+/g, " ").trim();
+  let m = t.match(/^(\d+)\s+(\d+)\/(\d+)/); if (m) return +m[1] + (+m[2]) / (+m[3]);
+  m = t.match(/^(\d+)\/(\d+)/); if (m) return (+m[1]) / (+m[2]);
+  m = t.match(/^(\d+(\.\d+)?)/); if (m) return +m[1];
+  return NaN;
+}
+// "Firma" de la medida: diámetro + presión(Lbs) + longitud(mts/cm/mm)
+function _sig(md: string): Set<string> {
+  const s = String(md ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/½/g, " 1/2").replace(/¼/g, " 1/4").replace(/¾/g, " 3/4");
+  const out = new Set<string>();
+  const h = (s.match(/\d+\s+\d+\/\d+|\d+\/\d+|\d+(\.\d+)?/) || [])[0];
+  const d = h ? _frac(h) : NaN;
+  if (!isNaN(d)) out.add("d:" + d);
+  for (const t of s.match(/\d+\s*lbs/g) || []) out.add("p:" + t.replace(/\s+/g, ""));
+  for (const t of s.match(/\d+\s*(mts|cm|mm)/g) || []) out.add("l:" + t.replace(/\s+/g, ""));
+  return out;
+}
+function _subset(a: Set<string>, b: Set<string>): boolean {
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
 export async function listar(req: Request, res: Response) {
   const { estado, clienteId } = req.query;
   // estado puede ser un valor único o varios separados por coma: "EMITIDA,PENDIENTE_COBRO"
@@ -158,10 +214,29 @@ export async function importarHistorico(req: Request, res: Response) {
   const catExterno = await prisma.categoriaCosto.findFirst({ where: { nombre: "Externo" } });
   const catDefaultId = catExterno?.id ?? (await prisma.categoriaCosto.findFirst())!.id;
 
-  // Productos existentes por nombre+medida
-  const productos = await prisma.producto.findMany({ select: { id: true, nombre: true, medida: true } });
-  const pkey = (n: string, m: string) => `${n.toLowerCase().trim()}|${m.toLowerCase().trim()}`;
-  const prodByKey = new Map(productos.map((p) => [pkey(p.nombre, p.medida), p.id]));
+  // Productos existentes agrupados por nombre CANÓNICO (para el traductor tolerante)
+  const productos = await prisma.producto.findMany({ select: { id: true, nombre: true, medida: true, categoriaId: true } });
+  const catByCanon = new Map<string, { id: number; medida: string; categoriaId: number }[]>();
+  for (const p of productos) {
+    const k = _canon(p.nombre);
+    if (!catByCanon.has(k)) catByCanon.set(k, []);
+    catByCanon.get(k)!.push({ id: p.id, medida: p.medida, categoriaId: p.categoriaId });
+  }
+  /** Traduce un producto del despacho al catálogo. Devuelve {id} o {crearNombre} o {ignorar} */
+  function resolverProducto(nombre: string, medida: string): { id?: number; crearNombre?: string; ignorar?: boolean } {
+    const nn = _norm(nombre);
+    if (IGNORAR_NOMBRE.has(nn)) return { ignorar: true };
+    const target = ALIAS_NOMBRE[nn] ?? nombre;        // alias para diferencias de palabra
+    const cands = catByCanon.get(_canon(target)) ?? []; // canónico tolera de/plural/acentos
+    const tsig = _sig(medida);
+    let best: { id: number } | null = null, bestN = -1;
+    for (const c of cands) {
+      const cs = _sig(c.medida);
+      if (_subset(cs, tsig) && cs.size > bestN) { best = c; bestN = cs.size; }
+    }
+    if (best) return { id: best.id };
+    return { crearNombre: target };
+  }
 
   const parseFecha = (f: string): Date => {
     const m = String(f).match(/(\d{1,2})[-/](\d{1,2})/);
@@ -194,14 +269,23 @@ export async function importarHistorico(req: Request, res: Response) {
         const cantidad = Number(l.cantidad) || 0;
         const monto = Number(l.monto) || 0;
         if (!nombre || cantidad <= 0 || monto <= 0) continue;
-        let pid = prodByKey.get(pkey(nombre, medida));
+
+        const res = resolverProducto(nombre, medida);
+        if (res.ignorar) continue;               // estantillo, codo amarillo, etc.
+        let pid = res.id;
         if (!pid) {
+          // Crear bajo el nombre del catálogo (traducido). Hereda categoría de la familia si existe.
+          const crearNombre = res.crearNombre ?? nombre;
+          const fam = catByCanon.get(_canon(crearNombre));
+          const catId = fam && fam.length ? fam[0].categoriaId : catDefaultId;
           const nuevo = await prisma.producto.create({
-            data: { nombre, medida, categoriaId: catDefaultId, origen: "EXTERNO" },
+            data: { nombre: crearNombre, medida, categoriaId: catId, origen: "EXTERNO" },
           });
           pid = nuevo.id;
-          prodByKey.set(pkey(nombre, medida), pid);
-          productosCreados.push(`${nombre} ${medida}`);
+          const ck = _canon(crearNombre);
+          if (!catByCanon.has(ck)) catByCanon.set(ck, []);
+          catByCanon.get(ck)!.push({ id: pid, medida, categoriaId: catId });
+          productosCreados.push(`${crearNombre} ${medida}`);
         }
         lineasData.push({
           productoId: pid, cantidad,
