@@ -88,8 +88,8 @@ function TabVentas() {
   const [buscar, setBuscar] = useState(false);
 
   const { data: lineas = [], isLoading } = useQuery({
-    queryKey: ["reporte-ventas", q, desde, hasta, buscar],
-    queryFn: () => reportesApi.ventasProducto({ q: q || undefined, desde: desde || undefined, hasta: hasta || undefined }),
+    queryKey: ["reporte-ventas-fac", q, desde, hasta, buscar],
+    queryFn: () => reportesApi.ventasProductoFacturas({ q: q || undefined, desde: desde || undefined, hasta: hasta || undefined }),
     enabled: buscar,
   });
 
@@ -131,7 +131,7 @@ function TabVentas() {
             <SummaryCard label="Líneas encontradas" value={String((lineas as any[]).length)} />
             <SummaryCard label="Total unidades"     value={String(totalUnidades)} />
             <SummaryCard label="Monto total"        value={`$${totalMonto.toFixed(2)}`} accent />
-            <button onClick={() => descargarCSV("ventas-producto", ["Producto","Medida","Categoría","Cliente","N° Cot.","Fecha","Estado","Cant.","Total"],
+            <button onClick={() => descargarCSV("ventas-producto", ["Producto","Medida","Categoría","Cliente","N° Fact.","Fecha","Estado","Cant.","Total"],
               (lineas as any[]).map((l: any) => [l.producto?.nombre, l.producto?.medida ?? "", l.producto?.categoria?.nombre ?? "", l.cotizacion?.cliente?.nombre, l.cotizacion?.numero, new Date(l.cotizacion?.creadoEn).toLocaleDateString("es-VE"), l.cotizacion?.estado, Number(l.cantidad), Number(l.totalLinea).toFixed(2)])
             )} style={btnCsv}><Download size={13} /> CSV</button>
           </div>
@@ -139,7 +139,7 @@ function TabVentas() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {["Producto", "Medida", "Categoría", "Cliente", "N° Cot.", "Fecha", "Estado", "Cant.", "Total"].map((h) => (
+                  {["Producto", "Medida", "Categoría", "Cliente", "N° Fact.", "Fecha", "Estado", "Cant.", "Total"].map((h) => (
                     <th key={h} style={th}>{h}</th>
                   ))}
                 </tr>
@@ -473,8 +473,8 @@ function TabGrafico() {
   const [buscar, setBuscar] = useState(false);
 
   const { data: lineas = [], isLoading } = useQuery({
-    queryKey: ["grafico-ventas", desde, hasta, buscar],
-    queryFn: () => reportesApi.ventasProducto({ desde: desde || undefined, hasta: hasta || undefined }),
+    queryKey: ["grafico-ventas-fac", desde, hasta, buscar],
+    queryFn: () => reportesApi.ventasProductoFacturas({ desde: desde || undefined, hasta: hasta || undefined }),
     enabled: buscar,
   });
 
@@ -662,7 +662,7 @@ function TabGrafico() {
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="shortName" width={130} tick={{ fontSize: 11 }} />
-                  <ReTooltip formatter={(value: number) => [value, "Cotizaciones"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
+                  <ReTooltip formatter={(value: number) => [value, "Facturas"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
                   <Bar dataKey="value" fill="#d97706" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

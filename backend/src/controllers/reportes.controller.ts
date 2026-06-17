@@ -42,6 +42,54 @@ export async function ventasProducto(req: Request, res: Response) {
   res.json(lineas);
 }
 
+/** Ventas por producto basadas en FACTURAS (ventas reales, incluye históricas).
+ *  Devuelve la misma forma que ventasProducto pero desde FacturaLinea, para que
+ *  las pestañas de Reportes la consuman sin cambios. */
+export async function ventasProductoFacturas(req: Request, res: Response) {
+  const { q, desde, hasta } = req.query;
+
+  const facWhere: any = { estado: { not: "ANULADA" } };
+  if (desde || hasta) {
+    facWhere.fechaEmision = {};
+    if (desde) facWhere.fechaEmision.gte = new Date(desde as string);
+    if (hasta) { const h = new Date(hasta as string); h.setHours(23, 59, 59, 999); facWhere.fechaEmision.lte = h; }
+  }
+
+  const lineaWhere: any = { factura: facWhere };
+  if (q) {
+    lineaWhere.producto = {
+      OR: [
+        { nombre: { contains: q as string, mode: "insensitive" } },
+        { medida: { contains: q as string, mode: "insensitive" } },
+      ],
+    };
+  }
+
+  const lineas = await prisma.facturaLinea.findMany({
+    where: lineaWhere,
+    include: {
+      producto: { include: { categoria: true } },
+      factura: { include: { cliente: { select: { id: true, nombre: true } } } },
+    },
+    orderBy: { factura: { fechaEmision: "desc" } },
+  });
+
+  // Reshape: se expone como "cotizacion" (envoltorio) para reutilizar la UI de Reportes
+  const out = lineas.map((l) => ({
+    cantidad: l.cantidad,
+    totalLinea: l.totalLinea,
+    producto: l.producto,
+    cotizacion: {
+      id: l.factura.id,
+      numero: l.factura.numero,
+      creadoEn: l.factura.fechaEmision,
+      estado: l.factura.estado,
+      cliente: l.factura.cliente,
+    },
+  }));
+  res.json(out);
+}
+
 /** Estadísticas de ventas basadas en FACTURAS: top productos, top clientes, ventas por mes */
 export async function ventasFacturas(req: Request, res: Response) {
   const { desde, hasta } = req.query;
