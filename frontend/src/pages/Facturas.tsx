@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi, clientesApi, cuentasApi, empresasApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus } from "lucide-react";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown } from "lucide-react";
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 import ImportarFacturasExcel from "../components/ImportarFacturasExcel";
@@ -39,6 +39,7 @@ export default function Facturas() {
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [ordenFecha, setOrdenFecha] = useState<"desc" | "asc">("desc");
   const [facturaId, setFacturaId] = useState<number | null>(null);
 
   const [editNotas, setEditNotas] = useState(false);
@@ -115,8 +116,13 @@ export default function Facturas() {
       h.setHours(23, 59, 59);
       lista = lista.filter((f: any) => new Date(f.fechaEmision ?? f.creadoEn) <= h);
     }
-    return lista;
-  }, [todas, filtro, busqueda, desde, hasta]);
+    const ord = [...lista].sort((a: any, b: any) => {
+      const ta = new Date(a.fechaEmision ?? a.creadoEn).getTime();
+      const tb = new Date(b.fechaEmision ?? b.creadoEn).getTime();
+      return ordenFecha === "asc" ? ta - tb : tb - ta;
+    });
+    return ord;
+  }, [todas, filtro, busqueda, desde, hasta, ordenFecha]);
 
   return (
     <div style={{ padding: 24 }}>
@@ -217,9 +223,22 @@ export default function Facturas() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Número", "Cliente", "Empresa", "Fecha", "Total", "Saldo", "Estado", ""].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
+              {["Número", "Cliente", "Empresa", "Fecha", "Total", "Saldo", "Estado", ""].map((h) =>
+                h === "Fecha" ? (
+                  <th
+                    key={h}
+                    style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
+                    onClick={() => setOrdenFecha((o) => (o === "desc" ? "asc" : "desc"))}
+                    title="Ordenar por fecha"
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#2563eb" }}>
+                      Fecha {ordenFecha === "desc" ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
+                    </span>
+                  </th>
+                ) : (
+                  <th key={h} style={thStyle}>{h}</th>
+                )
+              )}
             </tr>
           </thead>
           <tbody>
