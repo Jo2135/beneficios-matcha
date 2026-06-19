@@ -239,9 +239,6 @@ export default function GananciasDespacho() {
               label="Comisiones"
               monto={d.ganancias2.comisionesConCinco ?? d.ganancias2.comisiones}
               color="#7c3aed"
-              detalle={(d.ganancias2.comisionesCinco ?? 0) > 0
-                ? `${usd(d.ganancias2.comisiones)} (2.2%) + ${usd(d.ganancias2.comisionesCinco)} (5% conexiones)`
-                : undefined}
             />
           </Section>
 

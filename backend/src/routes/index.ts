@@ -133,15 +133,15 @@ router.post("/despachos/:id/agregar-cotizacion", requireRol("MASTER", "ADMIN"), 
 router.post("/despachos/:id/finalizar", requireRol("MASTER", "ADMIN"), w(despachos.finalizar));
 router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.actualizarLineas));
 router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));
-router.get("/despachos/:id/ganancias", requireRol("MASTER", "ADMIN"), w(ganancias.calcular));
-router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER", "ADMIN"), w(ganancias.actualizarServicioExterno));
-// Balance de Pagos
+router.get("/despachos/:id/ganancias", requireRol("MASTER"), w(ganancias.calcular));
+router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER"), w(ganancias.actualizarServicioExterno));
+// Balance de Pagos — solo MASTER (los administradores no pueden ver el balance)
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
-router.get("/despachos/:id/balance", requireRol("MASTER", "ADMIN"), w(balance.getBalance));
+router.get("/despachos/:id/balance", requireRol("MASTER"), w(balance.getBalance));
 router.get("/despachos/:id/balance/snapshot", requireRol("MASTER"), w(balance.getSnapshot));
 router.patch("/balance/items/:itemId", requireRol("MASTER"), w(balance.actualizarItem));
-router.post("/balance/items/:itemId/cuotas", requireRol("MASTER", "ADMIN"), w(balance.agregarCuota));
-router.patch("/balance/cuotas/:cuotaId", requireRol("MASTER", "ADMIN"), w(balance.actualizarCuota));
+router.post("/balance/items/:itemId/cuotas", requireRol("MASTER"), w(balance.agregarCuota));
+router.patch("/balance/cuotas/:cuotaId", requireRol("MASTER"), w(balance.actualizarCuota));
 router.delete("/balance/cuotas/:cuotaId", requireRol("MASTER"), w(balance.eliminarCuota));
 router.get("/despachos/:id", w(despachos.obtener));
 

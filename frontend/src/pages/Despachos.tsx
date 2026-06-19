@@ -287,7 +287,7 @@ export default function Despachos() {
                   <td style={tdStyle}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 12, color: "#94a3b8" }}>Ver →</span>
-                      {d.facturas?.length > 0 && (
+                      {esMaster && d.facturas?.length > 0 && (
                         <>
                           <button
                             title="Ver distribución de ganancias"
