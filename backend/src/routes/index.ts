@@ -133,8 +133,8 @@ router.post("/despachos/:id/agregar-cotizacion", requireRol("MASTER", "ADMIN"), 
 router.post("/despachos/:id/finalizar", requireRol("MASTER", "ADMIN"), w(despachos.finalizar));
 router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.actualizarLineas));
 router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));
-router.get("/despachos/:id/ganancias", requireRol("MASTER"), w(ganancias.calcular));
-router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER"), w(ganancias.actualizarServicioExterno));
+router.get("/despachos/:id/ganancias", requireRol("MASTER", "ADMIN"), w(ganancias.calcular));
+router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER", "ADMIN"), w(ganancias.actualizarServicioExterno));
 // Balance de Pagos — solo MASTER (los administradores no pueden ver el balance)
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
 router.get("/despachos/:id/balance", requireRol("MASTER"), w(balance.getBalance));

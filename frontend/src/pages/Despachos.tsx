@@ -287,7 +287,7 @@ export default function Despachos() {
                   <td style={tdStyle}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 12, color: "#94a3b8" }}>Ver →</span>
-                      {esMaster && d.facturas?.length > 0 && (
+                      {d.facturas?.length > 0 && (
                         <>
                           <button
                             title="Ver distribución de ganancias"
@@ -296,13 +296,15 @@ export default function Despachos() {
                           >
                             <BarChart2 size={12} /> Ganancias
                           </button>
-                          <button
-                            title="Ver balance de pagos"
-                            onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${d.id}/balance`); }}
-                            style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#2563eb" }}
-                          >
-                            <BarChart2 size={12} /> Balance
-                          </button>
+                          {esMaster && (
+                            <button
+                              title="Ver balance de pagos"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${d.id}/balance`); }}
+                              style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#2563eb" }}
+                            >
+                              <BarChart2 size={12} /> Balance
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

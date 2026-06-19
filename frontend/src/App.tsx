@@ -77,7 +77,7 @@ function AppRoutes() {
         {/* Solo MASTER y ADMIN */}
         {puedeEditar && <Route path="/precios" element={<ListasPrecios />} />}
         {puedeEditar && <Route path="/despachos" element={<Despachos />} />}
-        {esMaster && <Route path="/despachos/:id/ganancias" element={<GananciasDespacho />} />}
+        {puedeEditar && <Route path="/despachos/:id/ganancias" element={<GananciasDespacho />} />}
         {esMaster && <Route path="/despachos/:id/balance" element={<BalancePago />} />}
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
         {puedeEditar && <Route path="/clientes/:clienteId/estado-cuenta" element={<EstadoCuenta />} />}
