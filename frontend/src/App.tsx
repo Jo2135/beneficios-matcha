@@ -22,6 +22,7 @@ import CalendarioCobros from "./pages/CalendarioCobros";
 import GananciasDespacho from "./pages/GananciasDespacho";
 import BalancePago from "./pages/BalancePago";
 import EstadoCuenta from "./pages/EstadoCuenta";
+import FacturacionExterna from "./pages/FacturacionExterna";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -81,6 +82,7 @@ function AppRoutes() {
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
         {puedeEditar && <Route path="/clientes/:clienteId/estado-cuenta" element={<EstadoCuenta />} />}
         {puedeEditar && <Route path="/facturas" element={<Facturas />} />}
+        {puedeEditar && <Route path="/facturacion-externa" element={<FacturacionExterna />} />}
         {puedeEditar && <Route path="/pagos" element={<Pagos />} />}
         {puedeEditar && <Route path="/reportes" element={<ReporteComisiones />} />}
         {puedeEditar && <Route path="/estadisticas" element={<EstadisticasVentas />} />}

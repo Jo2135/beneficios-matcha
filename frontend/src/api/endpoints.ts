@@ -171,6 +171,31 @@ export const reportesApi = {
     api.get("/reportes/cuentas-cobrar", { params }).then((r) => r.data),
 };
 
+// Facturación Externa (compras a proveedores)
+export const comprasExternasApi = {
+  listar: (params?: { q?: string }) => api.get("/compras-externas", { params }).then((r) => r.data),
+  obtener: (id: number) => api.get(`/compras-externas/${id}`).then((r) => r.data),
+  crear: (data: any) => api.post("/compras-externas", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.put(`/compras-externas/${id}`, data).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/compras-externas/${id}`).then((r) => r.data),
+  agregarLinea: (id: number, data: any) => api.post(`/compras-externas/${id}/lineas`, data).then((r) => r.data),
+  eliminarLinea: (lineaId: number) => api.delete(`/compras-externas/lineas/${lineaId}`).then((r) => r.data),
+  asignar: (data: { lineaId: number; facturaId: number; cantidad: number; notas?: string }) =>
+    api.post("/compras-externas/asignaciones", data).then((r) => r.data),
+  eliminarAsignacion: (asignacionId: number) =>
+    api.delete(`/compras-externas/asignaciones/${asignacionId}`).then((r) => r.data),
+  registrarPago: (id: number, data: any) => api.post(`/compras-externas/${id}/pagos`, data).then((r) => r.data),
+  eliminarPago: (pagoId: number) => api.delete(`/compras-externas/pagos/${pagoId}`).then((r) => r.data),
+  subirImagen: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("imagen", file);
+    return api.post(`/compras-externas/${id}/imagen`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  eliminarImagen: (id: number) => api.delete(`/compras-externas/${id}/imagen`).then((r) => r.data),
+};
+
 // Cuentas bancarias
 export const cuentasApi = {
   listar: () => api.get("/cuentas").then((r) => r.data),

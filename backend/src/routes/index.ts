@@ -15,6 +15,7 @@ import * as seguimiento from "../controllers/seguimiento.controller";
 import * as ganancias from "../controllers/ganancias.controller";
 import * as balance from "../controllers/balance.controller";
 import * as tablas from "../controllers/tablas.controller";
+import * as comprasExternas from "../controllers/comprasExternas.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -150,6 +151,21 @@ router.get("/reportes/ventas-producto-facturas", requireRol("MASTER", "ADMIN"), 
 router.get("/reportes/ventas-facturas", requireRol("MASTER", "ADMIN"), w(reportes.ventasFacturas));
 router.get("/reportes/estado-cuenta/:clienteId", requireRol("MASTER", "ADMIN"), w(reportes.estadoCuenta));
 router.get("/reportes/cuentas-cobrar", requireRol("MASTER", "ADMIN"), w(reportes.cuentasCobrar));
+
+// ─── Facturación Externa (compras a proveedores) ──────────────────────────
+router.get("/compras-externas", requireRol("MASTER", "ADMIN"), w(comprasExternas.listar));
+router.post("/compras-externas", requireRol("MASTER", "ADMIN"), w(comprasExternas.crear));
+router.post("/compras-externas/asignaciones", requireRol("MASTER", "ADMIN"), w(comprasExternas.asignar));
+router.delete("/compras-externas/asignaciones/:asignacionId", requireRol("MASTER", "ADMIN"), w(comprasExternas.eliminarAsignacion));
+router.delete("/compras-externas/lineas/:lineaId", requireRol("MASTER", "ADMIN"), w(comprasExternas.eliminarLinea));
+router.delete("/compras-externas/pagos/:pagoId", requireRol("MASTER", "ADMIN"), w(comprasExternas.eliminarPago));
+router.post("/compras-externas/:id/imagen", requireRol("MASTER", "ADMIN"), comprasExternas.uploadCompraMiddleware, w(comprasExternas.subirImagen));
+router.delete("/compras-externas/:id/imagen", requireRol("MASTER", "ADMIN"), w(comprasExternas.eliminarImagen));
+router.post("/compras-externas/:id/lineas", requireRol("MASTER", "ADMIN"), w(comprasExternas.agregarLinea));
+router.post("/compras-externas/:id/pagos", requireRol("MASTER", "ADMIN"), w(comprasExternas.registrarPago));
+router.put("/compras-externas/:id", requireRol("MASTER", "ADMIN"), w(comprasExternas.actualizar));
+router.delete("/compras-externas/:id", requireRol("MASTER"), w(comprasExternas.eliminar));
+router.get("/compras-externas/:id", requireRol("MASTER", "ADMIN"), w(comprasExternas.obtener));
 
 // ─── Empresas ─────────────────────────────────────────────────────────────
 router.get("/empresas", w(empresas.listar));

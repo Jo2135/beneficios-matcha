@@ -65,6 +65,7 @@ model Producto {
   cotizacionLineas CotizacionLinea[]
   despachoLineas   DespachoLinea[]
   facturaLineas    FacturaLinea[]
+  comprasExternasLineas CompraExternaLinea[]
 }
 
 enum OrigenProducto {
@@ -271,6 +272,7 @@ model Factura {
   pagos     PagoAsignacion[]
   gastos    DespachoGasto[]
   ganancias DistribucionGanancia[]
+  comprasExternasAsignaciones CompraExternaAsignacion[]
 }
 
 enum EstadoFactura {
@@ -361,6 +363,7 @@ model Cuenta {
 
   pagos       Pago[]
   movimientos MovimientoTesoreria[]
+  comprasExternasPagos CompraExternaPago[]
 }
 
 model MovimientoTesoreria {
@@ -530,4 +533,64 @@ model ConfigGanancias {
 model ConfiguracionSistema {
   id           Int     @id @default(1) // siempre 1, singleton
   pinTablaHash String? // bcrypt hash del PIN de Tablas de Distribución
+}
+
+// ─── FACTURACIÓN EXTERNA (compras a proveedores) ────────────────────────────
+// Registra compras hechas a terceros (con foto de la factura), reparte las
+// cantidades compradas entre las facturas de los clientes y lleva los pagos
+// que hacemos al proveedor.
+
+model CompraExterna {
+  id            Int      @id @default(autoincrement())
+  proveedor     String
+  numero        String?
+  fecha         DateTime @default(now())
+  imagenUrl     String?
+  totalCosto    Decimal  @db.Decimal(12, 2) @default(0) // suma de líneas (costo)
+  notas         String?
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  lineas CompraExternaLinea[]
+  pagos  CompraExternaPago[]
+}
+
+model CompraExternaLinea {
+  id              Int           @id @default(autoincrement())
+  compraExternaId Int
+  compraExterna   CompraExterna @relation(fields: [compraExternaId], references: [id], onDelete: Cascade)
+  productoId      Int
+  producto        Producto      @relation(fields: [productoId], references: [id])
+  cantidad        Decimal       @db.Decimal(12, 2) // cantidad comprada
+  costoUnitario   Decimal       @db.Decimal(12, 4) @default(0)
+  notas           String?
+
+  asignaciones CompraExternaAsignacion[]
+}
+
+// Reparte una cantidad de una línea a la factura de un cliente
+model CompraExternaAsignacion {
+  id        Int                @id @default(autoincrement())
+  lineaId   Int
+  linea     CompraExternaLinea @relation(fields: [lineaId], references: [id], onDelete: Cascade)
+  facturaId Int
+  factura   Factura            @relation(fields: [facturaId], references: [id])
+  cantidad  Decimal            @db.Decimal(12, 2)
+  notas     String?
+  creadoEn  DateTime           @default(now())
+}
+
+// Pago que NOSOTROS hacemos al proveedor (egreso), indicando de qué cuenta salió
+model CompraExternaPago {
+  id              Int           @id @default(autoincrement())
+  compraExternaId Int
+  compraExterna   CompraExterna @relation(fields: [compraExternaId], references: [id], onDelete: Cascade)
+  cuentaId        Int?
+  cuenta          Cuenta?       @relation(fields: [cuentaId], references: [id])
+  monto           Decimal       @db.Decimal(12, 2)
+  moneda          Moneda        @default(USD)
+  fecha           DateTime      @default(now())
+  origenFondos    String? // texto libre cuando no hay cuenta seleccionada
+  notas           String?
+  creadoEn        DateTime      @default(now())
 }
