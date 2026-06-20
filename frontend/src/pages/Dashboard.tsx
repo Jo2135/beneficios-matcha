@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { facturasApi, pagosApi, cotizacionesApi, despachosApi } from "../api/endpoints";
-import { DollarSign, AlertTriangle, CheckCircle, Clock, TrendingUp, FileText, Truck } from "lucide-react";
+import { facturasApi, pagosApi, cotizacionesApi, despachosApi, reportesApi } from "../api/endpoints";
+import { DollarSign, AlertTriangle, Banknote, Clock, TrendingUp, FileText, Truck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
@@ -43,6 +43,12 @@ export default function Dashboard() {
     queryFn: despachosApi.listar,
     enabled: puedeVerFinanzas,
   });
+  // Dinero recibido por fecha de pago (respeta el período); se calcula en el backend
+  const { data: recibido } = useQuery({
+    queryKey: ["dinero-recibido", desde, hasta],
+    queryFn: () => reportesApi.dineroRecibido({ desde: desde || undefined, hasta: hasta || undefined }),
+    enabled: puedeVerFinanzas,
+  });
 
   const facturas = balance?.facturas ?? [];
 
@@ -58,10 +64,12 @@ export default function Dashboard() {
     new Set<number>([anioActual, ...facturas.map((f: any) => new Date(f.fechaEmision ?? f.creadoEn).getFullYear())])
   ).sort((a, b) => b - a);
 
-  // KPIs financieros del período (Total Emitido = ventas, Total Cobrado = pagos)
+  // KPIs financieros del período
+  // Ventas = facturas EMITIDAS en el rango; Por Cobrar = saldo de esas facturas
   const totalEmitido = facturasDistrib.reduce((s: number, f: any) => s + Number(f.totalNeto), 0);
-  const totalCobrado = facturasDistrib.reduce((s: number, f: any) => s + Number(f.totalPagado), 0);
   const totalPendiente = facturasDistrib.reduce((s: number, f: any) => s + Number(f.saldoPendiente), 0);
+  // Dinero Recibido = dinero que ENTRÓ en el rango (por fecha de pago); lo calcula el backend
+  const dineroRecibido = recibido?.totalRecibido ?? 0;
 
   const vencidas = facturas.filter((f: any) => f.estado === "VENCIDA");
   const porCobrar = facturas.filter((f: any) => ["EMITIDA", "PENDIENTE_COBRO", "COBRADA_PARCIAL"].includes(f.estado));
@@ -165,9 +173,9 @@ export default function Dashboard() {
             {hayRango ? "Finanzas del período seleccionado" : "Finanzas — todas las transacciones"}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 16 }}>
-            <KPICard icon={DollarSign} label="Ventas (Total Emitido)" value={`$${totalEmitido.toLocaleString("es-VE", { minimumFractionDigits: 2 })}`} color="#2563eb" bg="#dbeafe" />
-            <KPICard icon={CheckCircle} label="Pagos (Total Cobrado)" value={`$${totalCobrado.toLocaleString("es-VE", { minimumFractionDigits: 2 })}`} color="#16a34a" bg="#dcfce7" />
-            <KPICard icon={Clock} label="Por Cobrar" value={`$${totalPendiente.toLocaleString("es-VE", { minimumFractionDigits: 2 })}`} color="#d97706" bg="#fef3c7" />
+            <KPICard icon={DollarSign} label="Ventas (facturas emitidas)" value={`$${totalEmitido.toLocaleString("es-VE", { minimumFractionDigits: 2 })}`} color="#2563eb" bg="#dbeafe" />
+            <KPICard icon={Banknote} label="Dinero Recibido (entró)" value={`$${dineroRecibido.toLocaleString("es-VE", { minimumFractionDigits: 2 })}`} color="#16a34a" bg="#dcfce7" />
+            <KPICard icon={Clock} label="Por Cobrar (de esas ventas)" value={`$${totalPendiente.toLocaleString("es-VE", { minimumFractionDigits: 2 })}`} color="#d97706" bg="#fef3c7" />
             <KPICard icon={AlertTriangle} label="Pagos sin asignar" value={pagos.length} color="#dc2626" bg="#fee2e2" onClick={() => navigate("/pagos")} />
           </div>
         </>

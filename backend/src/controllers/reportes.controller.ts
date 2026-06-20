@@ -144,6 +144,50 @@ export async function ventasFacturas(req: Request, res: Response) {
   });
 }
 
+/** Dinero efectivamente recibido en un período, por FECHA DE PAGO (no de factura).
+ *  Combina dos fuentes sin doble conteo, todo en USD:
+ *   1) Pagos reales (flujo nuevo + factura manual) por su fecha de pago.
+ *   2) Cobros sin registro de pago (histórico importado) = totalPagado de la
+ *      factura menos lo ya cubierto por pagos reales, fechado con la factura. */
+export async function dineroRecibido(req: Request, res: Response) {
+  const { desde, hasta } = req.query;
+  const rangoFecha = () => {
+    const f: any = {};
+    if (desde) f.gte = new Date(desde as string);
+    if (hasta) { const h = new Date(hasta as string); h.setHours(23, 59, 59, 999); f.lte = h; }
+    return Object.keys(f).length ? f : undefined;
+  };
+  const r = rangoFecha();
+
+  // 1) Pagos reales por fecha de pago (incluye no asignados: el dinero entró igual)
+  const pagos = await prisma.pago.findMany({
+    where: r ? { fecha: r } : {},
+    select: { monto: true, montousd: true },
+  });
+  const pagosReales = pagos.reduce(
+    (s, p) => s + (p.montousd != null ? Number(p.montousd) : Number(p.monto)),
+    0
+  );
+
+  // 2) Cobros sin registro de pago (histórico) por fecha de factura
+  const facturas = await prisma.factura.findMany({
+    where: { estado: { not: "ANULADA" }, ...(r ? { fechaEmision: r } : {}) },
+    select: { totalPagado: true, pagos: { select: { montoAsignado: true } } },
+  });
+  let cobrosSinRegistro = 0;
+  for (const f of facturas) {
+    const asignado = f.pagos.reduce((s, a) => s + Number(a.montoAsignado), 0);
+    const manual = Number(f.totalPagado) - asignado;
+    if (manual > 0.005) cobrosSinRegistro += manual;
+  }
+
+  res.json({
+    totalRecibido: pagosReales + cobrosSinRegistro,
+    pagosReales,
+    cobrosSinRegistro,
+  });
+}
+
 export async function estadoCuenta(req: Request, res: Response) {
   const clienteId = Number(req.params.clienteId);
   const { desde, hasta } = req.query;

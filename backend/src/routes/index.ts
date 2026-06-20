@@ -149,6 +149,7 @@ router.get("/despachos/:id", w(despachos.obtener));
 router.get("/reportes/ventas-producto", requireRol("MASTER", "ADMIN"), w(reportes.ventasProducto));
 router.get("/reportes/ventas-producto-facturas", requireRol("MASTER", "ADMIN"), w(reportes.ventasProductoFacturas));
 router.get("/reportes/ventas-facturas", requireRol("MASTER", "ADMIN"), w(reportes.ventasFacturas));
+router.get("/reportes/dinero-recibido", requireRol("MASTER", "ADMIN"), w(reportes.dineroRecibido));
 router.get("/reportes/estado-cuenta/:clienteId", requireRol("MASTER", "ADMIN"), w(reportes.estadoCuenta));
 router.get("/reportes/cuentas-cobrar", requireRol("MASTER", "ADMIN"), w(reportes.cuentasCobrar));
 
