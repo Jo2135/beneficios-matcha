@@ -491,29 +491,32 @@ function TabGrafico() {
     .sort((a, b) => b.value - a.value);
   const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
 
-  // Chart B — Top 10 productos por ingresos
-  const prodMontoMap: Record<string, number> = {};
+  // Charts B & C — Top 10 productos (agrupados por producto real). La etiqueta usa
+  // el código para distinguir variantes/medidas que comparten nombre (ej. PEAD 4"
+  // vs PEAD Reforzada 4"); el nombre completo va en el tooltip.
+  const prodMap: Record<string, { codigo: string | null; nombre: string; medida: string; monto: number; cant: number }> = {};
   typedLineas.forEach((l) => {
-    const key = `${l.producto?.nombre ?? ""} ${l.producto?.medida ?? ""}`.trim();
-    prodMontoMap[key] = (prodMontoMap[key] ?? 0) + Number(l.totalLinea);
+    const p = l.producto;
+    if (!p) return;
+    const key = String(p.id ?? `${p.nombre} ${p.medida}`);
+    const e = prodMap[key] ?? { codigo: p.codigo ?? null, nombre: p.nombre ?? "", medida: p.medida ?? "", monto: 0, cant: 0 };
+    e.monto += Number(l.totalLinea);
+    e.cant += Number(l.cantidad);
+    prodMap[key] = e;
   });
-  const top10Monto = Object.entries(prodMontoMap)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 10)
-    .map((d) => ({ ...d, shortName: d.name.length > 20 ? d.name.slice(0, 20) + "…" : d.name }));
-
-  // Chart C — Top 10 productos por cantidad
-  const prodCantMap: Record<string, number> = {};
-  typedLineas.forEach((l) => {
-    const key = `${l.producto?.nombre ?? ""} ${l.producto?.medida ?? ""}`.trim();
-    prodCantMap[key] = (prodCantMap[key] ?? 0) + Number(l.cantidad);
-  });
-  const top10Cant = Object.entries(prodCantMap)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 10)
-    .map((d) => ({ ...d, shortName: d.name.length > 20 ? d.name.slice(0, 20) + "…" : d.name }));
+  const etiquetaProd = (e: { codigo: string | null; nombre: string; medida: string }) => {
+    if (e.codigo && e.codigo.trim()) return e.codigo.trim();
+    const full = `${e.nombre} ${e.medida}`.trim();
+    return full.length > 22 ? full.slice(0, 22) + "…" : full;
+  };
+  const prodArr = Object.values(prodMap).map((e) => ({
+    name: `${e.nombre} ${e.medida}`.trim() + (e.codigo ? `  (${e.codigo})` : ""),
+    label: etiquetaProd(e),
+    monto: e.monto,
+    cant: e.cant,
+  }));
+  const top10Monto = [...prodArr].sort((a, b) => b.monto - a.monto).slice(0, 10).map((e) => ({ name: e.name, label: e.label, value: e.monto }));
+  const top10Cant = [...prodArr].sort((a, b) => b.cant - a.cant).slice(0, 10).map((e) => ({ name: e.name, label: e.label, value: e.cant }));
 
   // Chart D — Top clientes por ingresos
   const clienteMontoMap: Record<string, number> = {};
@@ -616,7 +619,7 @@ function TabGrafico() {
                 <BarChart data={top10Monto} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" tickFormatter={(v) => `$${v}`} tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="shortName" width={120} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11 }} />
                   <ReTooltip formatter={(value: number) => [`$${value.toFixed(2)}`, "Ingresos"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
                   <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -630,7 +633,7 @@ function TabGrafico() {
                 <BarChart data={top10Cant} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="shortName" width={120} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11 }} />
                   <ReTooltip formatter={(value: number) => [value, "Unidades"]} labelFormatter={(_l, payload) => payload?.[0]?.payload?.name ?? ""} />
                   <Bar dataKey="value" fill="#16a34a" radius={[0, 4, 4, 0]} />
                 </BarChart>

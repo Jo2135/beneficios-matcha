@@ -105,11 +105,11 @@ export async function ventasFacturas(req: Request, res: Response) {
     select: {
       id: true, fechaEmision: true, totalNeto: true,
       cliente: { select: { id: true, nombre: true } },
-      lineas: { select: { cantidad: true, totalLinea: true, producto: { select: { id: true, nombre: true, medida: true } } } },
+      lineas: { select: { cantidad: true, totalLinea: true, producto: { select: { id: true, codigo: true, nombre: true, medida: true } } } },
     },
   });
 
-  const prodMap = new Map<number, { nombre: string; monto: number; unidades: number }>();
+  const prodMap = new Map<number, { nombre: string; label: string; monto: number; unidades: number }>();
   const cliMap = new Map<number, { nombre: string; monto: number; facturas: number }>();
   const mesMap = new Map<string, number>();
   let totalVentas = 0;
@@ -127,7 +127,11 @@ export async function ventasFacturas(req: Request, res: Response) {
     mesMap.set(mk, (mesMap.get(mk) ?? 0) + monto);
     for (const l of f.lineas) {
       if (!l.producto) continue;
-      const p = prodMap.get(l.producto.id) ?? { nombre: `${l.producto.nombre} ${l.producto.medida}`.trim(), monto: 0, unidades: 0 };
+      const full = `${l.producto.nombre} ${l.producto.medida}`.trim();
+      const cod = l.producto.codigo?.trim();
+      // Etiqueta = código (distingue variantes/medidas con igual nombre); si no hay, nombre recortado
+      const label = cod ? cod : (full.length > 22 ? full.slice(0, 22) + "…" : full);
+      const p = prodMap.get(l.producto.id) ?? { nombre: full, label, monto: 0, unidades: 0 };
       p.monto += Number(l.totalLinea);
       p.unidades += Number(l.cantidad);
       prodMap.set(l.producto.id, p);

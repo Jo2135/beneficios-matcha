@@ -69,8 +69,8 @@ export default function EstadisticasVentas() {
               <ResponsiveContainer width="100%" height={340}>
                 <BarChart data={(d.topProductosMonto ?? []).slice(0, 10)} layout="vertical" margin={{ left: 8, right: 16 }}>
                   <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="nombre" width={130} tick={{ fontSize: 10 }} />
-                  <Tooltip formatter={(v: any) => usd(v)} />
+                  <YAxis type="category" dataKey="label" width={130} tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v: any) => usd(v)} labelFormatter={(_l, p: any) => p?.[0]?.payload?.nombre ?? ""} />
                   <Bar dataKey="monto" fill="#16a34a" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -98,8 +98,8 @@ export default function EstadisticasVentas() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={(d.topProductosUnidades ?? []).slice(0, 10)} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis type="number" tick={{ fontSize: 10 }} />
-                <YAxis type="category" dataKey="nombre" width={150} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(v: any) => `${Number(v).toLocaleString("es-VE")} u`} />
+                <YAxis type="category" dataKey="label" width={150} tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(v: any) => `${Number(v).toLocaleString("es-VE")} u`} labelFormatter={(_l, p: any) => p?.[0]?.payload?.nombre ?? ""} />
                 <Bar dataKey="unidades" fill="#d97706" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
