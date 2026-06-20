@@ -99,11 +99,15 @@ export async function setTablaOverride(req: Request, res: Response) {
     return res.status(400).json({ error: "Valor inválido" });
   }
 
-  await prisma.configGanancias.upsert({
-    where: { despachoId_campo: { despachoId: despachoId ?? null, campo } },
-    update: { valor: Number(valor) },
-    create: { campo, valor: Number(valor), despachoId: despachoId ?? null },
-  });
+  // No usamos upsert con la clave compuesta: cuando despachoId es null, Prisma no
+  // resuelve bien el unique compuesto (NULL != NULL en SQL). Buscamos manualmente.
+  const dId = despachoId ?? null;
+  const existente = await prisma.configGanancias.findFirst({ where: { campo, despachoId: dId } });
+  if (existente) {
+    await prisma.configGanancias.update({ where: { id: existente.id }, data: { valor: Number(valor) } });
+  } else {
+    await prisma.configGanancias.create({ data: { campo, valor: Number(valor), despachoId: dId } });
+  }
 
   res.json({ ok: true });
 }

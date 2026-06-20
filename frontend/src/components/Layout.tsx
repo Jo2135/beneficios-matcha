@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Users, Package, FileText, Truck, Receipt, Banknote,
   BarChart3, Settings, ChevronLeft, ChevronRight, DollarSign,
-  UserCog, LogOut, Shield, Briefcase, Factory, Calendar, ShoppingCart,
+  UserCog, LogOut, Shield, Briefcase, Factory, Calendar, ShoppingCart, SlidersHorizontal,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -33,6 +33,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: "/estadisticas",label: "Estadísticas",        icon: BarChart3, roles: ["MASTER","ADMIN"] },
     { path: "/usuarios",    label: "Usuarios",            icon: UserCog,   roles: ["MASTER","ADMIN"] },
     { path: "/vendedores",  label: "Vendedores",          icon: Users,     roles: ["MASTER","ADMIN"] },
+    { path: "/tablas-ganancias", label: "Tablas de Ganancias", icon: SlidersHorizontal, roles: ["MASTER"] },
     { path: "/configuracion",label: "Configuración",     icon: Settings,  roles: ["MASTER"] },
   ].filter((item) => !usuario || item.roles.includes(usuario.rol));
 

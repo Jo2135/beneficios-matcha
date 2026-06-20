@@ -23,6 +23,7 @@ import GananciasDespacho from "./pages/GananciasDespacho";
 import BalancePago from "./pages/BalancePago";
 import EstadoCuenta from "./pages/EstadoCuenta";
 import FacturacionExterna from "./pages/FacturacionExterna";
+import TablasGanancias from "./pages/TablasGanancias";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -91,6 +92,7 @@ function AppRoutes() {
 
         {/* Solo MASTER */}
         {esMaster && <Route path="/configuracion" element={<Configuracion />} />}
+        {esMaster && <Route path="/tablas-ganancias" element={<TablasGanancias />} />}
 
         {/* Cotizaciones para todos */}
         <Route path="/cotizaciones" element={<Cotizaciones />} />

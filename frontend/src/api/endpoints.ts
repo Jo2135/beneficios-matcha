@@ -198,6 +198,18 @@ export const comprasExternasApi = {
   eliminarImagen: (id: number) => api.delete(`/compras-externas/${id}/imagen`).then((r) => r.data),
 };
 
+// Tablas de Ganancias (porcentajes/costos editables con PIN)
+export const tablasApi = {
+  listar: (despachoId?: number) =>
+    api.get("/tablas", { params: despachoId ? { despachoId } : {} }).then((r) => r.data),
+  setOverride: (data: { campo: string; valor?: number; despachoId?: number | null; eliminar?: boolean }) =>
+    api.patch("/tablas", data).then((r) => r.data),
+  pinEstado: () => api.get("/tablas/pin").then((r) => r.data),
+  verificarPin: (pin: string) => api.post("/tablas/pin/verificar", { pin }).then((r) => r.data),
+  setPin: (data: { pinActual?: string; pinNuevo: string }) =>
+    api.post("/tablas/pin", data).then((r) => r.data),
+};
+
 // Cuentas bancarias
 export const cuentasApi = {
   listar: () => api.get("/cuentas").then((r) => r.data),
