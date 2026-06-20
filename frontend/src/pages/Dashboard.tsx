@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { facturasApi, pagosApi, cotizacionesApi, despachosApi } from "../api/endpoints";
@@ -12,6 +13,10 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { esMaster, usuario } = useAuth();
   const puedeVerFinanzas = esMaster || usuario?.rol === "ADMIN";
+
+  // Rango de fechas para la Distribución de Facturas (vacío = todas las transacciones)
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
 
   const { data: balance } = useQuery({
     queryKey: ["balance"],
@@ -55,8 +60,17 @@ export default function Dashboard() {
     VENCIDA: "#dc2626",
   };
   const ESTADOS_CHART = ["EMITIDA", "PENDIENTE_COBRO", "COBRADA_PARCIAL", "COBRADA", "VENCIDA"];
+
+  // Facturas dentro del rango elegido (sin rango = todas)
+  const facturasDistrib = facturas.filter((f: any) => {
+    const t = new Date(f.fechaEmision ?? f.creadoEn).getTime();
+    if (desde && t < new Date(desde).getTime()) return false;
+    if (hasta) { const h = new Date(hasta); h.setHours(23, 59, 59, 999); if (t > h.getTime()) return false; }
+    return true;
+  });
+
   const pieData = ESTADOS_CHART.map((estado) => {
-    const group = facturas.filter((f: any) => f.estado === estado);
+    const group = facturasDistrib.filter((f: any) => f.estado === estado);
     const value = group.reduce((sum: number, f: any) => {
       return sum + Number(estado === "COBRADA" ? f.totalNeto : f.saldoPendiente);
     }, 0);
@@ -156,21 +170,46 @@ export default function Dashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
           {/* Pie: Distribución de Facturas */}
           <div style={cardStyle}>
-            <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0" }}>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b" }}>Distribución de Facturas</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>Desde</span>
+                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+                  style={fechaInput} />
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>Hasta</span>
+                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+                  style={fechaInput} />
+                {(desde || hasta) && (
+                  <button onClick={() => { setDesde(""); setHasta(""); }}
+                    style={{ border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc", cursor: "pointer", fontSize: 11, color: "#64748b", padding: "4px 8px" }}>
+                    Limpiar
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={{ padding: "16px 8px" }}>
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
-                    {pieData.map((entry) => (
-                      <Cell key={entry.name} fill={ESTADO_COLORS[entry.name] ?? "#94a3b8"} />
-                    ))}
-                  </Pie>
-                  <ReTooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+            <div style={{ padding: "4px 18px 0", fontSize: 11, color: "#94a3b8" }}>
+              {desde || hasta
+                ? `Mostrando facturas del rango seleccionado (${facturasDistrib.length})`
+                : `Todas las transacciones (${facturasDistrib.length} facturas)`}
+            </div>
+            <div style={{ padding: "12px 8px" }}>
+              {pieData.length === 0 ? (
+                <div style={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>
+                  Sin facturas en este rango de fechas
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={ESTADO_COLORS[entry.name] ?? "#94a3b8"} />
+                      ))}
+                    </Pie>
+                    <ReTooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -315,3 +354,4 @@ function estadoBadge(estado: string) {
 }
 
 const cardStyle: React.CSSProperties = { background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" };
+const fechaInput: React.CSSProperties = { padding: "4px 7px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, outline: "none", background: "#fff", color: "#374151" };
