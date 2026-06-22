@@ -67,7 +67,7 @@ export async function obtener(req: Request, res: Response) {
 export async function actualizar(req: Request, res: Response) {
   try {
     const clienteId = Number(req.params.id);
-    const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+    const { nombre, rif, rifVerificado, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
             condicionPago, observaciones, vendedorId, listasIds,
             socioEquivalente, vendedorEsMaster } = req.body;
@@ -76,7 +76,7 @@ export async function actualizar(req: Request, res: Response) {
 
     const cliente = await prisma.cliente.update({
       where: { id: clienteId },
-      data: { nombre, rif, telefono, direccion, empresaFactura,
+      data: { nombre, rif, rifVerificado: Boolean(rifVerificado), telefono, direccion, empresaFactura,
               diasCredito: Number(diasCredito) || 0,
               fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
               condicionPago, observaciones, vendedorId: vendedorId || null,
@@ -104,7 +104,7 @@ export async function actualizar(req: Request, res: Response) {
 
 export async function crear(req: Request, res: Response) {
   try {
-    const { nombre, rif, telefono, direccion, empresaFactura, diasCredito,
+    const { nombre, rif, rifVerificado, telefono, direccion, empresaFactura, diasCredito,
             fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
             condicionPago, observaciones, vendedorId, listasIds,
             socioEquivalente, vendedorEsMaster } = req.body;
@@ -112,7 +112,7 @@ export async function crear(req: Request, res: Response) {
     console.log("[crear cliente] body:", JSON.stringify({ nombre, rif, vendedorId, listasIds }));
 
     const cliente = await prisma.cliente.create({
-      data: { nombre, rif, telefono, direccion, empresaFactura,
+      data: { nombre, rif, rifVerificado: Boolean(rifVerificado), telefono, direccion, empresaFactura,
               diasCredito: Number(diasCredito) || 0,
               fleteTuberiaPct, fleteConexionesPct, comisionTuberiaPct, comisionConexionesPct,
               condicionPago, observaciones, vendedorId: vendedorId || null,

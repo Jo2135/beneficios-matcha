@@ -3,9 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { clientesApi, listasApi, authApi, cotizacionesApi, facturasApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { Plus, Search, Edit2, MapPin, User, History, X, BookOpen } from "lucide-react";
+import { Plus, Search, Edit2, MapPin, User, History, X, BookOpen, ShieldCheck, ExternalLink } from "lucide-react";
 
 const EMPRESAS = ["ECOPLAST F.P.", "MAXPLASTIC F.P."];
+const SENIAT_URL = "http://contribuyente.seniat.gob.ve/BuscaRif/BuscaRif.jsp";
+// Validación ligera de formato de RIF venezolano (no bloquea, solo orienta)
+const rifFormatoValido = (rif: string) => /^[VEJPGC]\d{8,9}$/.test((rif || "").replace(/[\s-]/g, "").toUpperCase());
 
 export default function Clientes() {
   const qc = useQueryClient();
@@ -16,6 +19,14 @@ export default function Clientes() {
   const [form, setForm] = useState<any>({});
   const [historialId, setHistorialId] = useState<number | null>(null);
   const [historialNombre, setHistorialNombre] = useState("");
+  const [seniatHint, setSeniatHint] = useState(false);
+
+  const verificarSeniat = () => {
+    const rif = (form.rif || "").trim();
+    if (rif && navigator.clipboard) navigator.clipboard.writeText(rif).catch(() => {});
+    window.open(SENIAT_URL, "_blank", "noopener,noreferrer");
+    if (rif) { setSeniatHint(true); setTimeout(() => setSeniatHint(false), 5000); }
+  };
 
   const { data: clientes = [] } = useQuery({
     queryKey: ["clientes"],
@@ -125,7 +136,12 @@ export default function Clientes() {
                     </div>
                   )}
                 </td>
-                <td style={tdStyle}><span style={tagStyle}>{c.rif || "—"}</span></td>
+                <td style={tdStyle}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={c.rifVerificado ? "RIF verificado en SENIAT" : undefined}>
+                    <span style={tagStyle}>{c.rif || "—"}</span>
+                    {c.rif && c.rifVerificado && <ShieldCheck size={14} style={{ color: "#16a34a" }} />}
+                  </span>
+                </td>
                 <td style={tdStyle}>
                   <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: "#475569" }}>
                     <User size={13} />{c.vendedor?.nombre || "—"}
@@ -284,9 +300,29 @@ export default function Clientes() {
                 <label style={labelStyle}>Nombre *</label>
                 <input style={inputStyle} value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
               </div>
-              <div>
+              <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>RIF</label>
-                <input style={inputStyle} value={form.rif || ""} onChange={(e) => setForm({ ...form, rif: e.target.value })} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input style={{ ...inputStyle, flex: "1 1 200px" }} value={form.rif || ""} placeholder="Ej: J-12345678-9"
+                    onChange={(e) => setForm({ ...form, rif: e.target.value, rifVerificado: false })} />
+                  <button type="button" onClick={verificarSeniat} style={btnSeniat} title="Abre el portal del SENIAT y copia el RIF al portapapeles">
+                    <ExternalLink size={13} /> Verificar en SENIAT
+                  </button>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: form.rifVerificado ? "#16a34a" : "#374151", cursor: "pointer", whiteSpace: "nowrap", fontWeight: form.rifVerificado ? 600 : 400 }}>
+                    <input type="checkbox" checked={Boolean(form.rifVerificado)} onChange={(e) => setForm({ ...form, rifVerificado: e.target.checked })} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                    RIF verificado
+                  </label>
+                </div>
+                {seniatHint && (
+                  <div style={{ fontSize: 11, color: "#16a34a", marginTop: 5 }}>
+                    RIF copiado. Pégalo en el buscador del SENIAT; si los datos coinciden, marca "RIF verificado".
+                  </div>
+                )}
+                {form.rif && !rifFormatoValido(form.rif) && (
+                  <div style={{ fontSize: 11, color: "#d97706", marginTop: 5 }}>
+                    El formato no parece un RIF venezolano (ej: J-12345678-9). Puedes guardarlo igual.
+                  </div>
+                )}
               </div>
               <div>
                 <label style={labelStyle}>Teléfono</label>
@@ -436,6 +472,11 @@ const btnPrimary: React.CSSProperties = {
 const btnSecondary: React.CSSProperties = {
   background: "#fff", color: "#374151", border: "1px solid #d1d5db",
   padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 14,
+};
+const btnSeniat: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe",
+  padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap",
 };
 const btnIcon: React.CSSProperties = {
   background: "#f1f5f9", border: "none", borderRadius: 6,

@@ -118,6 +118,7 @@ model Cliente {
   id             Int          @id @default(autoincrement())
   nombre         String
   rif            String?
+  rifVerificado  Boolean      @default(false) // marcado a mano tras verificar en el portal del SENIAT
   direccion      String?
   telefono       String?
   email          String?
