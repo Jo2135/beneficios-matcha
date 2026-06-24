@@ -16,6 +16,7 @@ import * as ganancias from "../controllers/ganancias.controller";
 import * as balance from "../controllers/balance.controller";
 import * as tablas from "../controllers/tablas.controller";
 import * as comprasExternas from "../controllers/comprasExternas.controller";
+import * as planCarga from "../controllers/planCarga.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -167,6 +168,13 @@ router.post("/compras-externas/:id/pagos", requireRol("MASTER", "ADMIN"), w(comp
 router.put("/compras-externas/:id", requireRol("MASTER", "ADMIN"), w(comprasExternas.actualizar));
 router.delete("/compras-externas/:id", requireRol("MASTER"), w(comprasExternas.eliminar));
 router.get("/compras-externas/:id", requireRol("MASTER", "ADMIN"), w(comprasExternas.obtener));
+
+// ─── Planificador de Carga (consolidación de pedidos) ─────────────────────
+router.get("/planes-carga", requireRol("MASTER", "ADMIN"), w(planCarga.listar));
+router.post("/planes-carga", requireRol("MASTER", "ADMIN"), w(planCarga.crear));
+router.get("/planes-carga/:id", requireRol("MASTER", "ADMIN"), w(planCarga.obtener));
+router.put("/planes-carga/:id", requireRol("MASTER", "ADMIN"), w(planCarga.actualizar));
+router.delete("/planes-carga/:id", requireRol("MASTER", "ADMIN"), w(planCarga.eliminar));
 
 // ─── Empresas ─────────────────────────────────────────────────────────────
 router.get("/empresas", w(empresas.listar));

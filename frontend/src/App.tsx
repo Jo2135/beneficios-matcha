@@ -24,6 +24,7 @@ import BalancePago from "./pages/BalancePago";
 import EstadoCuenta from "./pages/EstadoCuenta";
 import FacturacionExterna from "./pages/FacturacionExterna";
 import TablasGanancias from "./pages/TablasGanancias";
+import PlanificadorCarga from "./pages/PlanificadorCarga";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -78,6 +79,7 @@ function AppRoutes() {
         {/* Solo MASTER y ADMIN */}
         {puedeEditar && <Route path="/precios" element={<ListasPrecios />} />}
         {puedeEditar && <Route path="/despachos" element={<Despachos />} />}
+        {puedeEditar && <Route path="/planificador-carga" element={<PlanificadorCarga />} />}
         {puedeEditar && <Route path="/despachos/:id/ganancias" element={<GananciasDespacho />} />}
         {esMaster && <Route path="/despachos/:id/balance" element={<BalancePago />} />}
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}

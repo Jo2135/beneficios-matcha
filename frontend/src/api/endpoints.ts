@@ -198,6 +198,15 @@ export const comprasExternasApi = {
   eliminarImagen: (id: number) => api.delete(`/compras-externas/${id}/imagen`).then((r) => r.data),
 };
 
+// Planificador de Carga (consolidación de pedidos para un despacho)
+export const planesCargaApi = {
+  listar: () => api.get("/planes-carga").then((r) => r.data),
+  obtener: (id: number) => api.get(`/planes-carga/${id}`).then((r) => r.data),
+  crear: (data: any) => api.post("/planes-carga", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.put(`/planes-carga/${id}`, data).then((r) => r.data),
+  eliminar: (id: number) => api.delete(`/planes-carga/${id}`).then((r) => r.data),
+};
+
 // Tablas de Ganancias (porcentajes/costos editables con PIN)
 export const tablasApi = {
   listar: (despachoId?: number) =>

@@ -581,6 +581,22 @@ model CompraExternaAsignacion {
   creadoEn  DateTime           @default(now())
 }
 
+// ─── PLANIFICADOR DE CARGA (consolidación de pedidos para un despacho) ───────
+// Matriz productos × clientes para dimensionar la carga de un camión antes de
+// comprometer cotizaciones. Se guarda como JSON para iterar libremente.
+model PlanCarga {
+  id             Int       @id @default(autoincrement())
+  nombre         String
+  fecha          DateTime? // fecha estimada del despacho
+  notas          String?
+  clientesJson   String    @default("[]") @db.Text // [clienteId, ...] (orden de columnas)
+  productosJson  String    @default("[]") @db.Text // [{ id, costo }, ...] (orden de filas)
+  cantidadesJson String    @default("{}") @db.Text // { "clienteId_productoId": cantidad }
+  estado         String    @default("BORRADOR")    // BORRADOR | GENERADO
+  creadoEn       DateTime  @default(now())
+  actualizadoEn  DateTime  @updatedAt
+}
+
 // Pago que NOSOTROS hacemos al proveedor (egreso), indicando de qué cuenta salió
 model CompraExternaPago {
   id              Int           @id @default(autoincrement())
