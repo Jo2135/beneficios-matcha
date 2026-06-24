@@ -174,6 +174,8 @@ router.get("/planes-carga", requireRol("MASTER", "ADMIN"), w(planCarga.listar));
 router.post("/planes-carga", requireRol("MASTER", "ADMIN"), w(planCarga.crear));
 router.get("/planes-carga/:id", requireRol("MASTER", "ADMIN"), w(planCarga.obtener));
 router.put("/planes-carga/:id", requireRol("MASTER", "ADMIN"), w(planCarga.actualizar));
+router.post("/planes-carga/:id/generar", requireRol("MASTER", "ADMIN"), w(planCarga.generar));
+router.post("/planes-carga/:id/consolidar", requireRol("MASTER", "ADMIN"), w(planCarga.consolidar));
 router.delete("/planes-carga/:id", requireRol("MASTER", "ADMIN"), w(planCarga.eliminar));
 
 // ─── Empresas ─────────────────────────────────────────────────────────────

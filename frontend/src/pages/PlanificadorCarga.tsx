@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { planesCargaApi, productosApi, clientesApi } from "../api/endpoints";
-import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet } from "lucide-react";
+import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle } from "lucide-react";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const numf = (n: any) => Number(n ?? 0).toLocaleString("es-VE", { maximumFractionDigits: 2 });
@@ -9,6 +10,7 @@ const cellKey = (cId: number, pId: number) => `${cId}_${pId}`;
 
 export default function PlanificadorCarga() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [planId, setPlanId] = useState<number | null>(null);
   const [abierto, setAbierto] = useState(false); // hay un plan en edición
   const [nombre, setNombre] = useState("");
@@ -18,6 +20,9 @@ export default function PlanificadorCarga() {
   const [filas, setFilas] = useState<{ id: number; costo: number }[]>([]); // productos (filas)
   const [celdas, setCeldas] = useState<Record<string, number>>({});  // cantidades
   const [dirty, setDirty] = useState(false);
+  const [estado, setEstado] = useState("BORRADOR");
+  const [despachoId, setDespachoId] = useState<number | null>(null);
+  const [genResult, setGenResult] = useState<any>(null);
 
   const { data: planes = [] } = useQuery({ queryKey: ["planes-carga"], queryFn: planesCargaApi.listar });
   const { data: productos = [] } = useQuery({ queryKey: ["productos"], queryFn: () => productosApi.listar() });
@@ -30,11 +35,13 @@ export default function PlanificadorCarga() {
     const p = await planesCargaApi.obtener(id);
     setPlanId(p.id); setNombre(p.nombre); setFecha(p.fecha ? String(p.fecha).slice(0, 10) : ""); setNotas(p.notas ?? "");
     setColumnas(p.clientes ?? []); setFilas(p.productos ?? []); setCeldas(p.cantidades ?? {});
+    setEstado(p.estado ?? "BORRADOR"); setDespachoId(p.despachoId ?? null); setGenResult(null);
     setDirty(false); setAbierto(true);
   };
   const nuevoPlan = () => {
     setPlanId(null); setNombre(`Plan ${new Date().toLocaleDateString("es-VE")}`); setFecha(""); setNotas("");
-    setColumnas([]); setFilas([]); setCeldas({}); setDirty(true); setAbierto(true);
+    setColumnas([]); setFilas([]); setCeldas({}); setEstado("BORRADOR"); setDespachoId(null); setGenResult(null);
+    setDirty(true); setAbierto(true);
   };
 
   const guardar = useMutation({
@@ -42,12 +49,31 @@ export default function PlanificadorCarga() {
       const payload = { nombre, fecha: fecha || null, notas, clientes: columnas, productos: filas, cantidades: celdas };
       return planId ? planesCargaApi.actualizar(planId, payload) : planesCargaApi.crear(payload);
     },
-    onSuccess: (p: any) => { setPlanId(p.id); qc.invalidateQueries({ queryKey: ["planes-carga"] }); setDirty(false); },
+    onSuccess: (p: any) => { setPlanId(p.id); setEstado(p.estado ?? estado); qc.invalidateQueries({ queryKey: ["planes-carga"] }); setDirty(false); },
     onError: (e: any) => alert(e?.response?.data?.error ?? "Error al guardar"),
   });
   const eliminar = useMutation({
     mutationFn: (id: number) => planesCargaApi.eliminar(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["planes-carga"] }); setAbierto(false); setPlanId(null); },
+  });
+
+  const generarMut = useMutation({
+    mutationFn: async () => {
+      let pid = planId;
+      if (!pid || dirty) { const saved = await guardar.mutateAsync(); pid = saved.id; }
+      return planesCargaApi.generar(pid!);
+    },
+    onSuccess: (r: any) => {
+      setGenResult(r);
+      if (r.creadas?.length) setEstado("GENERADO");
+      qc.invalidateQueries({ queryKey: ["planes-carga"] });
+    },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "Error al generar"),
+  });
+  const consolidarMut = useMutation({
+    mutationFn: () => planesCargaApi.consolidar(planId!),
+    onSuccess: (r: any) => { setEstado("DESPACHADO"); setDespachoId(r.despachoId); qc.invalidateQueries({ queryKey: ["planes-carga"] }); alert(`Despacho ${r.numero} creado con ${r.cotizaciones} cotizaciones.`); },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "Error al consolidar"),
   });
 
   // ── edición de matriz ──
@@ -218,9 +244,60 @@ export default function PlanificadorCarga() {
             </div>
           )}
 
-          <div style={{ marginTop: 16, fontSize: 12, color: "#94a3b8" }}>
-            Con estos totales decides si el flete es adecuado. Próximamente: botón para generar las cotizaciones de cada cliente desde el plan.
-          </div>
+          {/* Acciones: generar y consolidar */}
+          {filas.length > 0 && columnas.length > 0 && (
+            <div style={{ ...card, padding: 16, marginTop: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Convertir el plan</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+                Con estos totales decides si el flete es adecuado. Cuando esté cuadrado, genera una cotización por cliente (con su precio de lista) y luego consolídalas en un solo despacho.
+              </div>
+
+              {estado === "DESPACHADO" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px" }}>
+                  <CheckCircle size={18} style={{ color: "#16a34a" }} />
+                  <span style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>Despacho consolidado creado.</span>
+                  <button onClick={() => navigate("/despachos")} style={{ ...btnPrimary, background: "#16a34a", marginLeft: "auto" }}><Truck size={15} /> Ver en Despachos</button>
+                </div>
+              ) : estado === "GENERADO" ? (
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <button onClick={() => navigate("/cotizaciones")} style={{ ...btnPrimary, background: "#7c3aed" }}><FileText size={15} /> Revisar / aprobar cotizaciones</button>
+                  <button onClick={() => consolidarMut.mutate()} disabled={consolidarMut.isPending} style={{ ...btnPrimary, background: "#0891b2" }}>
+                    <Truck size={15} /> {consolidarMut.isPending ? "Consolidando..." : "Consolidar en despacho"}
+                  </button>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>Aprueba primero las cotizaciones en la pantalla de Cotizaciones; luego consolida.</span>
+                </div>
+              ) : (
+                <button onClick={() => generarMut.mutate()} disabled={generarMut.isPending} style={{ ...btnPrimary, background: "#16a34a" }}>
+                  <FileText size={15} /> {generarMut.isPending ? "Generando..." : "Generar cotizaciones (borrador)"}
+                </button>
+              )}
+
+              {/* Resultado de la generación */}
+              {genResult && (
+                <div style={{ marginTop: 14, borderTop: "1px solid #f1f5f9", paddingTop: 12 }}>
+                  <div style={{ fontSize: 13, color: "#166534", fontWeight: 600, marginBottom: 6 }}>
+                    {genResult.creadas?.length ?? 0} cotización(es) creada(s) en Borrador:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    {(genResult.creadas ?? []).map((c: any) => (
+                      <span key={c.id} style={{ fontSize: 12, background: "#dbeafe", color: "#1d4ed8", borderRadius: 6, padding: "3px 8px" }}>
+                        {c.numero} · {c.cliente} ({c.lineas} líneas · {usd(c.totalNeto)})
+                      </span>
+                    ))}
+                  </div>
+                  {(genResult.omitidos ?? []).length > 0 && (
+                    <div style={{ fontSize: 12, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginTop: 6 }}>
+                      <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}><AlertTriangle size={13} /> Productos omitidos (el cliente no los tiene en su lista de precios):</div>
+                      {(genResult.omitidos as any[]).map((o, i) => <div key={i}>· {o.cliente}: {o.producto}</div>)}
+                    </div>
+                  )}
+                  {(genResult.clientesSinLineas ?? []).length > 0 && (
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>Clientes sin cotización (ningún producto con precio): {genResult.clientesSinLineas.join(", ")}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

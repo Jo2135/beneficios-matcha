@@ -205,6 +205,8 @@ export const planesCargaApi = {
   crear: (data: any) => api.post("/planes-carga", data).then((r) => r.data),
   actualizar: (id: number, data: any) => api.put(`/planes-carga/${id}`, data).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/planes-carga/${id}`).then((r) => r.data),
+  generar: (id: number) => api.post(`/planes-carga/${id}/generar`).then((r) => r.data),
+  consolidar: (id: number) => api.post(`/planes-carga/${id}/consolidar`).then((r) => r.data),
 };
 
 // Tablas de Ganancias (porcentajes/costos editables con PIN)
