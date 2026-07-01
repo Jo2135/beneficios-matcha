@@ -286,6 +286,13 @@ function esTuboGrisPVC(codigo: string | null, nombre: string): boolean {
   return n.includes("gris") && n.includes("pvc");
 }
 
+/** Tubo Amarillo PVC comprado a proveedor (Casa del Tubo / Alirio / OCC). Se
+ *  detecta por "amarill" + "pvc". El "Amarillo PEAD" (sin pvc) es fabricado interno. */
+function esTuboAmarilloPVC(codigo: string | null, nombre: string): boolean {
+  const n = norm(nombre);
+  return n.includes("amarill") && n.includes("pvc");
+}
+
 /** Detecta si un producto es "conexión" — excluido de Ganancias_2.
  *  Prioridad: categoría "Conexiones" → código → nombre (fallback). */
 function esConexion(codigo: string | null, nombre: string, categoriaNombre?: string): boolean {
@@ -444,6 +451,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       costoServicioExterno: Number((linea as any).costoServicioExterno ?? 0),
       elegibleServicio: elegibleServicio(codigo, nombre),
       esGrisPVC: esTuboGrisPVC(codigo, nombre),
+      esAmarilloPVC: esTuboAmarilloPVC(codigo, nombre),
       proveedorGris: (linea as any).proveedorGris ?? null,
       costoGrisUnit: (linea as any).costoGrisUnit != null ? Number((linea as any).costoGrisUnit) : null,
       costoGrisSugerido: grisSugerido.get(linea.productoId)?.costo ?? null,
@@ -758,44 +766,50 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const mvCom  = mvVenta - mvVenta / (1 + tablas.g2.comisiones);
   const costoMangueraVerde = mvVenta - mvFlete - mvComisionVend - mvSbug - mvYol - mvSan - mvCom;
 
-  // ── Tubo Gris PVC (comprado a proveedor; ganancia propia) ──────────────────
-  // Ganancia Tubo Gris = venta − flete − comisión vend − (SBUG+Yol+San+Com)
-  //                      − costo del tubo − [5% Fábrica si es Casa del Tubo]
-  // El flete/comisión/G2 ya están en los totales principales (el gris es tubería),
-  // por eso aquí solo se aíslan; a la reserva se le restan costo+fábrica+ganancia.
-  const grisMap = new Map<number, { proveedor: string | null; costoUnit: number }>();
-  for (const l of despacho.lineas as any[]) {
-    if (!esTuboGrisPVC(l.producto?.codigo ?? null, l.producto?.nombre ?? "")) continue;
-    const cu = Number(l.costoGrisUnit ?? 0);
-    if (!grisMap.has(l.productoId) || cu > 0) grisMap.set(l.productoId, { proveedor: l.proveedorGris ?? null, costoUnit: cu });
-  }
-  let grisVenta = 0, grisVentaCasa = 0, grisCosto = 0, grisFlete = 0, grisComis = 0;
-  const grisLineasDetalle: { nombre: string; cantidad: number; venta: number; proveedor: string | null; costoUnit: number; costo: number }[] = [];
-  for (const factura of despacho.facturas as any[]) {
-    const ftPct = Number(factura.cliente?.fleteTuberiaPct ?? 0);
-    const ctPct = Number(factura.cliente?.comisionTuberiaPct ?? 0);
-    const esMaster = factura.cliente?.vendedorEsMaster === true;
-    let gFact = 0;
-    for (const fl of (factura.lineas ?? [])) {
-      if (!esTuboGrisPVC(fl.producto?.codigo ?? null, fl.producto?.nombre ?? "")) continue;
-      const venta = Number(fl.totalLinea);
-      const cant  = Number(fl.cantidad);
-      const info  = grisMap.get(fl.productoId) ?? { proveedor: null, costoUnit: 0 };
-      const costoLinea = info.costoUnit * cant;
-      grisVenta += venta; gFact += venta; grisCosto += costoLinea;
-      if (info.proveedor === "casa_del_tubo") grisVentaCasa += venta;
-      grisLineasDetalle.push({ nombre: `${fl.producto?.nombre ?? ""} ${fl.producto?.medida ?? ""}`.trim(), cantidad: cant, venta, proveedor: info.proveedor, costoUnit: info.costoUnit, costo: costoLinea });
+  // ── Tubos PVC externos: Gris y Amarillo (comprados a proveedor) ────────────
+  // Misma regla para ambos. Proveedores: casa_del_tubo (con 5% Fábrica), alirio
+  // y occ (sin 5%). El flete/comisión/G2 ya están en los totales principales
+  // (son tubería); aquí se aíslan y a la reserva se le resta costo+fábrica+
+  // ganancia, sin doble conteo (mismo patrón que Manguera Verde).
+  // Costo y proveedor por línea: DespachoLinea.costoGrisUnit / proveedorGris.
+  const calcPvcExterno = (pred: (c: string | null, n: string) => boolean) => {
+    const map = new Map<number, { proveedor: string | null; costoUnit: number }>();
+    for (const l of despacho.lineas as any[]) {
+      if (!pred(l.producto?.codigo ?? null, l.producto?.nombre ?? "")) continue;
+      const cu = Number(l.costoGrisUnit ?? 0);
+      if (!map.has(l.productoId) || cu > 0) map.set(l.productoId, { proveedor: l.proveedorGris ?? null, costoUnit: cu });
     }
-    if (gFact <= 0) continue;
-    grisFlete += ftPct > 0 ? gFact * ftPct / (100 + ftPct) : 0;
-    grisComis += (!esMaster && ctPct > 0) ? gFact * ctPct / (100 + ctPct) : 0;
-  }
-  const grisSbug = grisVenta - grisVenta / (1 + tablas.g2.sbug);
-  const grisYol  = grisVenta - grisVenta / (1 + tablas.g2.yolanda);
-  const grisSan  = grisVenta - grisVenta / (1 + tablas.g2.sandra);
-  const grisCom  = grisVenta - grisVenta / (1 + tablas.g2.comisiones);
-  const grisFabrica = grisVentaCasa > 0 ? grisVentaCasa * 5 / 105 : 0; // 5% Ganancia Fábrica (Casa del Tubo)
-  const gananciaGrisTubo = grisVenta - grisFlete - grisComis - grisSbug - grisYol - grisSan - grisCom - grisCosto - grisFabrica;
+    let venta = 0, ventaCasa = 0, costo = 0, flete = 0, comis = 0;
+    const detalle: { nombre: string; cantidad: number; venta: number; proveedor: string | null; costoUnit: number; costo: number }[] = [];
+    for (const factura of despacho.facturas as any[]) {
+      const ftPct = Number(factura.cliente?.fleteTuberiaPct ?? 0);
+      const ctPct = Number(factura.cliente?.comisionTuberiaPct ?? 0);
+      const esMaster = factura.cliente?.vendedorEsMaster === true;
+      let vFact = 0;
+      for (const fl of (factura.lineas ?? [])) {
+        if (!pred(fl.producto?.codigo ?? null, fl.producto?.nombre ?? "")) continue;
+        const v    = Number(fl.totalLinea);
+        const cant = Number(fl.cantidad);
+        const info = map.get(fl.productoId) ?? { proveedor: null, costoUnit: 0 };
+        const cLinea = info.costoUnit * cant;
+        venta += v; vFact += v; costo += cLinea;
+        if (info.proveedor === "casa_del_tubo") ventaCasa += v;
+        detalle.push({ nombre: `${fl.producto?.nombre ?? ""} ${fl.producto?.medida ?? ""}`.trim(), cantidad: cant, venta: v, proveedor: info.proveedor, costoUnit: info.costoUnit, costo: cLinea });
+      }
+      if (vFact <= 0) continue;
+      flete += ftPct > 0 ? vFact * ftPct / (100 + ftPct) : 0;
+      comis += (!esMaster && ctPct > 0) ? vFact * ctPct / (100 + ctPct) : 0;
+    }
+    const sbug = venta - venta / (1 + tablas.g2.sbug);
+    const yol  = venta - venta / (1 + tablas.g2.yolanda);
+    const san  = venta - venta / (1 + tablas.g2.sandra);
+    const com  = venta - venta / (1 + tablas.g2.comisiones);
+    const gananciaFabrica = ventaCasa > 0 ? ventaCasa * 5 / 105 : 0; // 5% Fábrica (solo Casa del Tubo)
+    const ganancia = venta - flete - comis - sbug - yol - san - com - costo - gananciaFabrica;
+    return { venta, ventaCasaDelTubo: ventaCasa, flete, comisionVendedor: comis, sbug, yolanda: yol, sandra: san, comisiones: com, costoTubo: costo, gananciaFabrica, ganancia, lineas: detalle };
+  };
+  const grisBloque = calcPvcExterno(esTuboGrisPVC);
+  const amarilloBloque = calcPvcExterno(esTuboAmarilloPVC);
 
   // El 5% de descuento se suma a la fila "Comisiones"
   const comisionesConCinco = comisionesFinal + conexCinco;
@@ -823,10 +837,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     - conexCostoAlirio      // costo real (proveedor)
     - conexCodosInternos    // costo real (producción interna)
     - costoMangueraVerde    // → fila propia "Costo Manguera Verde"
-    // Tubo Gris PVC (flete/comisión/G2 ya salieron por los totales principales):
-    - grisCosto             // costo real del tubo (proveedor)
-    - grisFabrica           // → línea "Ganancia Fabrica Tubo Gris"
-    - gananciaGrisTubo;     // → línea "Ganancia Tubo Gris"
+    // Tubos PVC externos (flete/comisión/G2 ya salieron por los totales principales):
+    - grisBloque.costoTubo - grisBloque.gananciaFabrica - grisBloque.ganancia
+    - amarilloBloque.costoTubo - amarilloBloque.gananciaFabrica - amarilloBloque.ganancia;
 
   return {
     despacho: { id: despacho.id, numero: despacho.numero },
@@ -870,15 +883,8 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       sbug: mvSbug, yolanda: mvYol, sandra: mvSan, comisiones: mvCom,
       costo: costoMangueraVerde,
     },
-    grisPVC: {
-      venta: grisVenta, ventaCasaDelTubo: grisVentaCasa,
-      flete: grisFlete, comisionVendedor: grisComis,
-      sbug: grisSbug, yolanda: grisYol, sandra: grisSan, comisiones: grisCom,
-      costoTubo: grisCosto,
-      gananciaFabrica: grisFabrica,   // línea "Ganancia Fabrica Tubo Gris" (solo Casa del Tubo)
-      ganancia: gananciaGrisTubo,     // línea "Ganancia Tubo Gris"
-      lineas: grisLineasDetalle,
-    },
+    grisPVC: grisBloque,          // líneas "Ganancia Tubo Gris" + "Ganancia Fabrica Tubo Gris"
+    amarilloPVC: amarilloBloque,  // líneas "Ganancia Tubo Amarillo" + "Ganancia Fabrica Tubo Amarillo"
     gananciaConexiones: {
       facturado:        conexFacturado,       // Paso 1
       costoAlirio:      conexCostoAlirio,      // Paso 2 (excl. codos 2"/4")
@@ -917,11 +923,12 @@ export async function actualizarServicioExterno(req: Request, res: Response) {
   res.json({ ok: true });
 }
 
-// Costo y proveedor del tubo gris PVC por línea de despacho
+// Costo y proveedor del tubo PVC externo (gris o amarillo) por línea de despacho.
+// Proveedores válidos: casa_del_tubo (con 5% Fábrica), alirio, occ (sin 5%).
 export async function actualizarGris(req: Request, res: Response) {
   const lineaId = Number(req.params.lineaId);
   const { proveedorGris, costoGrisUnit } = req.body;
-  const prov = proveedorGris === "casa_del_tubo" || proveedorGris === "alirio" ? proveedorGris : null;
+  const prov = ["casa_del_tubo", "alirio", "occ"].includes(proveedorGris) ? proveedorGris : null;
   await prisma.despachoLinea.update({
     where: { id: lineaId },
     data: {
