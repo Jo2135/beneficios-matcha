@@ -279,6 +279,13 @@ function elegibleServicio(codigo: string | null, nombre: string): boolean {
          (n.includes("negr") && n.includes("electr")) || (n.includes("blanc") && n.includes("electr"));
 }
 
+/** Tubo Gris PVC comprado a proveedor (Casa del Tubo / Alirio). Se detecta por
+ *  nombre "gris" + "pvc" (el "Gris Agua Blanca" sin "pvc" es fabricado interno). */
+function esTuboGrisPVC(codigo: string | null, nombre: string): boolean {
+  const n = norm(nombre);
+  return n.includes("gris") && n.includes("pvc");
+}
+
 /** Detecta si un producto es "conexión" — excluido de Ganancias_2.
  *  Prioridad: categoría "Conexiones" → código → nombre (fallback). */
 function esConexion(codigo: string | null, nombre: string, categoriaNombre?: string): boolean {
@@ -361,13 +368,14 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
               nombre: true,
               comisionTuberiaPct: true, comisionConexionesPct: true,
               fleteTuberiaPct: true, fleteConexionesPct: true,
+              vendedorEsMaster: true,
               vendedor: { select: { nombre: true, gananciaMuchachosPct: true } },
             },
           },
           lineas: {
             select: {
               totalLinea: true, cantidad: true, productoId: true,
-              producto: { select: { codigo: true, nombre: true, costoCompra: true, categoria: { select: { nombre: true } } } },
+              producto: { select: { codigo: true, nombre: true, medida: true, costoCompra: true, categoria: { select: { nombre: true } } } },
             },
           },
         },
@@ -378,6 +386,15 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   if (!despacho) return null;
 
   const facturaTotal = despacho.facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
+
+  // Costo de tubo gris sugerido (último usado por producto en cualquier despacho)
+  const grisPrevios = await prisma.despachoLinea.findMany({
+    where: { costoGrisUnit: { not: null } },
+    orderBy: { id: "desc" },
+    select: { productoId: true, costoGrisUnit: true, proveedorGris: true },
+  });
+  const grisSugerido = new Map<number, { costo: number; proveedor: string | null }>();
+  for (const g of grisPrevios) if (!grisSugerido.has(g.productoId)) grisSugerido.set(g.productoId, { costo: Number(g.costoGrisUnit), proveedor: g.proveedorGris ?? null });
 
   const kgMat: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, negro: 0, gris: 0, blanco: 0, amarillo: 0 };
   const kgGan: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, gris: 0, negro_elec: 0, blanco_elec: 0 };
@@ -426,6 +443,11 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       esServicioExterno: (linea as any).esServicioExterno ?? false,
       costoServicioExterno: Number((linea as any).costoServicioExterno ?? 0),
       elegibleServicio: elegibleServicio(codigo, nombre),
+      esGrisPVC: esTuboGrisPVC(codigo, nombre),
+      proveedorGris: (linea as any).proveedorGris ?? null,
+      costoGrisUnit: (linea as any).costoGrisUnit != null ? Number((linea as any).costoGrisUnit) : null,
+      costoGrisSugerido: grisSugerido.get(linea.productoId)?.costo ?? null,
+      proveedorGrisSugerido: grisSugerido.get(linea.productoId)?.proveedor ?? null,
     };
   });
 
@@ -736,6 +758,45 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const mvCom  = mvVenta - mvVenta / (1 + tablas.g2.comisiones);
   const costoMangueraVerde = mvVenta - mvFlete - mvComisionVend - mvSbug - mvYol - mvSan - mvCom;
 
+  // ── Tubo Gris PVC (comprado a proveedor; ganancia propia) ──────────────────
+  // Ganancia Tubo Gris = venta − flete − comisión vend − (SBUG+Yol+San+Com)
+  //                      − costo del tubo − [5% Fábrica si es Casa del Tubo]
+  // El flete/comisión/G2 ya están en los totales principales (el gris es tubería),
+  // por eso aquí solo se aíslan; a la reserva se le restan costo+fábrica+ganancia.
+  const grisMap = new Map<number, { proveedor: string | null; costoUnit: number }>();
+  for (const l of despacho.lineas as any[]) {
+    if (!esTuboGrisPVC(l.producto?.codigo ?? null, l.producto?.nombre ?? "")) continue;
+    const cu = Number(l.costoGrisUnit ?? 0);
+    if (!grisMap.has(l.productoId) || cu > 0) grisMap.set(l.productoId, { proveedor: l.proveedorGris ?? null, costoUnit: cu });
+  }
+  let grisVenta = 0, grisVentaCasa = 0, grisCosto = 0, grisFlete = 0, grisComis = 0;
+  const grisLineasDetalle: { nombre: string; cantidad: number; venta: number; proveedor: string | null; costoUnit: number; costo: number }[] = [];
+  for (const factura of despacho.facturas as any[]) {
+    const ftPct = Number(factura.cliente?.fleteTuberiaPct ?? 0);
+    const ctPct = Number(factura.cliente?.comisionTuberiaPct ?? 0);
+    const esMaster = factura.cliente?.vendedorEsMaster === true;
+    let gFact = 0;
+    for (const fl of (factura.lineas ?? [])) {
+      if (!esTuboGrisPVC(fl.producto?.codigo ?? null, fl.producto?.nombre ?? "")) continue;
+      const venta = Number(fl.totalLinea);
+      const cant  = Number(fl.cantidad);
+      const info  = grisMap.get(fl.productoId) ?? { proveedor: null, costoUnit: 0 };
+      const costoLinea = info.costoUnit * cant;
+      grisVenta += venta; gFact += venta; grisCosto += costoLinea;
+      if (info.proveedor === "casa_del_tubo") grisVentaCasa += venta;
+      grisLineasDetalle.push({ nombre: `${fl.producto?.nombre ?? ""} ${fl.producto?.medida ?? ""}`.trim(), cantidad: cant, venta, proveedor: info.proveedor, costoUnit: info.costoUnit, costo: costoLinea });
+    }
+    if (gFact <= 0) continue;
+    grisFlete += ftPct > 0 ? gFact * ftPct / (100 + ftPct) : 0;
+    grisComis += (!esMaster && ctPct > 0) ? gFact * ctPct / (100 + ctPct) : 0;
+  }
+  const grisSbug = grisVenta - grisVenta / (1 + tablas.g2.sbug);
+  const grisYol  = grisVenta - grisVenta / (1 + tablas.g2.yolanda);
+  const grisSan  = grisVenta - grisVenta / (1 + tablas.g2.sandra);
+  const grisCom  = grisVenta - grisVenta / (1 + tablas.g2.comisiones);
+  const grisFabrica = grisVentaCasa > 0 ? grisVentaCasa * 5 / 105 : 0; // 5% Ganancia Fábrica (Casa del Tubo)
+  const gananciaGrisTubo = grisVenta - grisFlete - grisComis - grisSbug - grisYol - grisSan - grisCom - grisCosto - grisFabrica;
+
   // El 5% de descuento se suma a la fila "Comisiones"
   const comisionesConCinco = comisionesFinal + conexCinco;
 
@@ -761,7 +822,11 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     - gananciaConexiones    // → línea propia
     - conexCostoAlirio      // costo real (proveedor)
     - conexCodosInternos    // costo real (producción interna)
-    - costoMangueraVerde;   // → fila propia "Costo Manguera Verde"
+    - costoMangueraVerde    // → fila propia "Costo Manguera Verde"
+    // Tubo Gris PVC (flete/comisión/G2 ya salieron por los totales principales):
+    - grisCosto             // costo real del tubo (proveedor)
+    - grisFabrica           // → línea "Ganancia Fabrica Tubo Gris"
+    - gananciaGrisTubo;     // → línea "Ganancia Tubo Gris"
 
   return {
     despacho: { id: despacho.id, numero: despacho.numero },
@@ -805,6 +870,15 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       sbug: mvSbug, yolanda: mvYol, sandra: mvSan, comisiones: mvCom,
       costo: costoMangueraVerde,
     },
+    grisPVC: {
+      venta: grisVenta, ventaCasaDelTubo: grisVentaCasa,
+      flete: grisFlete, comisionVendedor: grisComis,
+      sbug: grisSbug, yolanda: grisYol, sandra: grisSan, comisiones: grisCom,
+      costoTubo: grisCosto,
+      gananciaFabrica: grisFabrica,   // línea "Ganancia Fabrica Tubo Gris" (solo Casa del Tubo)
+      ganancia: gananciaGrisTubo,     // línea "Ganancia Tubo Gris"
+      lineas: grisLineasDetalle,
+    },
     gananciaConexiones: {
       facturado:        conexFacturado,       // Paso 1
       costoAlirio:      conexCostoAlirio,      // Paso 2 (excl. codos 2"/4")
@@ -838,6 +912,21 @@ export async function actualizarServicioExterno(req: Request, res: Response) {
     data: {
       esServicioExterno: Boolean(esServicioExterno),
       costoServicioExterno: esServicioExterno ? Number(costoServicioExterno ?? 0) : null,
+    },
+  });
+  res.json({ ok: true });
+}
+
+// Costo y proveedor del tubo gris PVC por línea de despacho
+export async function actualizarGris(req: Request, res: Response) {
+  const lineaId = Number(req.params.lineaId);
+  const { proveedorGris, costoGrisUnit } = req.body;
+  const prov = proveedorGris === "casa_del_tubo" || proveedorGris === "alirio" ? proveedorGris : null;
+  await prisma.despachoLinea.update({
+    where: { id: lineaId },
+    data: {
+      proveedorGris: prov,
+      costoGrisUnit: costoGrisUnit != null && costoGrisUnit !== "" ? Number(costoGrisUnit) : null,
     },
   });
   res.json({ ok: true });

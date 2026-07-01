@@ -237,6 +237,9 @@ model DespachoLinea {
   estado               EstadoLinea   @default(PENDIENTE)
   esServicioExterno    Boolean       @default(false)
   costoServicioExterno Decimal?      @db.Decimal(12, 2)
+  // Tubo Gris PVC comprado a proveedor (costo y proveedor por línea)
+  proveedorGris        String?       // "casa_del_tubo" | "alirio"
+  costoGrisUnit        Decimal?      @db.Decimal(12, 4)
 }
 
 enum EstadoLinea {

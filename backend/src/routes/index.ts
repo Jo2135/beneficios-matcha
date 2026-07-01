@@ -136,6 +136,7 @@ router.put("/despachos/:id/lineas", requireRol("MASTER", "ADMIN"), w(despachos.a
 router.delete("/despachos/:id", requireRol("MASTER"), w(despachos.eliminar));
 router.get("/despachos/:id/ganancias", requireRol("MASTER", "ADMIN"), w(ganancias.calcular));
 router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER", "ADMIN"), w(ganancias.actualizarServicioExterno));
+router.patch("/despachos/lineas/:lineaId/gris", requireRol("MASTER"), w(ganancias.actualizarGris));
 // Balance de Pagos — solo MASTER (los administradores no pueden ver el balance)
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
 router.get("/despachos/:id/balance", requireRol("MASTER"), w(balance.getBalance));
