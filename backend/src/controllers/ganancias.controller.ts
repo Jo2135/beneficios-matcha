@@ -293,6 +293,26 @@ function esTuboAmarilloPVC(codigo: string | null, nombre: string): boolean {
   return n.includes("amarill") && n.includes("pvc");
 }
 
+// ─── Niples (sub-empresa: compra tubo azul con 8% desc, lo pica y rosca) ─────
+// Tarifas fijas por diámetro (ver Excel "Costos y analisis Niples").
+const NIPLE_TUBO_UTIL_CM = 550;   // cm útiles por tubo de 6m (tras cortes)
+const NIPLE_TUBO_DESC    = 0.08;  // 8% de descuento al costo del tubo azul
+const NIPLE_TUBO_COSTO: Record<string, number> = { "1/2": 2.68, "3/4": 3.94, "1": 5.5, "1 1/2": 12.25, "2": 24.45 };
+const NIPLE_TARIFA_CM:  Record<string, number> = { "1/2": 0.015, "3/4": 0.02, "1": 0.035, "1 1/2": 0.051, "2": 0.113 };
+
+function esNiple(nombre: string): boolean {
+  return norm(nombre).includes("niple");
+}
+// Extrae { diametro, longitud } de la medida (ej. '1½" x 15cm' → { "1 1/2", 15 }).
+function parseNipleMedida(medida: string): { diametro: string; longitud: number } | null {
+  const m = String(medida ?? "");
+  const lm = m.match(/(\d+(?:\.\d+)?)\s*cm/i);
+  if (!lm) return null;
+  const diam = m.split(/x/i)[0].replace(/"/g, "").replace(/½/g, " 1/2").replace(/\s+/g, " ").trim();
+  if (!NIPLE_TUBO_COSTO[diam]) return null;
+  return { diametro: diam, longitud: Number(lm[1]) };
+}
+
 /** Detecta si un producto es "conexión" — excluido de Ganancias_2.
  *  Prioridad: categoría "Conexiones" → código → nombre (fallback). */
 function esConexion(codigo: string | null, nombre: string, categoriaNombre?: string): boolean {
@@ -811,6 +831,27 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const grisBloque = calcPvcExterno(esTuboGrisPVC);
   const amarilloBloque = calcPvcExterno(esTuboAmarilloPVC);
 
+  // ── Niples (sub-empresa) ───────────────────────────────────────────────────
+  // El niple va en la factura a precio PÚBLICO (ya pasó por G2/flete/comisión).
+  // Materiales de Niples = costo del tubo azul (con 8% desc) que la sub-empresa
+  // paga a la empresa. Ganancia Niples = venta interna − materiales. El excedente
+  // (público − interno) queda en Ganancias Extras. Todo se deriva de la medida.
+  let nipleVenta = 0, nipleMateriales = 0, nipleGanancia = 0;
+  const nipleLineasDetalle: { nombre: string; diametro: string; longitud: number; cantidad: number; materiales: number; ventaInterna: number; ganancia: number }[] = [];
+  for (const factura of despacho.facturas as any[]) {
+    for (const fl of (factura.lineas ?? [])) {
+      if (!esNiple(fl.producto?.nombre ?? "")) continue;
+      const info = parseNipleMedida(fl.producto?.medida ?? "");
+      if (!info) continue;
+      const cant  = Number(fl.cantidad);
+      const tubos = cant * info.longitud / NIPLE_TUBO_UTIL_CM;
+      const K = tubos * NIPLE_TUBO_COSTO[info.diametro] * (1 - NIPLE_TUBO_DESC); // materiales
+      const M = cant * NIPLE_TARIFA_CM[info.diametro] * info.longitud;           // venta interna
+      nipleVenta += M; nipleMateriales += K; nipleGanancia += (M - K);
+      nipleLineasDetalle.push({ nombre: `${fl.producto?.nombre ?? ""} ${fl.producto?.medida ?? ""}`.trim(), diametro: info.diametro, longitud: info.longitud, cantidad: cant, materiales: K, ventaInterna: M, ganancia: M - K });
+    }
+  }
+
   // El 5% de descuento se suma a la fila "Comisiones"
   const comisionesConCinco = comisionesFinal + conexCinco;
 
@@ -839,7 +880,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     - costoMangueraVerde    // → fila propia "Costo Manguera Verde"
     // Tubos PVC externos (flete/comisión/G2 ya salieron por los totales principales):
     - grisBloque.costoTubo - grisBloque.gananciaFabrica - grisBloque.ganancia
-    - amarilloBloque.costoTubo - amarilloBloque.gananciaFabrica - amarilloBloque.ganancia;
+    - amarilloBloque.costoTubo - amarilloBloque.gananciaFabrica - amarilloBloque.ganancia
+    // Niples (público ya pasó por G2/flete/comisión; el excedente queda aquí):
+    - nipleMateriales - nipleGanancia;
 
   return {
     despacho: { id: despacho.id, numero: despacho.numero },
@@ -885,6 +928,10 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     },
     grisPVC: grisBloque,          // líneas "Ganancia Tubo Gris" + "Ganancia Fabrica Tubo Gris"
     amarilloPVC: amarilloBloque,  // líneas "Ganancia Tubo Amarillo" + "Ganancia Fabrica Tubo Amarillo"
+    niples: {                     // líneas "Materiales de Niples" + "Ganancia Niples" (sub-empresa)
+      venta: nipleVenta, materiales: nipleMateriales, ganancia: nipleGanancia,
+      lineas: nipleLineasDetalle,
+    },
     gananciaConexiones: {
       facturado:        conexFacturado,       // Paso 1
       costoAlirio:      conexCostoAlirio,      // Paso 2 (excl. codos 2"/4")
