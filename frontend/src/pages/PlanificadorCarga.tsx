@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { planesCargaApi, productosApi, clientesApi } from "../api/endpoints";
+import { planesCargaApi, productosApi, clientesApi, listasApi } from "../api/endpoints";
 import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle } from "lucide-react";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -30,6 +30,29 @@ export default function PlanificadorCarga() {
 
   const prodById = useMemo(() => Object.fromEntries((productos as any[]).map((p) => [p.id, p])), [productos]);
   const cliById = useMemo(() => Object.fromEntries((clientes as any[]).map((c) => [c.id, c])), [clientes]);
+
+  // Precio de la lista de cada cliente (automático). Un catálogo por cliente en columna.
+  const catalogos = useQueries({
+    queries: columnas.map((cId) => ({
+      queryKey: ["catalogo-cliente", cId],
+      queryFn: () => listasApi.catalogoParaCliente(cId),
+      staleTime: 60_000,
+    })),
+  });
+  const precioPorCliente = useMemo(() => {
+    const m: Record<number, Map<number, number>> = {};
+    columnas.forEach((cId, i) => {
+      const map = new Map<number, number>();
+      for (const d of ((catalogos[i]?.data as any)?.detalle ?? [])) {
+        const pu = Number(d.precioUnitario), desc = Number(d.descuentoPct ?? 0);
+        map.set(d.productoId, pu * (1 - desc / 100)); // precio efectivo (con descuento de lista)
+      }
+      m[cId] = map;
+    });
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnas, catalogos.map((c) => (c.data ? 1 : 0)).join(",")]);
+  const precioCelda = (cId: number, pId: number) => precioPorCliente[cId]?.get(pId) ?? 0;
 
   const abrirPlan = async (id: number) => {
     const p = await planesCargaApi.obtener(id);
@@ -97,13 +120,15 @@ export default function PlanificadorCarga() {
     setCeldas((prev) => { const n = { ...prev }; for (const k of Object.keys(n)) if (k.endsWith("_" + pId)) delete n[k]; return n; });
     mark();
   };
-  const setCosto = (pId: number, costo: number) => { setFilas(filas.map((f) => (f.id === pId ? { ...f, costo } : f))); mark(); };
-
   // ── totales ──
   const rowTotal = (pId: number) => columnas.reduce((s, c) => s + getCelda(c, pId), 0);
   const colTotal = (cId: number) => filas.reduce((s, f) => s + getCelda(cId, f.id), 0);
+  // Valor = cantidad × precio de la lista de cada cliente
+  const valorCelda = (cId: number, pId: number) => getCelda(cId, pId) * precioCelda(cId, pId);
+  const rowValor = (pId: number) => columnas.reduce((s, c) => s + valorCelda(c, pId), 0);
+  const colValor = (cId: number) => filas.reduce((s, f) => s + valorCelda(cId, f.id), 0);
   const grandQty = filas.reduce((s, f) => s + rowTotal(f.id), 0);
-  const grandCosto = filas.reduce((s, f) => s + rowTotal(f.id) * f.costo, 0);
+  const grandValor = filas.reduce((s, f) => s + rowValor(f.id), 0);
 
   const clientesDisponibles = (clientes as any[]).filter((c) => !columnas.includes(c.id));
 
@@ -174,17 +199,16 @@ export default function PlanificadorCarga() {
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
                     <th style={{ ...th, position: "sticky", left: 0, background: "#f8fafc", minWidth: 220 }}>Producto</th>
-                    <th style={{ ...th, textAlign: "right", minWidth: 90 }}>Costo Unit</th>
                     {columnas.map((cId) => (
-                      <th key={cId} style={{ ...th, textAlign: "center", minWidth: 90 }}>
+                      <th key={cId} style={{ ...th, textAlign: "center", minWidth: 96 }}>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                          <span style={{ maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cliById[cId]?.nombre ?? `#${cId}`}</span>
+                          <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cliById[cId]?.nombre ?? `#${cId}`}</span>
                           <button onClick={() => quitarCliente(cId)} title="Quitar cliente" style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1" }}><X size={12} /></button>
                         </div>
                       </th>
                     ))}
                     <th style={{ ...th, textAlign: "center", minWidth: 80, background: "#eff6ff", color: "#1d4ed8" }}>TOTAL</th>
-                    <th style={{ ...th, textAlign: "right", minWidth: 100 }}>Costo Total</th>
+                    <th style={{ ...th, textAlign: "right", minWidth: 110 }}>Valor Venta</th>
                     <th style={{ ...th, width: 36 }}></th>
                   </tr>
                 </thead>
@@ -198,19 +222,23 @@ export default function PlanificadorCarga() {
                           {p?.codigo && <span style={{ color: "#7c3aed", fontWeight: 600 }}>{p.codigo} · </span>}
                           {p?.nombre} <span style={{ color: "#94a3b8" }}>{p?.medida}</span>
                         </td>
-                        <td style={{ ...td, textAlign: "right" }}>
-                          <input type="number" step="0.01" min="0" value={f.costo || ""} onChange={(e) => setCosto(f.id, Number(e.target.value) || 0)}
-                            style={{ ...inMini, width: 72, textAlign: "right" }} />
-                        </td>
-                        {columnas.map((cId) => (
-                          <td key={cId} style={{ ...td, textAlign: "center", padding: "4px 6px" }}>
-                            <input type="number" min="0" value={getCelda(cId, f.id) || ""} placeholder="0"
-                              onChange={(e) => setCelda(cId, f.id, Number(e.target.value) || 0)}
-                              style={{ ...inMini, width: 70, textAlign: "center" }} />
-                          </td>
-                        ))}
+                        {columnas.map((cId) => {
+                          const precio = precioCelda(cId, f.id);
+                          const qty = getCelda(cId, f.id);
+                          return (
+                            <td key={cId} style={{ ...td, textAlign: "center", padding: "4px 6px" }}>
+                              <input type="number" min="0" value={qty || ""} placeholder="0"
+                                onChange={(e) => setCelda(cId, f.id, Number(e.target.value) || 0)}
+                                style={{ ...inMini, width: 74, textAlign: "center" }} />
+                              <div style={{ fontSize: 10, marginTop: 2, color: precio > 0 ? "#94a3b8" : "#f59e0b" }}>
+                                {precio > 0 ? usd(precio) : "sin precio"}
+                                {qty > 0 && precio > 0 && <div style={{ color: "#16a34a", fontWeight: 600 }}>{usd(qty * precio)}</div>}
+                              </div>
+                            </td>
+                          );
+                        })}
                         <td style={{ ...td, textAlign: "center", fontWeight: 700, background: "#eff6ff", color: "#1d4ed8" }}>{numf(tot)}</td>
-                        <td style={{ ...td, textAlign: "right", color: "#475569" }}>{usd(tot * f.costo)}</td>
+                        <td style={{ ...td, textAlign: "right", color: "#16a34a", fontWeight: 600 }}>{usd(rowValor(f.id))}</td>
                         <td style={{ ...td, textAlign: "center" }}>
                           <button onClick={() => quitarProducto(f.id)} title="Quitar producto" style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1" }}><X size={14} /></button>
                         </td>
@@ -221,12 +249,14 @@ export default function PlanificadorCarga() {
                 <tfoot>
                   <tr style={{ borderTop: "2px solid #e2e8f0", background: "#f8fafc", fontWeight: 700 }}>
                     <td style={{ ...td, position: "sticky", left: 0, background: "#f8fafc" }}>Totales</td>
-                    <td style={td}></td>
                     {columnas.map((cId) => (
-                      <td key={cId} style={{ ...td, textAlign: "center", color: "#1e293b" }}>{numf(colTotal(cId))}</td>
+                      <td key={cId} style={{ ...td, textAlign: "center", color: "#1e293b" }}>
+                        {numf(colTotal(cId))}
+                        <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>{usd(colValor(cId))}</div>
+                      </td>
                     ))}
                     <td style={{ ...td, textAlign: "center", background: "#dbeafe", color: "#1d4ed8" }}>{numf(grandQty)}</td>
-                    <td style={{ ...td, textAlign: "right", color: "#16a34a" }}>{usd(grandCosto)}</td>
+                    <td style={{ ...td, textAlign: "right", color: "#16a34a" }}>{usd(grandValor)}</td>
                     <td style={td}></td>
                   </tr>
                 </tfoot>
@@ -240,7 +270,7 @@ export default function PlanificadorCarga() {
               <Resumen label="Clientes en la carga" valor={String(columnas.length)} />
               <Resumen label="Productos" valor={String(filas.length)} />
               <Resumen label="Unidades totales" valor={numf(grandQty)} />
-              <Resumen label="Costo total de la carga" valor={usd(grandCosto)} accent />
+              <Resumen label="Valor de venta de la carga" valor={usd(grandValor)} accent />
             </div>
           )}
 
