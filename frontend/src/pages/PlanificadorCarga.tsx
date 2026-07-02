@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { planesCargaApi, productosApi, clientesApi, listasApi, despachosApi } from "../api/endpoints";
-import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle } from "lucide-react";
+import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle, GripVertical } from "lucide-react";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const numf = (n: any) => Number(n ?? 0).toLocaleString("es-VE", { maximumFractionDigits: 2 });
@@ -33,6 +33,26 @@ export default function PlanificadorCarga() {
   const [estado, setEstado] = useState("BORRADOR");
   const [despachoId, setDespachoId] = useState<number | null>(null);
   const [genResult, setGenResult] = useState<any>(null);
+
+  // Panel de flete arrastrable (null = posición por defecto, arriba a la derecha)
+  const [fletePos, setFletePos] = useState<{ x: number; y: number } | null>(null);
+  const dragOff = useRef<{ dx: number; dy: number } | null>(null);
+  const iniciarArrastre = (e: React.MouseEvent) => {
+    const panel = (e.currentTarget as HTMLElement).closest("[data-flete-panel]") as HTMLElement | null;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    dragOff.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    const mover = (ev: MouseEvent) => {
+      if (!dragOff.current) return;
+      const x = Math.max(4, Math.min(window.innerWidth - rect.width - 4, ev.clientX - dragOff.current.dx));
+      const y = Math.max(4, Math.min(window.innerHeight - 40, ev.clientY - dragOff.current.dy));
+      setFletePos({ x, y });
+    };
+    const soltar = () => { dragOff.current = null; window.removeEventListener("mousemove", mover); window.removeEventListener("mouseup", soltar); };
+    window.addEventListener("mousemove", mover);
+    window.addEventListener("mouseup", soltar);
+    e.preventDefault();
+  };
 
   const { data: planes = [] } = useQuery({ queryKey: ["planes-carga"], queryFn: planesCargaApi.listar });
   const { data: productos = [] } = useQuery({ queryKey: ["productos"], queryFn: () => productosApi.listar() });
@@ -162,11 +182,13 @@ export default function PlanificadorCarga() {
 
   return (
     <div style={{ padding: 24 }}>
-      {/* Panel flotante: flete estimado (que pagan los clientes) */}
+      {/* Panel flotante y arrastrable: flete estimado (que pagan los clientes) */}
       {abierto && filas.length > 0 && columnas.length > 0 && (
-        <div style={{ position: "fixed", top: 118, right: 22, width: 236, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", padding: 14, zIndex: 45 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <div data-flete-panel style={{ position: "fixed", ...(fletePos ? { top: fletePos.y, left: fletePos.x, right: "auto" as const } : { top: 210, right: 22 }), width: 236, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", padding: 14, zIndex: 45 }}>
+          <div onMouseDown={iniciarArrastre} title="Arrastra para mover"
+            style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "move", userSelect: "none" }}>
             <Truck size={14} /> Flete estimado
+            <GripVertical size={13} style={{ marginLeft: "auto", color: "#cbd5e1" }} />
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#0891b2", marginBottom: 2 }}>{usd(fleteTotal)}</div>
           <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 8 }}>
