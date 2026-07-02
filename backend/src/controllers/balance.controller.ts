@@ -81,6 +81,26 @@ export async function generarBalance(req: Request, res: Response) {
       add("Costo Manguera Verde", g.mangueraVerde.costo);
     }
 
+    // Tubo Gris PVC (comprado a proveedor)
+    if (g.grisPVC) {
+      if (g.grisPVC.costoTubo       > 0.005) add("Costo Tubo Gris",           g.grisPVC.costoTubo);
+      if (g.grisPVC.gananciaFabrica > 0.005) add("Ganancia Fabrica Tubo Gris", g.grisPVC.gananciaFabrica);
+      if (g.grisPVC.ganancia        > 0.005) add("Ganancia Tubo Gris",         g.grisPVC.ganancia);
+    }
+
+    // Tubo Amarillo PVC (comprado a proveedor: Casa del Tubo / Alirio / OCC)
+    if (g.amarilloPVC) {
+      if (g.amarilloPVC.costoTubo       > 0.005) add("Costo Tubo Amarillo",           g.amarilloPVC.costoTubo);
+      if (g.amarilloPVC.gananciaFabrica > 0.005) add("Ganancia Fabrica Tubo Amarillo", g.amarilloPVC.gananciaFabrica);
+      if (g.amarilloPVC.ganancia        > 0.005) add("Ganancia Tubo Amarillo",         g.amarilloPVC.ganancia);
+    }
+
+    // Niples (sub-empresa: materiales que paga a la empresa + su ganancia)
+    if (g.niples) {
+      if (g.niples.materiales > 0.005) add("Materiales de Niples", g.niples.materiales);
+      if (g.niples.ganancia   > 0.005) add("Ganancia Niples",      g.niples.ganancia);
+    }
+
     // ── Extra Material = (venta total − comisión vendedor) − suma de las filas ──
     const sumaFilas = items.reduce((s, i) => s + i.montoTotal, 0);
     const extraMaterial = r2(g.facturaTotal - gananciaVendedor - sumaFilas);
