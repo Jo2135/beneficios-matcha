@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { planesCargaApi, productosApi, clientesApi, listasApi } from "../api/endpoints";
+import { planesCargaApi, productosApi, clientesApi, listasApi, despachosApi } from "../api/endpoints";
 import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle } from "lucide-react";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -341,7 +341,7 @@ export default function PlanificadorCarga() {
                   <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
                     {despachoId && (
                       <button onClick={() => navigate(`/despachos/${despachoId}/ganancias`)} style={{ ...btnPrimary, background: "#7c3aed" }}>
-                        <FileText size={15} /> Ver Balance y Ganancias (conjunto)
+                        <FileText size={15} /> Abrir vista completa
                       </button>
                     )}
                     <button onClick={() => navigate("/despachos")} style={{ ...btnPrimary, background: "#16a34a" }}><Truck size={15} /> Ver en Despachos</button>
@@ -390,6 +390,9 @@ export default function PlanificadorCarga() {
               )}
             </div>
           )}
+
+          {/* Balance consolidado embebido (cuando ya se consolidó el despacho) */}
+          {estado === "DESPACHADO" && despachoId && <BalanceConsolidado despachoId={despachoId} />}
         </>
       )}
     </div>
@@ -423,6 +426,82 @@ function AgregarProducto({ productos, excluidos, onAdd }: { productos: any[]; ex
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Balance/Ganancias consolidado del despacho, embebido (solo lectura)
+function BalanceConsolidado({ despachoId }: { despachoId: number }) {
+  const { data: d, isLoading } = useQuery({
+    queryKey: ["ganancias-despacho", despachoId],
+    queryFn: () => despachosApi.calcularGanancias(despachoId),
+    enabled: !!despachoId,
+  });
+  if (isLoading) return <div style={{ ...card, padding: 20, marginTop: 16, color: "#94a3b8" }}>Calculando balance consolidado...</div>;
+  if (!d) return <div style={{ ...card, padding: 20, marginTop: 16, color: "#dc2626" }}>No se pudo cargar el balance.</div>;
+
+  const nz = (n: any) => Math.abs(Number(n ?? 0)) > 0.005;
+  const costos = [
+    ["Materia prima", d.costoMateria?.total],
+    ["Gastos generales (obreros, pigmento, electricidad)", d.gastos?.total],
+    ["Costo Tubo Gris (proveedor)", d.grisPVC?.costoTubo],
+    ["Costo Tubo Amarillo (proveedor)", d.amarilloPVC?.costoTubo],
+    ["Materiales de Niples", d.niples?.materiales],
+    ["Costo Manguera Verde", d.mangueraVerde?.costo],
+  ].filter(([, m]) => nz(m));
+  const ganancias = [
+    ["Sr. Alberto (General 60%)", d.gananciaGeneral?.srAlbertoGral],
+    ["Capital (40%)", d.gananciaGeneral?.capital],
+    ["Sr. Alberto Amarillo (PEAD)", d.gananciaAguasNegras?.srAlbertoAmarillo],
+    ["Danny Amarillo (PEAD)", d.gananciaAguasNegras?.dannyAmarillo],
+    ["Darwin Amarillo (PEAD)", d.gananciaAguasNegras?.darwinAmarillo],
+    ["SBUG", d.ganancias2?.sbug],
+    ["Yolanda", d.ganancias2?.yolanda],
+    ["Sandra", d.ganancias2?.sandra],
+    ["Comisiones (2.2% + 5% conex.)", d.ganancias2?.comisionesConCinco],
+    ["Comisión vendedores", d.comisionesVendedores?.total],
+    ["Flete", d.fletesCliente?.total],
+    ["Ganancia Muchachos (flete)", d.gananciaMuchachos?.total],
+    ["Ganancia Conexiones", d.gananciaConexiones?.ganancia],
+    ["Ganancia Tubo Gris", d.grisPVC?.ganancia],
+    ["Ganancia Fábrica Tubo Gris", d.grisPVC?.gananciaFabrica],
+    ["Ganancia Tubo Amarillo", d.amarilloPVC?.ganancia],
+    ["Ganancia Fábrica Tubo Amarillo", d.amarilloPVC?.gananciaFabrica],
+    ["Ganancia Niples (sub-empresa)", d.niples?.ganancia],
+    ["Curvas – Pago Fábrica", d.curvas?.pagoFabrica],
+    ["Curvas – Muchachas", d.curvas?.pagoMuchachas],
+    ["Curvas – Sr. Alberto", d.curvas?.gananciaAlberto],
+  ].filter(([, m]) => nz(m));
+
+  const Fila = ({ label, monto, color }: { label: string; monto: any; color?: string }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f8fafc", gap: 12 }}>
+      <span style={{ fontSize: 13, color: "#475569" }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: color ?? "#1e293b", whiteSpace: "nowrap" }}>{usd(monto)}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ ...card, padding: 18, marginTop: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Balance y Ganancias (conjunto)</div>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>Todas las facturas del despacho tomadas como una sola.</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#FDB913", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+        <span style={{ fontWeight: 700, color: "#713f12" }}>Venta Total</span>
+        <span style={{ fontWeight: 800, color: "#713f12", fontSize: 16 }}>{usd(d.facturaTotal)}</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", marginBottom: 4 }}>Costos y materiales</div>
+          {costos.length ? costos.map(([l, m]) => <Fila key={l as string} label={l as string} monto={m} color="#b91c1c" />) : <div style={{ fontSize: 12, color: "#94a3b8" }}>—</div>}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", marginBottom: 4 }}>Distribución de ganancias</div>
+          {ganancias.map(([l, m]) => <Fila key={l as string} label={l as string} monto={m} />)}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginTop: 14 }}>
+        <span style={{ fontWeight: 700, color: "#166534" }}>Extra de Material (Ganancias Extras)</span>
+        <span style={{ fontWeight: 800, color: "#166534", fontSize: 15 }}>{usd(d.extraMaterial)}</span>
       </div>
     </div>
   );
