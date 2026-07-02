@@ -146,6 +146,8 @@ export const despachosApi = {
   calcularGanancias: (id: number) => api.get(`/despachos/${id}/ganancias`).then((r) => r.data),
   actualizarServicioExterno: (lineaId: number, data: { esServicioExterno: boolean; costoServicioExterno?: number }) =>
     api.patch(`/despachos/lineas/${lineaId}/servicio-externo`, data).then((r) => r.data),
+  actualizarGris: (lineaId: number, data: { proveedorGris?: string | null; costoGrisUnit?: number | null }) =>
+    api.patch(`/despachos/lineas/${lineaId}/gris`, data).then((r) => r.data),
 };
 
 // Pagos

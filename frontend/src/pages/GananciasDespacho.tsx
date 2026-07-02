@@ -45,6 +45,14 @@ export default function GananciasDespacho() {
   // Costos de servicio externo editables en local antes de guardar
   const [costosSE, setCostosSE] = useState<Record<number, string>>({});
 
+  // Costo/proveedor del tubo PVC (gris/amarillo) editable en local
+  const updateGris = useMutation({
+    mutationFn: ({ lineaId, proveedorGris, costoGrisUnit }: any) =>
+      despachosApi.actualizarGris(lineaId, { proveedorGris, costoGrisUnit }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ganancias-despacho", despachoId] }),
+  });
+  const [costosGris, setCostosGris] = useState<Record<number, string>>({});
+
   if (isLoading) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Calculando distribución...</div>;
   if (isError || !data)
     return (
@@ -91,7 +99,7 @@ export default function GananciasDespacho() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {["Producto", "Cant.", "Kg/u", "Total Kg", "Categoría detectada", "Serv. Externo"].map(h => (
+                  {["Producto", "Cant.", "Kg/u", "Total Kg", "Categoría detectada", "Serv. Externo", "Tubo PVC (prov./costo)"].map(h => (
                     <th key={h} style={th}>{h}</th>
                   ))}
                 </tr>
@@ -117,6 +125,20 @@ export default function GananciasDespacho() {
                           onCostoChange={(v) => setCostosSE(prev => ({ ...prev, [linea.id]: v }))}
                           onSave={(esActivo, costo) =>
                             updateServicio.mutate({ lineaId: linea.id, esServicioExterno: esActivo, costoServicioExterno: costo })
+                          }
+                        />
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#cbd5e1" }}>N/A</span>
+                      )}
+                    </td>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      {(linea.esGrisPVC || linea.esAmarilloPVC) ? (
+                        <GrisPvcControl
+                          linea={linea}
+                          costoLocal={costosGris[linea.id] ?? (linea.costoGrisUnit != null ? String(linea.costoGrisUnit) : "")}
+                          onCostoChange={(v) => setCostosGris(prev => ({ ...prev, [linea.id]: v }))}
+                          onSave={(proveedorGris, costoGrisUnit) =>
+                            updateGris.mutate({ lineaId: linea.id, proveedorGris, costoGrisUnit })
                           }
                         />
                       ) : (
@@ -424,6 +446,47 @@ function ServicioExternoToggle({ linea, costoLocal, onCostoChange, onSave }: {
           placeholder="$0"
           style={{ width: 72, padding: "3px 6px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12, textAlign: "right" }}
         />
+      )}
+    </div>
+  );
+}
+
+function GrisPvcControl({ linea, costoLocal, onCostoChange, onSave }: {
+  linea: any; costoLocal: string; onCostoChange: (v: string) => void;
+  onSave: (proveedor: string | null, costo: number | null) => void;
+}) {
+  // Amarillo tiene 3 proveedores; gris solo 2 (sin OCC)
+  const opciones = linea.esAmarilloPVC
+    ? [["casa_del_tubo", "Casa del Tubo"], ["alirio", "Alirio"], ["occ", "OCC"]]
+    : [["casa_del_tubo", "Casa del Tubo"], ["alirio", "Alirio"]];
+  const prov = linea.proveedorGris ?? "";
+  const sugerido = linea.costoGrisSugerido;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      <select
+        value={prov}
+        onChange={(e) => onSave(e.target.value || null, Number(costoLocal) || (linea.costoGrisUnit ?? 0))}
+        style={{ width: 118, padding: "3px 4px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 11 }}
+      >
+        <option value="">— Proveedor —</option>
+        {opciones.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <input
+        type="number" step="0.0001" min="0"
+        value={costoLocal}
+        onChange={(e) => onCostoChange(e.target.value)}
+        onBlur={() => onSave(prov || null, costoLocal === "" ? null : Number(costoLocal) || 0)}
+        placeholder="costo/u"
+        style={{ width: 78, padding: "3px 6px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12, textAlign: "right" }}
+      />
+      {sugerido != null && (Number(costoLocal) || 0) !== Number(sugerido) && (
+        <button
+          onClick={() => { onCostoChange(String(sugerido)); onSave(prov || linea.proveedorGrisSugerido || null, Number(sugerido)); }}
+          title="Usar el último costo cargado para este producto"
+          style={{ fontSize: 10, color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+        >
+          usar anterior (${Number(sugerido).toLocaleString("es-VE", { maximumFractionDigits: 4 })})
+        </button>
       )}
     </div>
   );
