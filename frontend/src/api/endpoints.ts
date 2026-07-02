@@ -208,6 +208,8 @@ export const planesCargaApi = {
   actualizar: (id: number, data: any) => api.put(`/planes-carga/${id}`, data).then((r) => r.data),
   eliminar: (id: number) => api.delete(`/planes-carga/${id}`).then((r) => r.data),
   generar: (id: number) => api.post(`/planes-carga/${id}/generar`).then((r) => r.data),
+  importar: (id: number, data: { cotizacionIds?: number[]; despachoIds?: number[] }) =>
+    api.post(`/planes-carga/${id}/importar`, data).then((r) => r.data),
   aprobar: (id: number) => api.post(`/planes-carga/${id}/aprobar`).then((r) => r.data),
   consolidar: (id: number) => api.post(`/planes-carga/${id}/consolidar`).then((r) => r.data),
 };

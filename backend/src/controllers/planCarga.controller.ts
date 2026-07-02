@@ -153,6 +153,59 @@ export async function generar(req: Request, res: Response) {
   res.json({ creadas, omitidos, clientesSinLineas });
 }
 
+// POST /planes-carga/:id/importar — trae cotizaciones existentes (sueltas o de
+// despachos) a la matriz del plan, para calcular el flete combinado y consolidar.
+export async function importar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const { cotizacionIds = [], despachoIds = [] } = req.body as { cotizacionIds?: number[]; despachoIds?: number[] };
+  const raw = await prisma.planCarga.findUnique({ where: { id } });
+  if (!raw) return res.status(404).json({ error: "Plan no encontrado" });
+  const plan = parsePlan(raw);
+
+  // Resolver: los ids de cotización + las cotizaciones de los despachos elegidos
+  let allCotIds: number[] = [...cotizacionIds.map(Number)];
+  if (despachoIds.length) {
+    const lineas = await prisma.despachoLinea.findMany({
+      where: { ordenDespachoId: { in: despachoIds.map(Number) }, cotizacionId: { not: null } },
+      select: { cotizacionId: true },
+    });
+    allCotIds.push(...lineas.map((l) => l.cotizacionId as number));
+  }
+  allCotIds = [...new Set(allCotIds.filter(Boolean))];
+  if (allCotIds.length === 0) return res.status(400).json({ error: "No hay cotizaciones para importar" });
+
+  const cots = await prisma.cotizacion.findMany({
+    where: { id: { in: allCotIds } },
+    include: { lineas: { select: { productoId: true, cantidad: true } } },
+  });
+
+  // Fusionar en la matriz (clientes = columnas, productos = filas, cantidades = celdas)
+  const clientes: number[] = [...(plan.clientes as number[])];
+  const productos: { id: number; costo: number }[] = [...(plan.productos as any[])];
+  const cantidades: Record<string, number> = { ...(plan.cantidades as any) };
+  for (const c of cots) {
+    if (!clientes.includes(c.clienteId)) clientes.push(c.clienteId);
+    for (const l of c.lineas) {
+      if (!productos.some((p) => p.id === l.productoId)) productos.push({ id: l.productoId, costo: 0 });
+      const k = `${c.clienteId}_${l.productoId}`;
+      cantidades[k] = (Number(cantidades[k]) || 0) + Number(l.cantidad);
+    }
+  }
+  const nuevosIds = [...new Set([...(plan.cotizacionesIds as number[]), ...cots.map((c) => c.id)])];
+
+  const upd = await prisma.planCarga.update({
+    where: { id },
+    data: {
+      clientesJson: JSON.stringify(clientes),
+      productosJson: JSON.stringify(productos),
+      cantidadesJson: JSON.stringify(cantidades),
+      cotizacionesIds: JSON.stringify(nuevosIds),
+      estado: "GENERADO", // ya hay cotizaciones reales; el paso es aprobar/consolidar
+    },
+  });
+  res.json({ ...parsePlan(upd), importadas: cots.length });
+}
+
 // POST /planes-carga/:id/aprobar — aprueba de golpe todas las cotizaciones del plan
 export async function aprobar(req: Request, res: Response) {
   const id = Number(req.params.id);

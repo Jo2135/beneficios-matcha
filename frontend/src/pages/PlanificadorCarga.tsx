@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { planesCargaApi, productosApi, clientesApi, listasApi, despachosApi } from "../api/endpoints";
+import { planesCargaApi, productosApi, clientesApi, listasApi, despachosApi, cotizacionesApi } from "../api/endpoints";
 import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle, GripVertical, RefreshCw } from "lucide-react";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,6 +57,8 @@ export default function PlanificadorCarga() {
   const { data: planes = [] } = useQuery({ queryKey: ["planes-carga"], queryFn: planesCargaApi.listar });
   const { data: productos = [] } = useQuery({ queryKey: ["productos"], queryFn: () => productosApi.listar() });
   const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: clientesApi.listar });
+  const { data: cotizacionesLista = [] } = useQuery({ queryKey: ["cotizaciones"], queryFn: () => cotizacionesApi.listar() });
+  const { data: despachosLista = [] } = useQuery({ queryKey: ["despachos"], queryFn: despachosApi.listar });
 
   const prodById = useMemo(() => Object.fromEntries((productos as any[]).map((p) => [p.id, p])), [productos]);
   const cliById = useMemo(() => Object.fromEntries((clientes as any[]).map((c) => [c.id, c])), [clientes]);
@@ -122,6 +124,19 @@ export default function PlanificadorCarga() {
       qc.invalidateQueries({ queryKey: ["planes-carga"] });
     },
     onError: (e: any) => alert(e?.response?.data?.error ?? "Error al generar"),
+  });
+  const importarMut = useMutation({
+    mutationFn: async (payload: { cotizacionIds?: number[]; despachoIds?: number[] }) => {
+      let pid = planId;
+      if (!pid || dirty) { const saved = await guardar.mutateAsync(); pid = saved.id; }
+      return planesCargaApi.importar(pid!, payload);
+    },
+    onSuccess: (p: any) => {
+      setPlanId(p.id); setColumnas(p.clientes ?? []); setFilas(p.productos ?? []); setCeldas(p.cantidades ?? {});
+      setEstado(p.estado ?? "GENERADO"); setDirty(false);
+      qc.invalidateQueries({ queryKey: ["planes-carga"] });
+    },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "Error al importar"),
   });
   const aprobarMut = useMutation({
     mutationFn: () => planesCargaApi.aprobar(planId!),
@@ -267,6 +282,31 @@ export default function PlanificadorCarga() {
             >
               <RefreshCw size={13} /> Actualizar precios
             </button>
+          </div>
+
+          {/* Traer cotizaciones/despachos existentes (para calcular flete combinado y consolidar) */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <FileText size={14} /> Traer existente:
+            </span>
+            <select value="" disabled={importarMut.isPending}
+              onChange={(e) => { const v = Number(e.target.value); if (v) importarMut.mutate({ cotizacionIds: [v] }); e.target.value = ""; }}
+              style={{ ...inSt, width: "auto" }}>
+              <option value="">— Cotización suelta —</option>
+              {(cotizacionesLista as any[]).filter((c) => c.estado !== "COMPLETADA").map((c) => (
+                <option key={c.id} value={c.id}>{c.numero} · {c.cliente?.nombre ?? "—"} ({c.estado})</option>
+              ))}
+            </select>
+            <select value="" disabled={importarMut.isPending}
+              onChange={(e) => { const v = Number(e.target.value); if (v) importarMut.mutate({ despachoIds: [v] }); e.target.value = ""; }}
+              style={{ ...inSt, width: "auto" }}>
+              <option value="">— Despacho completo —</option>
+              {(despachosLista as any[]).map((d) => (
+                <option key={d.id} value={d.id}>{d.numero}{d.lineas?.[0]?.cotizacion?.cliente?.nombre ? ` · ${d.lineas[0].cotizacion.cliente.nombre}...` : ""}</option>
+              ))}
+            </select>
+            {importarMut.isPending && <span style={{ fontSize: 12, color: "#0891b2", fontWeight: 600 }}>Importando...</span>}
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>Suma sus cantidades a la matriz para ver el flete de todo junto.</span>
           </div>
 
           {/* Matriz */}
