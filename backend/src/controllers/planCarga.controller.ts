@@ -153,6 +153,21 @@ export async function generar(req: Request, res: Response) {
   res.json({ creadas, omitidos, clientesSinLineas });
 }
 
+// POST /planes-carga/:id/aprobar — aprueba de golpe todas las cotizaciones del plan
+export async function aprobar(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const raw = await prisma.planCarga.findUnique({ where: { id } });
+  if (!raw) return res.status(404).json({ error: "Plan no encontrado" });
+  const plan = parsePlan(raw);
+  const ids = (plan.cotizacionesIds as number[]) ?? [];
+  if (ids.length === 0) return res.status(400).json({ error: "Primero genera las cotizaciones." });
+  const r = await prisma.cotizacion.updateMany({
+    where: { id: { in: ids }, estado: { in: ["BORRADOR", "ENVIADA", "APROBADA"] } },
+    data: { estado: "APROBADA" },
+  });
+  res.json({ aprobadas: r.count });
+}
+
 // POST /planes-carga/:id/consolidar — arma UN despacho con las cotizaciones aprobadas del plan
 export async function consolidar(req: Request, res: Response) {
   const id = Number(req.params.id);

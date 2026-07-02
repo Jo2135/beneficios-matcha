@@ -8,6 +8,16 @@ const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFrac
 const numf = (n: any) => Number(n ?? 0).toLocaleString("es-VE", { maximumFractionDigits: 2 });
 const cellKey = (cId: number, pId: number) => `${cId}_${pId}`;
 
+// Detección de conexión (aprox. del backend) para separar el flete tubería vs conexiones
+const CONEX_CODE = /^(CO-|SC-|SI-|TE-|YE-|YR-|ABS-|TR-|UR-|URR-|AM-|AH-|TAR-|COR-|ASP-|CA-)/i;
+function esConexionFront(p: any): boolean {
+  if (!p) return false;
+  if (String(p.categoria?.nombre ?? "").toLowerCase() === "conexiones") return true;
+  if (p.codigo && CONEX_CODE.test(p.codigo)) return true;
+  const n = String(p.nombre ?? "").toLowerCase();
+  return /(abrazadera|codo|sif[oó]n|\btee\b|\byee\b|uni[oó]n|adaptador|tap[oó]n|reducci)/.test(n);
+}
+
 export default function PlanificadorCarga() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -93,6 +103,11 @@ export default function PlanificadorCarga() {
     },
     onError: (e: any) => alert(e?.response?.data?.error ?? "Error al generar"),
   });
+  const aprobarMut = useMutation({
+    mutationFn: () => planesCargaApi.aprobar(planId!),
+    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["planes-carga"] }); alert(`${r.aprobadas} cotización(es) aprobada(s). Ya puedes consolidar en despacho.`); },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "Error al aprobar"),
+  });
   const consolidarMut = useMutation({
     mutationFn: () => planesCargaApi.consolidar(planId!),
     onSuccess: (r: any) => { setEstado("DESPACHADO"); setDespachoId(r.despachoId); qc.invalidateQueries({ queryKey: ["planes-carga"] }); alert(`Despacho ${r.numero} creado con ${r.cotizaciones} cotizaciones.`); },
@@ -129,11 +144,48 @@ export default function PlanificadorCarga() {
   const colValor = (cId: number) => filas.reduce((s, f) => s + valorCelda(cId, f.id), 0);
   const grandQty = filas.reduce((s, f) => s + rowTotal(f.id), 0);
   const grandValor = filas.reduce((s, f) => s + rowValor(f.id), 0);
+  // Flete que pagan los clientes (según su % tubería/conexiones sobre el valor)
+  const fletePorCliente = (cId: number) => {
+    const cli = cliById[cId];
+    const ft = Number(cli?.fleteTuberiaPct ?? 0), fc = Number(cli?.fleteConexionesPct ?? 0);
+    let vTub = 0, vCon = 0;
+    for (const f of filas) {
+      const val = valorCelda(cId, f.id);
+      if (val <= 0) continue;
+      if (esConexionFront(prodById[f.id])) vCon += val; else vTub += val;
+    }
+    return (ft > 0 ? vTub * ft / (100 + ft) : 0) + (fc > 0 ? vCon * fc / (100 + fc) : 0);
+  };
+  const fleteTotal = columnas.reduce((s, c) => s + fletePorCliente(c), 0);
 
   const clientesDisponibles = (clientes as any[]).filter((c) => !columnas.includes(c.id));
 
   return (
     <div style={{ padding: 24 }}>
+      {/* Panel flotante: flete estimado (que pagan los clientes) */}
+      {abierto && filas.length > 0 && columnas.length > 0 && (
+        <div style={{ position: "fixed", top: 118, right: 22, width: 236, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", padding: 14, zIndex: 45 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <Truck size={14} /> Flete estimado
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#0891b2", marginBottom: 2 }}>{usd(fleteTotal)}</div>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 8 }}>
+            {grandValor > 0 ? `${(fleteTotal / grandValor * 100).toFixed(1)}% del valor de la carga` : ""}
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto", borderTop: "1px solid #f1f5f9", paddingTop: 6 }}>
+            {columnas.map((cId) => (
+              <div key={cId} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", padding: "2px 0", gap: 8 }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cliById[cId]?.nombre ?? `#${cId}`}</span>
+                <span style={{ fontWeight: 600, color: "#334155", whiteSpace: "nowrap" }}>{usd(fletePorCliente(cId))}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 8, lineHeight: 1.3 }}>
+            Flete que pagan los clientes (según su %). Compáralo con el costo del camión.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 10 }}>
@@ -283,18 +335,28 @@ export default function PlanificadorCarga() {
               </div>
 
               {estado === "DESPACHADO" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", flexWrap: "wrap" }}>
                   <CheckCircle size={18} style={{ color: "#16a34a" }} />
                   <span style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>Despacho consolidado creado.</span>
-                  <button onClick={() => navigate("/despachos")} style={{ ...btnPrimary, background: "#16a34a", marginLeft: "auto" }}><Truck size={15} /> Ver en Despachos</button>
+                  <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+                    {despachoId && (
+                      <button onClick={() => navigate(`/despachos/${despachoId}/ganancias`)} style={{ ...btnPrimary, background: "#7c3aed" }}>
+                        <FileText size={15} /> Ver Balance y Ganancias (conjunto)
+                      </button>
+                    )}
+                    <button onClick={() => navigate("/despachos")} style={{ ...btnPrimary, background: "#16a34a" }}><Truck size={15} /> Ver en Despachos</button>
+                  </div>
                 </div>
               ) : estado === "GENERADO" ? (
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <button onClick={() => navigate("/cotizaciones")} style={{ ...btnPrimary, background: "#7c3aed" }}><FileText size={15} /> Revisar / aprobar cotizaciones</button>
+                  <button onClick={() => navigate("/cotizaciones")} style={{ ...btnPrimary, background: "#64748b" }}><FileText size={15} /> Revisar en Cotizaciones</button>
+                  <button onClick={() => aprobarMut.mutate()} disabled={aprobarMut.isPending} style={{ ...btnPrimary, background: "#7c3aed" }}>
+                    <CheckCircle size={15} /> {aprobarMut.isPending ? "Aprobando..." : "Aprobar todas"}
+                  </button>
                   <button onClick={() => consolidarMut.mutate()} disabled={consolidarMut.isPending} style={{ ...btnPrimary, background: "#0891b2" }}>
                     <Truck size={15} /> {consolidarMut.isPending ? "Consolidando..." : "Consolidar en despacho"}
                   </button>
-                  <span style={{ fontSize: 12, color: "#64748b" }}>Aprueba primero las cotizaciones en la pantalla de Cotizaciones; luego consolida.</span>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>Aprueba todo el conjunto de una vez y consolida en un solo despacho.</span>
                 </div>
               ) : (
                 <button onClick={() => generarMut.mutate()} disabled={generarMut.isPending} style={{ ...btnPrimary, background: "#16a34a" }}>
