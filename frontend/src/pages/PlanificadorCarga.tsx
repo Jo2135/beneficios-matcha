@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { planesCargaApi, productosApi, clientesApi, listasApi, despachosApi } from "../api/endpoints";
-import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle, GripVertical } from "lucide-react";
+import { LayoutGrid, Plus, Save, Trash2, X, Search, FileSpreadsheet, FileText, Truck, AlertTriangle, CheckCircle, GripVertical, RefreshCw } from "lucide-react";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const numf = (n: any) => Number(n ?? 0).toLocaleString("es-VE", { maximumFractionDigits: 2 });
@@ -260,6 +260,13 @@ export default function PlanificadorCarga() {
             </select>
             <span style={{ width: 1, height: 20, background: "#e2e8f0" }} />
             <AgregarProducto productos={productos as any[]} excluidos={filas.map((f) => f.id)} onAdd={agregarProducto} />
+            <button
+              onClick={() => qc.invalidateQueries({ queryKey: ["catalogo-cliente"] })}
+              title="Vuelve a leer los precios de la lista de cada cliente (úsalo si corregiste precios en Listas de Precios)"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto", padding: "7px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#16a34a" }}
+            >
+              <RefreshCw size={13} /> Actualizar precios
+            </button>
           </div>
 
           {/* Matriz */}
