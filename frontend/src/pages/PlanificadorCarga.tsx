@@ -263,9 +263,9 @@ export default function PlanificadorCarga() {
           </div>
 
           {/* Matriz */}
-          {filas.length === 0 || columnas.length === 0 ? (
+          {columnas.length === 0 ? (
             <div style={{ ...card, padding: 30, textAlign: "center", color: "#94a3b8" }}>
-              Agrega al menos un <strong>cliente</strong> y un <strong>producto</strong> para armar la matriz.
+              Agrega al menos un <strong>cliente</strong> con el selector de arriba para empezar a armar la carga.
             </div>
           ) : (
             <div style={{ ...card, overflowX: "auto" }}>
@@ -287,6 +287,13 @@ export default function PlanificadorCarga() {
                   </tr>
                 </thead>
                 <tbody>
+                  {filas.length === 0 && (
+                    <tr>
+                      <td colSpan={columnas.length + 4} style={{ ...td, textAlign: "center", color: "#94a3b8", padding: "22px 12px" }}>
+                        Clientes listos ({columnas.length}). Ahora agrega <strong>productos</strong> con el buscador de arriba para asignar cantidades.
+                      </td>
+                    </tr>
+                  )}
                   {filas.map((f) => {
                     const p = prodById[f.id];
                     const tot = rowTotal(f.id);
@@ -320,6 +327,7 @@ export default function PlanificadorCarga() {
                     );
                   })}
                 </tbody>
+                {filas.length > 0 && (
                 <tfoot>
                   <tr style={{ borderTop: "2px solid #e2e8f0", background: "#f8fafc", fontWeight: 700 }}>
                     <td style={{ ...td, position: "sticky", left: 0, background: "#f8fafc" }}>Totales</td>
@@ -334,6 +342,7 @@ export default function PlanificadorCarga() {
                     <td style={td}></td>
                   </tr>
                 </tfoot>
+                )}
               </table>
             </div>
           )}
