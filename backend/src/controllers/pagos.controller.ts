@@ -150,7 +150,8 @@ export async function asignarAFactura(req: Request, res: Response) {
 
 export async function pagosPendientes(req: Request, res: Response) {
   const pagos = await prisma.pago.findMany({
-    where: { estado: { in: ["LIBRE", "PARCIAL"] } },
+    // Solo pagos aprobados: los de vendedor sin aprobar/rechazados no se asignan
+    where: { estado: { in: ["LIBRE", "PARCIAL"] }, aprobacion: "APROBADO" },
     include: {
       cliente: { select: { nombre: true } },
       cuenta: { select: { nombre: true } },

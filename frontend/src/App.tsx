@@ -25,6 +25,7 @@ import EstadoCuenta from "./pages/EstadoCuenta";
 import FacturacionExterna from "./pages/FacturacionExterna";
 import TablasGanancias from "./pages/TablasGanancias";
 import PlanificadorCarga from "./pages/PlanificadorCarga";
+import PagosVendedores from "./pages/PagosVendedores";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -95,6 +96,9 @@ function AppRoutes() {
         {/* Solo MASTER */}
         {esMaster && <Route path="/configuracion" element={<Configuracion />} />}
         {esMaster && <Route path="/tablas-ganancias" element={<TablasGanancias />} />}
+
+        {/* Pagos de Vendedores — para todos (el vendedor solo ve los suyos) */}
+        <Route path="/pagos-vendedores" element={<PagosVendedores />} />
 
         {/* Cotizaciones para todos */}
         <Route path="/cotizaciones" element={<Cotizaciones />} />

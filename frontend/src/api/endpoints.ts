@@ -150,6 +150,17 @@ export const despachosApi = {
     api.patch(`/despachos/lineas/${lineaId}/gris`, data).then((r) => r.data),
 };
 
+// Pagos de Vendedores (con aprobación)
+export const pagosVendedorApi = {
+  listar: (params?: { vendedorId?: number; aprobacion?: string }) =>
+    api.get("/pagos-vendedor", { params }).then((r) => r.data),
+  facturasPendientes: (vendedorId?: number) =>
+    api.get("/pagos-vendedor/facturas-pendientes", { params: vendedorId ? { vendedorId } : {} }).then((r) => r.data),
+  crear: (data: any) => api.post("/pagos-vendedor", data).then((r) => r.data),
+  aprobar: (id: number) => api.post(`/pagos-vendedor/${id}/aprobar`).then((r) => r.data),
+  rechazar: (id: number, motivo?: string) => api.post(`/pagos-vendedor/${id}/rechazar`, { motivo }).then((r) => r.data),
+};
+
 // Pagos
 export const pagosApi = {
   listar: (params?: any) => api.get("/pagos", { params }).then((r) => r.data),

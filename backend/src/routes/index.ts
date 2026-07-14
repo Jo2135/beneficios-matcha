@@ -5,6 +5,7 @@ import * as listaPrecios from "../controllers/listaPrecios.controller";
 import * as cotizaciones from "../controllers/cotizaciones.controller";
 import * as facturas from "../controllers/facturas.controller";
 import * as pagos from "../controllers/pagos.controller";
+import * as pagosVendedor from "../controllers/pagosVendedor.controller";
 import * as despachos from "../controllers/despachos.controller";
 import * as auth from "../controllers/auth.controller";
 import * as cuentas from "../controllers/cuentas.controller";
@@ -120,6 +121,14 @@ router.post("/cuentas", requireRol("MASTER", "ADMIN"), w(cuentas.crear));
 router.put("/cuentas/:id", requireRol("MASTER", "ADMIN"), w(cuentas.actualizar));
 router.patch("/cuentas/:id/activa", requireRol("MASTER"), w(cuentas.toggleActiva));
 router.post("/cuentas/seed", requireRol("MASTER"), w(cuentas.seedCuentas));
+
+// ─── Pagos de Vendedores (con aprobación) ─────────────────────────────────
+// El VENDEDOR puede cargar y ver los suyos; MASTER/ADMIN aprueban y ven todos.
+router.get("/pagos-vendedor", w(pagosVendedor.listar));
+router.get("/pagos-vendedor/facturas-pendientes", w(pagosVendedor.facturasPendientes));
+router.post("/pagos-vendedor", w(pagosVendedor.crear));
+router.post("/pagos-vendedor/:id/aprobar", requireRol("MASTER", "ADMIN"), w(pagosVendedor.aprobar));
+router.post("/pagos-vendedor/:id/rechazar", requireRol("MASTER", "ADMIN"), w(pagosVendedor.rechazar));
 
 // ─── Pagos ────────────────────────────────────────────────────────────────
 router.get("/pagos", requireRol("MASTER", "ADMIN"), w(pagos.listar));

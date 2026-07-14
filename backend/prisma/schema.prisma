@@ -32,6 +32,7 @@ model Vendedor {
   clientes     Cliente[]
   cotizaciones Cotizacion[]
   usuario      Usuario?
+  pagos        Pago[]
 }
 
 // ─── CATÁLOGO ──────────────────────────────────────────────────────────────
@@ -324,6 +325,18 @@ model Pago {
   observaciones      String?
   fechaProximoAbono  DateTime?
   creadoEn           DateTime   @default(now())
+  // Pagos rendidos por vendedores (con flujo de aprobación)
+  vendedorId       Int?
+  vendedor         Vendedor? @relation(fields: [vendedorId], references: [id])
+  metodoPago       String?   // BINANCE | DEPOSITO_USD | DEPOSITO_BS | BANESCO_PANAMA | BANCO_COLOMBIA | ZELLE
+  aprobacion       String    @default("APROBADO") // PENDIENTE | APROBADO | RECHAZADO
+  creadoPorId      Int?
+  creadoPor        Usuario?  @relation("PagoCreadoPor", fields: [creadoPorId], references: [id])
+  aprobadoPorId    Int?
+  aprobadoPor      Usuario?  @relation("PagoAprobadoPor", fields: [aprobadoPorId], references: [id])
+  aprobadoEn       DateTime?
+  facturaDestinoId Int?      // factura elegida al cargar (null = automático FIFO)
+  motivoRechazo    String?
 
   asignaciones PagoAsignacion[]
 }
@@ -483,6 +496,8 @@ model Usuario {
   ultimoAcceso DateTime?
 
   seguimientos SeguimientoCotizacion[]
+  pagosCreados   Pago[] @relation("PagoCreadoPor")
+  pagosAprobados Pago[] @relation("PagoAprobadoPor")
 }
 
 // ─── TASA DE CAMBIO ────────────────────────────────────────────────────────
