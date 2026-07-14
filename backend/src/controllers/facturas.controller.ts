@@ -342,7 +342,7 @@ export async function balanceGeneral(_req: Request, res: Response) {
   const facturas = await prisma.factura.findMany({
     where: { estado: { not: "ANULADA" } },
     include: {
-      cliente: { select: { nombre: true } },
+      cliente: { select: { id: true, nombre: true, vendedor: { select: { id: true, nombre: true } } } },
       empresa: { select: { nombre: true } },
     },
     orderBy: { creadoEn: "desc" },

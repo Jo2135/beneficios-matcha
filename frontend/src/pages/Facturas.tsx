@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { facturasApi, clientesApi, cuentasApi, empresasApi } from "../api/endpoints";
+import { facturasApi, clientesApi, cuentasApi, empresasApi, authApi } from "../api/endpoints";
 import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown } from "lucide-react";
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
@@ -39,6 +39,8 @@ export default function Facturas() {
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [filtroCliente, setFiltroCliente] = useState<number | "">("");
+  const [filtroVendedor, setFiltroVendedor] = useState<number | "">("");
   const [ordenFecha, setOrdenFecha] = useState<"desc" | "asc">("desc");
   const [facturaId, setFacturaId] = useState<number | null>(null);
 
@@ -51,6 +53,7 @@ export default function Facturas() {
   const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: clientesApi.listar });
   const { data: cuentas = [] } = useQuery({ queryKey: ["cuentas-todas"], queryFn: cuentasApi.listarTodas });
   const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: empresasApi.listar });
+  const { data: vendedores = [] } = useQuery({ queryKey: ["vendedores"], queryFn: authApi.listarVendedores });
 
   const sumaPagosManual = (mForm.pagos as any[]).reduce((s: number, p: any) => s + (Number(p.monto) || 0), 0);
   const saldoManual = Math.max(0, (Number(mForm.totalNeto) || 0) - sumaPagosManual);
@@ -95,8 +98,8 @@ export default function Facturas() {
 
   const todas: any[] = balance?.facturas ?? [];
 
-  const hayFiltros = busqueda || desde || hasta;
-  const limpiarFiltros = () => { setBusqueda(""); setDesde(""); setHasta(""); };
+  const hayFiltros = busqueda || desde || hasta || filtroCliente || filtroVendedor;
+  const limpiarFiltros = () => { setBusqueda(""); setDesde(""); setHasta(""); setFiltroCliente(""); setFiltroVendedor(""); };
 
   const facturas = useMemo(() => {
     let lista = filtro === "TODAS" ? todas : todas.filter((f: any) => f.estado === filtro);
@@ -107,6 +110,8 @@ export default function Facturas() {
         f.cliente?.nombre?.toLowerCase().includes(q)
       );
     }
+    if (filtroCliente) lista = lista.filter((f: any) => f.clienteId === filtroCliente);
+    if (filtroVendedor) lista = lista.filter((f: any) => f.cliente?.vendedor?.id === filtroVendedor);
     if (desde) {
       const d = new Date(desde);
       lista = lista.filter((f: any) => new Date(f.fechaEmision ?? f.creadoEn) >= d);
@@ -122,7 +127,7 @@ export default function Facturas() {
       return ordenFecha === "asc" ? ta - tb : tb - ta;
     });
     return ord;
-  }, [todas, filtro, busqueda, desde, hasta, ordenFecha]);
+  }, [todas, filtro, busqueda, desde, hasta, filtroCliente, filtroVendedor, ordenFecha]);
 
   return (
     <div style={{ padding: 24 }}>
@@ -176,6 +181,16 @@ export default function Facturas() {
             style={{ width: "100%", padding: "8px 10px 8px 32px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }}
           />
         </div>
+        <select value={filtroCliente} onChange={(e) => setFiltroCliente(Number(e.target.value) || "")}
+          style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff", maxWidth: 190 }}>
+          <option value="">Cliente: todos</option>
+          {(clientes as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+        <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(Number(e.target.value) || "")}
+          style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff", maxWidth: 170 }}>
+          <option value="">Vendedor: todos</option>
+          {(vendedores as any[]).map((v: any) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+        </select>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>Desde</span>
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
@@ -223,7 +238,7 @@ export default function Facturas() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Número", "Cliente", "Empresa", "Fecha", "Total", "Saldo", "Estado", ""].map((h) =>
+              {["Número", "Cliente", "Vendedor", "Fecha", "Total", "Saldo", "Estado", ""].map((h) =>
                 h === "Fecha" ? (
                   <th
                     key={h}
@@ -261,7 +276,7 @@ export default function Facturas() {
                 >
                   <td style={tdStyle}><span style={{ fontWeight: 700, color: "#2563eb" }}>{f.numero}</span></td>
                   <td style={tdStyle}>{f.cliente?.nombre ?? "—"}</td>
-                  <td style={{ ...tdStyle, fontSize: 12, color: "#64748b" }}>{f.empresa?.nombre ?? "—"}</td>
+                  <td style={{ ...tdStyle, fontSize: 12, color: "#64748b" }}>{f.cliente?.vendedor?.nombre ?? "—"}</td>
                   <td style={{ ...tdStyle, color: "#64748b" }}>{fecha(f.fechaEmision ?? f.creadoEn)}</td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{usd(f.totalNeto)}</td>
                   <td style={{ ...tdStyle, color: Number(f.saldoPendiente) > 0 ? "#dc2626" : "#16a34a", fontWeight: 600 }}>

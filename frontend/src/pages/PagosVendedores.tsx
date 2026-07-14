@@ -127,7 +127,7 @@ export default function PagosVendedores() {
           </div>
           <div>
             <label style={lbl}>Modo del pago *</label>
-            <select style={inSt} value={form.metodoPago} onChange={(e) => setForm({ ...form, metodoPago: e.target.value, montousd: "" })}>
+            <select style={inSt} value={form.metodoPago} onChange={(e) => setForm({ ...form, metodoPago: e.target.value, tasa: "" })}>
               <option value="">— Elegir —</option>
               {METODOS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
