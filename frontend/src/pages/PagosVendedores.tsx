@@ -31,8 +31,9 @@ export default function PagosVendedores() {
 
   // Formulario
   const [vendedorId, setVendedorId] = useState<number | "">("");   // solo admin
-  const [form, setForm] = useState<any>({ fecha: hoyISO(), metodoPago: "", monto: "", montousd: "", facturaDestinoId: "", observaciones: "" });
+  const [form, setForm] = useState<any>({ fecha: hoyISO(), metodoPago: "", monto: "", tasa: "", facturaDestinoId: "", observaciones: "" });
   const [resultado, setResultado] = useState<any>(null);
+  const [tasasAprobar, setTasasAprobar] = useState<Record<number, string>>({}); // tasa por pago pendiente (Bs/COP)
 
   const { data: vendedores = [] } = useQuery({ queryKey: ["vendedores"], queryFn: authApi.listarVendedores, enabled: puedeEditar });
   const { data: tasa } = useQuery({ queryKey: ["tasa-vigente"], queryFn: tasaCambioApi.vigente });
@@ -49,21 +50,21 @@ export default function PagosVendedores() {
 
   const metodo = metodoDe(form.metodoPago);
   const esMonedaExtranjera = metodo && (metodo.moneda === "BS" || metodo.moneda === "COP");
-  const tasaAplicable = metodo?.moneda === "BS" ? Number(tasa?.bsUSDT ?? 0) : metodo?.moneda === "COP" ? Number(tasa?.copUSDT ?? 0) : 0;
-  const usdSugerido = esMonedaExtranjera && tasaAplicable > 0 && Number(form.monto) > 0
-    ? Number(form.monto) / tasaAplicable : 0;
+  const tasaReferencia = metodo?.moneda === "BS" ? Number(tasa?.bsUSDT ?? 0) : metodo?.moneda === "COP" ? Number(tasa?.copUSDT ?? 0) : 0;
+  const usdCalculado = esMonedaExtranjera && Number(form.tasa) > 0 && Number(form.monto) > 0
+    ? Number(form.monto) / Number(form.tasa) : 0;
 
   const crear = useMutation({
     mutationFn: () => pagosVendedorApi.crear({
       ...form,
       monto: Number(form.monto),
-      montousd: esMonedaExtranjera ? Number(form.montousd) : undefined,
+      tasa: esMonedaExtranjera && puedeEditar ? Number(form.tasa) : undefined,
       facturaDestinoId: form.facturaDestinoId || undefined,
       vendedorId: puedeEditar ? Number(vendedorId) : undefined,
     }),
     onSuccess: (r: any) => {
       setResultado(r);
-      setForm({ fecha: hoyISO(), metodoPago: "", monto: "", montousd: "", facturaDestinoId: "", observaciones: "" });
+      setForm({ fecha: hoyISO(), metodoPago: "", monto: "", tasa: "", facturaDestinoId: "", observaciones: "" });
       qc.invalidateQueries({ queryKey: ["pagos-vendedor"] });
       qc.invalidateQueries({ queryKey: ["pagos-vendedor-facturas"] });
       qc.invalidateQueries({ queryKey: ["facturas-balance"] });
@@ -72,7 +73,7 @@ export default function PagosVendedores() {
   });
 
   const aprobar = useMutation({
-    mutationFn: (id: number) => pagosVendedorApi.aprobar(id),
+    mutationFn: ({ id, tasaAp }: { id: number; tasaAp?: number }) => pagosVendedorApi.aprobar(id, tasaAp),
     onSuccess: (r: any) => {
       qc.invalidateQueries({ queryKey: ["pagos-vendedor"] });
       qc.invalidateQueries({ queryKey: ["facturas-balance"] });
@@ -88,7 +89,9 @@ export default function PagosVendedores() {
   });
 
   const pendientes = (pagos as any[]).filter((p) => p.aprobacion === "PENDIENTE");
-  const puedeEnviar = form.metodoPago && Number(form.monto) > 0 && (!esMonedaExtranjera || Number(form.montousd) > 0) && (esVendedor || vendedorId);
+  const puedeEnviar = form.metodoPago && Number(form.monto) > 0
+    && (!esMonedaExtranjera || esVendedor || Number(form.tasa) > 0)   // admin en Bs/COP debe fijar tasa
+    && (esVendedor || vendedorId);
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
@@ -132,20 +135,22 @@ export default function PagosVendedores() {
           <div>
             <label style={lbl}>Cantidad {metodo ? `(${metodo.moneda})` : ""} *</label>
             <input type="number" min="0" step="0.01" style={inSt} placeholder="0.00" value={form.monto}
-              onChange={(e) => {
-                const monto = e.target.value;
-                const nUsd = esMonedaExtranjera && tasaAplicable > 0 && Number(monto) > 0
-                  ? (Number(monto) / tasaAplicable).toFixed(2) : form.montousd;
-                setForm({ ...form, monto, montousd: esMonedaExtranjera ? nUsd : "" });
-              }} />
+              onChange={(e) => setForm({ ...form, monto: e.target.value })} />
           </div>
-          {esMonedaExtranjera && (
+          {esMonedaExtranjera && puedeEditar && (
             <div>
-              <label style={lbl}>Equivalente en USD *</label>
-              <input type="number" min="0" step="0.01" style={inSt} placeholder="0.00" value={form.montousd}
-                onChange={(e) => setForm({ ...form, montousd: e.target.value })} />
+              <label style={lbl}>Tasa ({metodo!.moneda} por USD) *</label>
+              <input type="number" min="0" step="0.0001" style={inSt} placeholder={tasaReferencia > 0 ? String(tasaReferencia) : "0.00"} value={form.tasa}
+                onChange={(e) => setForm({ ...form, tasa: e.target.value })} />
               <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
-                {tasaAplicable > 0 ? `Tasa vigente: ${tasaAplicable} → sugerido ${usd(usdSugerido)}` : "Sin tasa vigente cargada — escribe el equivalente"}
+                {usdCalculado > 0 ? `Equivale a ${usd(usdCalculado)}` : tasaReferencia > 0 ? `Referencia cargada: ${tasaReferencia}` : "Tasa del mercado que manejan"}
+              </div>
+            </div>
+          )}
+          {esMonedaExtranjera && esVendedor && (
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <div style={{ fontSize: 11, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px" }}>
+                La tasa la fija el administrador al aprobar tu pago.
               </div>
             </div>
           )}
@@ -196,27 +201,46 @@ export default function PagosVendedores() {
           <div style={{ fontSize: 14, fontWeight: 700, color: "#92400e", marginBottom: 10 }}>
             Por aprobar ({pendientes.length})
           </div>
-          {pendientes.map((p: any) => (
-            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, marginBottom: 8, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 13 }}>
-                <strong>{p.vendedor?.nombre}</strong> · {metodoDe(p.metodoPago)?.label ?? p.metodoPago} · {fecha(p.fecha)}
-                <div style={{ fontSize: 12, color: "#64748b" }}>
-                  {Number(p.monto).toLocaleString("es-VE")} {p.moneda} {p.moneda !== "USD" && p.moneda !== "USDT" ? `(≈ ${usd(p.montousd)})` : ""}
-                  {p.observaciones && <> · {p.observaciones}</>}
+          {pendientes.map((p: any) => {
+            const esExt = p.moneda === "BS" || p.moneda === "COP";
+            const tasaAp = Number(tasasAprobar[p.id]) || 0;
+            const usdAprobar = esExt ? (tasaAp > 0 ? Number(p.monto) / tasaAp : 0) : Number(p.montousd ?? p.monto);
+            return (
+              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{p.vendedor?.nombre}</strong> · {metodoDe(p.metodoPago)?.label ?? p.metodoPago} · {fecha(p.fecha)}
+                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                    {Number(p.monto).toLocaleString("es-VE")} {p.moneda}
+                    {esExt && <span style={{ color: "#92400e" }}> · fija la tasa para aprobar</span>}
+                    {p.observaciones && <> · {p.observaciones}</>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {esExt && (
+                    <span style={{ display: "inline-flex", flexDirection: "column", gap: 1 }}>
+                      <input type="number" min="0" step="0.0001" placeholder={`Tasa ${p.moneda}/USD`}
+                        value={tasasAprobar[p.id] ?? ""}
+                        onChange={(e) => setTasasAprobar((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        style={{ width: 120, padding: "6px 9px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12 }} />
+                      <span style={{ fontSize: 10, color: tasaAp > 0 ? "#16a34a" : "#94a3b8" }}>
+                        {tasaAp > 0 ? `= ${usd(usdAprobar)}` : "obligatoria"}
+                      </span>
+                    </span>
+                  )}
+                  <button
+                    onClick={() => { if (confirm(`¿Aprobar y abonar ${usd(usdAprobar)} de ${p.vendedor?.nombre}?`)) aprobar.mutate({ id: p.id, tasaAp: esExt ? tasaAp : undefined }); }}
+                    disabled={aprobar.isPending || (esExt && !(tasaAp > 0))}
+                    style={{ ...btnMini, background: "#16a34a", color: "#fff", opacity: esExt && !(tasaAp > 0) ? 0.5 : 1 }}>
+                    <CheckCircle size={13} /> Aprobar
+                  </button>
+                  <button onClick={() => { const m = prompt("Motivo del rechazo (opcional):"); if (m !== null) rechazar.mutate({ id: p.id, motivo: m }); }}
+                    disabled={rechazar.isPending} style={{ ...btnMini, background: "#fee2e2", color: "#991b1b" }}>
+                    <XCircle size={13} /> Rechazar
+                  </button>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { if (confirm(`¿Aprobar y abonar ${usd(p.montousd ?? p.monto)} de ${p.vendedor?.nombre}?`)) aprobar.mutate(p.id); }}
-                  disabled={aprobar.isPending} style={{ ...btnMini, background: "#16a34a", color: "#fff" }}>
-                  <CheckCircle size={13} /> Aprobar
-                </button>
-                <button onClick={() => { const m = prompt("Motivo del rechazo (opcional):"); if (m !== null) rechazar.mutate({ id: p.id, motivo: m }); }}
-                  disabled={rechazar.isPending} style={{ ...btnMini, background: "#fee2e2", color: "#991b1b" }}>
-                  <XCircle size={13} /> Rechazar
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -251,8 +275,18 @@ export default function PagosVendedores() {
                   <td style={td}>{fecha(p.fecha)}</td>
                   {!esVendedor && <td style={{ ...td, fontWeight: 600 }}>{p.vendedor?.nombre ?? "—"}</td>}
                   <td style={td}>{metodoDe(p.metodoPago)?.label ?? p.metodoPago ?? "—"}</td>
-                  <td style={td}>{Number(p.monto).toLocaleString("es-VE")} {p.moneda}</td>
-                  <td style={{ ...td, fontWeight: 600 }}>{usd(p.montousd ?? p.monto)}</td>
+                  <td style={td}>
+                    {Number(p.monto).toLocaleString("es-VE")} {p.moneda}
+                    {(p.tasaCambioBs || p.tasaCambioCop) && (
+                      <div style={{ fontSize: 10, color: "#94a3b8" }}>tasa {Number(p.tasaCambioBs ?? p.tasaCambioCop).toLocaleString("es-VE")}</div>
+                    )}
+                  </td>
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    {p.montousd != null ? usd(p.montousd)
+                      : (p.moneda === "BS" || p.moneda === "COP")
+                        ? <span style={{ fontSize: 11, color: "#d97706", fontWeight: 600 }}>tasa al aprobar</span>
+                        : usd(p.monto)}
+                  </td>
                   <td style={td}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 12, fontSize: 12, fontWeight: 600, color: ap.color, background: ap.bg }} title={p.motivoRechazo ?? undefined}>
                       <ApIcon size={11} /> {ap.label}

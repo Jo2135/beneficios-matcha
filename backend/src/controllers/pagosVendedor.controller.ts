@@ -97,7 +97,7 @@ async function aplicarPagoVendedor(pagoId: number) {
 // ─── POST /pagos-vendedor ─────────────────────────────────────────────────────
 export async function crear(req: Request, res: Response) {
   const usuario = req.usuario!;
-  const { fecha, metodoPago, monto, montousd, facturaDestinoId, observaciones } = req.body;
+  const { fecha, metodoPago, monto, tasa, facturaDestinoId, observaciones } = req.body;
 
   const metodo = METODOS_PAGO[String(metodoPago)];
   if (!metodo) return res.status(400).json({ error: "Modo de pago inválido" });
@@ -113,10 +113,20 @@ export async function crear(req: Request, res: Response) {
     if (!vendedorId) return res.status(400).json({ error: "Debes indicar el vendedor" });
   }
 
-  // Monto en USD: directo si la moneda es USD/USDT; si es Bs/COP se exige el equivalente
+  // Monto en USD. La tasa de Bs/COP la fija SIEMPRE el admin/master (tasa de
+  // mercado, no oficial): el vendedor deja el equivalente abierto y se define
+  // al aprobar; el admin/master la indica al cargar directo.
   const esUsd = metodo.moneda === "USD" || metodo.moneda === "USDT";
-  const usd = esUsd ? Number(monto) : Number(montousd);
-  if (!(usd > 0)) return res.status(400).json({ error: "Indica el equivalente en USD del depósito" });
+  const esAdminRol = usuario.rol === "MASTER" || usuario.rol === "ADMIN";
+  let usd: number | null = null;
+  let tasaNum: number | null = null;
+  if (esUsd) {
+    usd = Number(monto);
+  } else if (esAdminRol) {
+    tasaNum = Number(tasa);
+    if (!(tasaNum > 0)) return res.status(400).json({ error: `Indica la tasa (${metodo.moneda} por USD) para calcular el equivalente` });
+    usd = Math.round((Number(monto) / tasaNum) * 100) / 100;
+  }
 
   // Validar factura destino (si se eligió): debe ser de un cliente de este vendedor y tener saldo
   if (facturaDestinoId) {
@@ -125,7 +135,7 @@ export async function crear(req: Request, res: Response) {
     if (Number(f.saldoPendiente) <= 0) return res.status(400).json({ error: "La factura elegida ya está cobrada" });
   }
 
-  const esAdmin = usuario.rol === "MASTER" || usuario.rol === "ADMIN";
+  const esAdmin = esAdminRol;
   const pago = await prisma.pago.create({
     data: {
       vendedorId,
@@ -133,6 +143,8 @@ export async function crear(req: Request, res: Response) {
       monto: Number(monto),
       moneda: metodo.moneda as any,
       montousd: usd,
+      tasaCambioBs: metodo.moneda === "BS" ? tasaNum : null,
+      tasaCambioCop: metodo.moneda === "COP" ? tasaNum : null,
       fecha: fecha ? new Date(fecha) : new Date(),
       origenFondos: metodo.label,
       observaciones: observaciones?.trim() || null,
@@ -189,7 +201,16 @@ export async function aprobar(req: Request, res: Response) {
   if (!pago || !pago.vendedorId) return res.status(404).json({ error: "Pago de vendedor no encontrado" });
   if (pago.aprobacion !== "PENDIENTE") return res.status(400).json({ error: `Este pago ya fue ${pago.aprobacion === "APROBADO" ? "aprobado" : "rechazado"}` });
 
-  await prisma.pago.update({ where: { id }, data: { aprobacion: "APROBADO", aprobadoPorId: usuario.id, aprobadoEn: new Date() } });
+  // Bs/COP: el aprobador fija la tasa de mercado y con ella se calcula el USD a abonar
+  const data: any = { aprobacion: "APROBADO", aprobadoPorId: usuario.id, aprobadoEn: new Date() };
+  if (pago.moneda === "BS" || pago.moneda === "COP") {
+    const tasa = Number(req.body?.tasa);
+    if (!(tasa > 0)) return res.status(400).json({ error: `Indica la tasa (${pago.moneda} por USD) para aprobar este pago` });
+    data.montousd = Math.round((Number(pago.monto) / tasa) * 100) / 100;
+    if (pago.moneda === "BS") data.tasaCambioBs = tasa; else data.tasaCambioCop = tasa;
+  }
+
+  await prisma.pago.update({ where: { id }, data });
   const resultado = await aplicarPagoVendedor(id);
   const completo = await prisma.pago.findUnique({ where: { id }, include: INCLUDE_PAGO });
   res.json({ pago: completo, resultado });
