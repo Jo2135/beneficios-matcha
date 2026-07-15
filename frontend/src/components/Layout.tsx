@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Users, Package, FileText, Truck, Receipt, Banknote,
   BarChart3, Settings, ChevronLeft, ChevronRight, DollarSign,
-  UserCog, LogOut, Shield, Briefcase, Factory, Calendar, ShoppingCart, SlidersHorizontal, LayoutGrid, Wallet,
+  UserCog, LogOut, Shield, Briefcase, Factory, Calendar, ShoppingCart, SlidersHorizontal, LayoutGrid, Wallet, LayoutDashboard,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -19,6 +19,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { usuario, logout, esMaster, puedeEditar } = useAuth();
 
   const nav = [
+    { path: "/dashboard",   label: "Panel Principal",   icon: LayoutDashboard, roles: ["MASTER","ADMIN","VENDEDOR"] },
     { path: "/clientes",    label: "Clientes",          icon: Users,     roles: ["MASTER","ADMIN","VENDEDOR"] },
     { path: "/catalogo",    label: "Catálogo",           icon: Package,   roles: ["MASTER","ADMIN","VENDEDOR"] },
     { path: "/precios",     label: "Listas de Precios",  icon: DollarSign,roles: ["MASTER","ADMIN"] },
@@ -55,8 +56,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         overflow: "hidden",
         flexShrink: 0,
       }}>
-        {/* Logo */}
-        <div style={{ padding: "16px 12px", borderBottom: "1px solid #2d3f55", display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Logo (clic → Panel Principal) */}
+        <Link to="/dashboard" title="Ir al Panel Principal" style={{ padding: "16px 12px", borderBottom: "1px solid #2d3f55", display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
           <div style={{ width: 36, height: 36, background: "#2563eb", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0, fontWeight: 700 }}>
             E
           </div>
@@ -66,7 +67,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div style={{ fontSize: 11, color: "#94a3b8" }}>Sistema de Gestión</div>
             </div>
           )}
-        </div>
+        </Link>
 
         {/* Nav items */}
         <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
