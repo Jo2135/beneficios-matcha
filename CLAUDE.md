@@ -421,6 +421,14 @@ El backend aplica migraciones automáticamente al arrancar (`migrate deploy` en 
 - Si el usuario conecta la app Claude en el teléfono via `/rc` (Remote Control), las notificaciones también llegan al celular.
 - **Pendiente:** José aún no vinculó el teléfono. Pasos: abrir Claude Code en terminal → escribir `/rc` → escanear QR con la app Claude.
 
+### Arranque automático del sistema (configurado 2026-07-14)
+- **Mecanismo principal:** Tarea Programada de Windows **"Ecoplast Autostart"** — al iniciar sesión (delay 15 s) ejecuta `Iniciar Ecoplast.cmd auto` minimizado. Ver estado: `schtasks /query /tn "Ecoplast Autostart"`.
+- **Lanzador:** `Iniciar Ecoplast.cmd` (raíz del repo, NO commiteado): espera PostgreSQL → arranca PM2 → verifica puertos 5101/3001 con reintentos. **Bitácora: `C:\Ecoplast\arranque-ecoplast.log`** — si el arranque vuelve a fallar, revisar ahí primero.
+- **Respaldo:** entrada en carpeta Startup + acceso del Escritorio (modo manual, abre navegador).
+- ⚠️ **CRÍTICO para Claude:** el `pm2` del PATH de las consolas de Claude vive en un **sandbox** (`C:\Users\heber\AppData\Roaming\npm` NO existe en el Windows real). El pm2 REAL está en **`C:\Ecoplast\pm2-runtime\node_modules\pm2\bin\pm2`** (v7). Para gestionar los servicios usar SIEMPRE:
+  `"C:\Program Files\nodejs\node.exe" "C:\Ecoplast\pm2-runtime\node_modules\pm2\bin\pm2" <comando>`
+  Si se usa el pm2 del sandbox se crea un daemon paralelo que muere con la sesión y deja a José sin servicios al reiniciar (esta fue la causa del fallo recurrente de arranque).
+
 ---
 
 ## 17. Historial de Cambios Recientes (sesión anterior)
