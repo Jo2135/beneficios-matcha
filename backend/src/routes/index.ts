@@ -112,6 +112,7 @@ router.post("/facturas/manual", requireRol("MASTER", "ADMIN"), w(facturas.crearM
 router.post("/facturas/importar-historico", requireRol("MASTER", "ADMIN"), w(facturas.importarHistorico));
 router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));
+router.patch("/facturas/:id/comision-vendedor", requireRol("MASTER"), w(facturas.actualizarComisionVendedor));
 router.delete("/facturas/:id", requireRol("MASTER"), w(facturas.eliminar));
 
 // ─── Cuentas bancarias ────────────────────────────────────────────────────

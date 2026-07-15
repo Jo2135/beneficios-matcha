@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { despachosApi } from "../api/endpoints";
+import { despachosApi, facturasApi } from "../api/endpoints";
 import { ArrowLeft, ToggleLeft, ToggleRight, RefreshCw } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,15 @@ export default function GananciasDespacho() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ganancias-despacho", despachoId] }),
   });
   const [costosGris, setCostosGris] = useState<Record<number, string>>({});
+
+  // Ajuste de comisión del vendedor por factura (descuento pactado) — solo MASTER
+  const { esMaster } = useAuth();
+  const updateComision = useMutation({
+    mutationFn: ({ facturaId, tub, conex }: { facturaId: number; tub: number | null; conex: number | null }) =>
+      facturasApi.actualizarComisionVendedor(facturaId, { comisionTuberiaPct: tub, comisionConexionesPct: conex }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ganancias-despacho", despachoId] }),
+    onError: (e: any) => alert(e?.response?.data?.error ?? "Error al guardar el ajuste"),
+  });
 
   if (isLoading) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Calculando distribución...</div>;
   if (isError || !data)
@@ -368,17 +378,27 @@ export default function GananciasDespacho() {
           {(d.comisionesVendedores?.detalle?.length ?? 0) > 0 && (
             <Section titulo="Comisiones Vendedores">
               {(d.comisionesVendedores.detalle as any[]).map((c: any, i: number) => (
-                <PagoLinea
-                  key={i}
-                  label={`Comisión — ${c.clienteNombre}`}
-                  monto={c.monto}
-                  color="#0891b2"
-                  detalle={[
-                    c.ctPct > 0 && c.totalTuberia > 0 ? `${c.ctPct}% tub (${usd(c.totalTuberia)})` : "",
-                    c.ccPct > 0 && c.totalConexiones > 0 ? `${c.ccPct}% con (${usd(c.totalConexiones)})` : "",
-                    c.vendedorNombre !== "—" ? `Vendedor: ${c.vendedorNombre}` : "",
-                  ].filter(Boolean).join(" · ")}
-                />
+                <div key={i}>
+                  <PagoLinea
+                    label={`Comisión — ${c.clienteNombre}${c.ajustada ? "  ● ajustada" : ""}`}
+                    monto={c.monto}
+                    color={c.ajustada ? "#d97706" : "#0891b2"}
+                    detalle={[
+                      c.ctPct > 0 && c.totalTuberia > 0 ? `${c.ctPct}% tub (${usd(c.totalTuberia)})` : "",
+                      c.ccPct > 0 && c.totalConexiones > 0 ? `${c.ccPct}% con (${usd(c.totalConexiones)})` : "",
+                      c.ajustada ? `normal: ${c.ctPctNormal}% / ${c.ccPctNormal}%` : "",
+                      c.vendedorNombre !== "—" ? `Vendedor: ${c.vendedorNombre}` : "",
+                    ].filter(Boolean).join(" · ")}
+                  />
+                  {esMaster && c.facturaId && (
+                    <ComisionAjuste
+                      item={c}
+                      busy={updateComision.isPending}
+                      onSave={(tub, conex) => updateComision.mutate({ facturaId: c.facturaId, tub, conex })}
+                      onClear={() => updateComision.mutate({ facturaId: c.facturaId, tub: null, conex: null })}
+                    />
+                  )}
+                </div>
               ))}
             </Section>
           )}
@@ -447,6 +467,60 @@ function ServicioExternoToggle({ linea, costoLocal, onCostoChange, onSave }: {
           style={{ width: 72, padding: "3px 6px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12, textAlign: "right" }}
         />
       )}
+    </div>
+  );
+}
+
+// Editor del descuento pactado de comisión (solo MASTER): % distinto solo en esta factura
+function ComisionAjuste({ item, busy, onSave, onClear }: {
+  item: any; busy: boolean;
+  onSave: (tub: number | null, conex: number | null) => void;
+  onClear: () => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [tub, setTub] = useState(String(item.ctPct ?? ""));
+  const [conex, setConex] = useState(String(item.ccPct ?? ""));
+
+  if (!abierto) {
+    return (
+      <div style={{ padding: "2px 16px 8px", display: "flex", gap: 8 }}>
+        <button onClick={() => { setTub(String(item.ctPct ?? "")); setConex(String(item.ccPct ?? "")); setAbierto(true); }}
+          style={{ fontSize: 11, color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          Ajustar % solo en esta factura
+        </button>
+        {item.ajustada && (
+          <button onClick={onClear} disabled={busy}
+            style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+            Quitar ajuste (volver a {item.ctPctNormal}% / {item.ccPctNormal}%)
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ margin: "0 16px 10px", padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div>
+        <div style={{ fontSize: 10, color: "#92400e", fontWeight: 600 }}>% Tubería</div>
+        <input type="number" min="0" max="100" step="0.1" value={tub} onChange={(e) => setTub(e.target.value)}
+          style={{ width: 70, padding: "4px 7px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12 }} />
+      </div>
+      <div>
+        <div style={{ fontSize: 10, color: "#92400e", fontWeight: 600 }}>% Conexiones</div>
+        <input type="number" min="0" max="100" step="0.1" value={conex} onChange={(e) => setConex(e.target.value)}
+          style={{ width: 70, padding: "4px 7px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12 }} />
+      </div>
+      <span style={{ fontSize: 10, color: "#92400e" }}>normal: {item.ctPctNormal}% / {item.ccPctNormal}%</span>
+      <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+        <button onClick={() => { onSave(tub === "" ? null : Number(tub), conex === "" ? null : Number(conex)); setAbierto(false); }}
+          disabled={busy}
+          style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: "#16a34a", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer" }}>
+          Guardar
+        </button>
+        <button onClick={() => setAbierto(false)}
+          style={{ fontSize: 12, color: "#64748b", background: "#f1f5f9", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer" }}>
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

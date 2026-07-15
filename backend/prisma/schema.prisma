@@ -270,6 +270,10 @@ model Factura {
   totalPagado      Decimal       @db.Decimal(12, 2) @default(0)
   saldoPendiente   Decimal       @db.Decimal(12, 2) @default(0)
   notas            String?
+  // Descuento pactado de la comisión del vendedor SOLO en esta factura
+  // (null = usa el % normal del cliente)
+  comisionTuberiaPctOverride    Decimal? @db.Decimal(5, 2)
+  comisionConexionesPctOverride Decimal? @db.Decimal(5, 2)
   creadoEn         DateTime      @default(now())
   actualizadoEn    DateTime      @updatedAt
 

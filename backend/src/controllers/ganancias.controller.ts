@@ -380,7 +380,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
           select: {
             id: true, totalNeto: true,
             vendedor: { select: { nombre: true, gananciaMuchachosPct: true } },
-            cliente:  { select: { nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true } },
+            cliente:  { select: { id: true, nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true } },
             lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } } },
           },
         },
@@ -389,7 +389,8 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       },
       facturas: {
         select: {
-          totalNeto: true,
+          id: true, clienteId: true, totalNeto: true,
+          comisionTuberiaPctOverride: true, comisionConexionesPctOverride: true,
           cliente: {
             select: {
               nombre: true,
@@ -413,6 +414,20 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   if (!despacho) return null;
 
   const facturaTotal = despacho.facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
+
+  // Comisión del vendedor ajustada por factura (descuento pactado). Mapa por cliente
+  // para que el cálculo por cotización use el % de la factura de ese cliente.
+  const facturaPorCliente = new Map<number, number>();
+  const comOverride = new Map<number, { tub: number | null; conex: number | null }>();
+  for (const f of despacho.facturas as any[]) {
+    if (!facturaPorCliente.has(f.clienteId)) facturaPorCliente.set(f.clienteId, f.id);
+    if (f.comisionTuberiaPctOverride != null || f.comisionConexionesPctOverride != null) {
+      comOverride.set(f.clienteId, {
+        tub:   f.comisionTuberiaPctOverride    != null ? Number(f.comisionTuberiaPctOverride)    : null,
+        conex: f.comisionConexionesPctOverride != null ? Number(f.comisionConexionesPctOverride) : null,
+      });
+    }
+  }
 
   // Costo de tubo gris sugerido (último usado por producto en cualquier despacho)
   const grisPrevios = await prisma.despachoLinea.findMany({
@@ -564,9 +579,11 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     // Si el cliente pertenece al vendedor MASTER, su comisión ya está en Ganancias_2 (2.2% Comisiones)
     if (cot.cliente?.vendedorEsMaster === true) continue;
 
-    const ctPct = Number(cot.cliente?.comisionTuberiaPct ?? 0);
-    const ccPct = Number(cot.cliente?.comisionConexionesPct ?? 0);
-    if (ctPct + ccPct === 0) continue;
+    // % ajustado en la factura de este cliente (descuento pactado) o el % normal
+    const ov = cot.cliente?.id != null ? comOverride.get(cot.cliente.id) : undefined;
+    const ctPct = Number(ov?.tub   ?? cot.cliente?.comisionTuberiaPct ?? 0);
+    const ccPct = Number(ov?.conex ?? cot.cliente?.comisionConexionesPct ?? 0);
+    if (ctPct + ccPct === 0 && !ov) continue;
 
     let totalTuberia = 0, totalConexiones = 0;
     for (const cl of (cot.lineas ?? []) as any[]) {
@@ -582,12 +599,16 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       (ctPct > 0 ? totalTuberia  * ctPct / (100 + ctPct) : 0) +
       (ccPct > 0 ? totalConexiones * ccPct / (100 + ccPct) : 0);
 
-    if (monto > 0) {
+    if (monto > 0 || ov) {
       comisionesVendedores.push({
         clienteNombre:  cot.cliente?.nombre  ?? `Cot #${cot.id}`,
         vendedorNombre: cot.vendedor?.nombre ?? "—",
         ctPct, ccPct, totalTuberia, totalConexiones, monto,
-      });
+        facturaId: cot.cliente?.id != null ? (facturaPorCliente.get(cot.cliente.id) ?? null) : null,
+        ajustada: !!ov,
+        ctPctNormal: Number(cot.cliente?.comisionTuberiaPct ?? 0),
+        ccPctNormal: Number(cot.cliente?.comisionConexionesPct ?? 0),
+      } as any);
     }
   }
   const totalComisionVendedores = comisionesVendedores.reduce((s, c) => s + c.monto, 0);
@@ -711,7 +732,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const conexClientesDetalle: { cliente: string; facturado: number; ccPct: number; fcPct: number; muchPct: number; comision: number; flete: number; muchachos: number }[] = [];
 
   for (const factura of despacho.facturas as any[]) {
-    const ccPct = Number(factura.cliente?.comisionConexionesPct ?? 0);
+    const ccPct = Number(factura.comisionConexionesPctOverride ?? factura.cliente?.comisionConexionesPct ?? 0);
     const fcPct = Number(factura.cliente?.fleteConexionesPct ?? 0);
     const muchPct = Number(factura.cliente?.vendedor?.gananciaMuchachosPct ?? 0);
     let facturadoClienteConex = 0;
@@ -769,7 +790,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   let mvVenta = 0, mvFlete = 0, mvComisionVend = 0;
   for (const factura of despacho.facturas as any[]) {
     const ftPct = Number(factura.cliente?.fleteTuberiaPct ?? 0);
-    const ctPct = Number(factura.cliente?.comisionTuberiaPct ?? 0);
+    const ctPct = Number(factura.comisionTuberiaPctOverride ?? factura.cliente?.comisionTuberiaPct ?? 0);
     let mvFact = 0;
     for (const fl of (factura.lineas ?? [])) {
       if (esMangueraVerdeAmarilla(fl.producto?.codigo ?? null, fl.producto?.nombre ?? ""))
@@ -803,7 +824,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     const detalle: { nombre: string; cantidad: number; venta: number; proveedor: string | null; costoUnit: number; costo: number }[] = [];
     for (const factura of despacho.facturas as any[]) {
       const ftPct = Number(factura.cliente?.fleteTuberiaPct ?? 0);
-      const ctPct = Number(factura.cliente?.comisionTuberiaPct ?? 0);
+      const ctPct = Number(factura.comisionTuberiaPctOverride ?? factura.cliente?.comisionTuberiaPct ?? 0);
       const esMaster = factura.cliente?.vendedorEsMaster === true;
       let vFact = 0;
       for (const fl of (factura.lineas ?? [])) {

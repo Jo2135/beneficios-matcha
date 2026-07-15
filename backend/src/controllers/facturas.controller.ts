@@ -338,6 +338,25 @@ export async function actualizarNotas(req: Request, res: Response) {
   res.json(factura);
 }
 
+/** Ajuste (descuento pactado) de la comisión del vendedor SOLO en esta factura.
+ *  null / vacío = volver al % normal del cliente. */
+export async function actualizarComisionVendedor(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const { comisionTuberiaPct, comisionConexionesPct } = req.body;
+  const parse = (v: any) => (v === null || v === undefined || v === "" ? null : Number(v));
+  const tub = parse(comisionTuberiaPct);
+  const conex = parse(comisionConexionesPct);
+  if ((tub != null && (isNaN(tub) || tub < 0 || tub > 100)) || (conex != null && (isNaN(conex) || conex < 0 || conex > 100))) {
+    return res.status(400).json({ error: "Los porcentajes deben estar entre 0 y 100" });
+  }
+  const factura = await prisma.factura.update({
+    where: { id },
+    data: { comisionTuberiaPctOverride: tub, comisionConexionesPctOverride: conex },
+    select: { id: true, numero: true, comisionTuberiaPctOverride: true, comisionConexionesPctOverride: true },
+  });
+  res.json(factura);
+}
+
 export async function balanceGeneral(_req: Request, res: Response) {
   const facturas = await prisma.factura.findMany({
     where: { estado: { not: "ANULADA" } },

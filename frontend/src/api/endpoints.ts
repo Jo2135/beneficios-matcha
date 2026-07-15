@@ -95,6 +95,8 @@ export const facturasApi = {
     api.get(`/facturas/cliente/${clienteId}/resumen`).then((r) => r.data),
   actualizarNotas: (id: number, notas: string) =>
     api.patch(`/facturas/${id}/notas`, { notas }).then((r) => r.data),
+  actualizarComisionVendedor: (id: number, data: { comisionTuberiaPct?: number | null; comisionConexionesPct?: number | null }) =>
+    api.patch(`/facturas/${id}/comision-vendedor`, data).then((r) => r.data),
   crearManual: (data: any) => api.post("/facturas/manual", data).then((r) => r.data),
   importarHistorico: (data: { anio: number; facturas: any[] }) =>
     api.post("/facturas/importar-historico", data).then((r) => r.data),
