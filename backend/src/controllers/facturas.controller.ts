@@ -188,7 +188,7 @@ export async function crearManual(req: Request, res: Response) {
 export async function importarHistorico(req: Request, res: Response) {
   const { anio, facturas } = req.body as {
     anio: number;
-    facturas: { archivo: string; cliente: string; fecha: string;
+    facturas: { archivo: string; hoja?: string; cliente: string; fecha: string;
       lineas: { producto: string; medida: string; cantidad: number; monto: number }[] }[];
   };
   if (!Array.isArray(facturas) || facturas.length === 0) {
@@ -261,6 +261,9 @@ export async function importarHistorico(req: Request, res: Response) {
     return new Date(year, 0, 1, 12);
   };
   const sanit = (s: string) => String(s).replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+  // Igual que sanit pero sin quitar extensión: el nombre de una pestaña no la tiene,
+  // y si trae un punto (ej. "PLANTILLA 1.5") sanit se comería el final.
+  const sanitHoja = (s: string) => String(s).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
   let creadas = 0, omitidas = 0;
   const productosCreados: string[] = [];
@@ -268,14 +271,20 @@ export async function importarHistorico(req: Request, res: Response) {
   const errores: { archivo: string; mensaje: string }[] = [];
 
   for (const fac of facturas) {
+    // Un archivo puede traer varias pestañas: la hoja entra en el identificador
+    // para que cada despacho tenga su propio número. Si no viene hoja (archivo de
+    // una sola plantilla) el número queda igual que siempre.
+    const ident = fac.hoja ? `${fac.archivo} - ${fac.hoja}` : fac.archivo;
     try {
       const clienteId = findCliente(fac.cliente);
       if (!clienteId) {
         if (!clientesNoEncontrados.includes(fac.cliente)) clientesNoEncontrados.push(fac.cliente);
-        errores.push({ archivo: fac.archivo, mensaje: `Cliente no encontrado: "${fac.cliente}"` });
+        errores.push({ archivo: ident, mensaje: `Cliente no encontrado: "${fac.cliente}"` });
         continue;
       }
-      const numero = `HIST-${year}-${sanit(fac.archivo)}`;
+      const numero = fac.hoja
+        ? `HIST-${year}-${sanit(fac.archivo)}-${sanitHoja(fac.hoja)}`
+        : `HIST-${year}-${sanit(fac.archivo)}`;
       const ya = await prisma.factura.findUnique({ where: { numero } });
       if (ya) { omitidas++; continue; }
 
@@ -310,20 +319,20 @@ export async function importarHistorico(req: Request, res: Response) {
           totalLinea: monto, origen: "EXTERNO", orden: lineasData.length,
         });
       }
-      if (lineasData.length === 0) { errores.push({ archivo: fac.archivo, mensaje: "Sin productos con cantidad/monto" }); continue; }
+      if (lineasData.length === 0) { errores.push({ archivo: ident, mensaje: "Sin productos con cantidad/monto" }); continue; }
 
       const totalNeto = lineasData.reduce((s, l) => s + l.totalLinea, 0);
       await prisma.factura.create({
         data: {
-          numero, clienteId, fechaEmision: parseFecha(fac.fecha, fac.archivo),
+          numero, clienteId, fechaEmision: parseFecha(fac.fecha, ident),
           totalBruto: totalNeto, totalNeto, totalPagado: totalNeto, saldoPendiente: 0,
-          estado: "COBRADA", notas: `Histórico: ${fac.archivo}`,
+          estado: "COBRADA", notas: `Histórico: ${ident}`,
           lineas: { create: lineasData },
         },
       });
       creadas++;
     } catch (e: any) {
-      errores.push({ archivo: fac.archivo, mensaje: e.message });
+      errores.push({ archivo: ident, mensaje: e.message });
     }
   }
 

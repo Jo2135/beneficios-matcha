@@ -6,26 +6,46 @@ import * as XLSX from "xlsx";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// Lee un archivo "PLANTILLA GENERAL" y extrae cliente, fecha y líneas vendidas
+type Hoja = {
+  archivo: string; hoja: string; multi: boolean;
+  cliente: string; fecha: string; lineas: any[];
+  sel: boolean; error?: boolean;
+};
+
+const fmtCelda = (v: any): string => {
+  if (v == null || v === "") return "";
+  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+  return String(v).trim();
+};
+
+// Ubica la fila de encabezado y en qué columna arranca la plantilla.
+// Formato normal: encabezado en fila 9, columna B. Planillas viejas (conexiones): columna A.
+function detectarLayout(rows: any[][]): { off: number; hdr: number } {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const r = rows[i]; if (!r) continue;
+    for (let c = 0; c < 4; c++) {
+      if (String(r[c] ?? "").toLowerCase().trim() === "descripcion producto") return { off: c, hdr: i };
+    }
+  }
+  return { off: 1, hdr: 8 };
+}
+
+// Lee UNA hoja tipo plantilla y extrae cliente, fecha y líneas vendidas
 function parsePlantilla(rows: any[][]): { cliente: string; fecha: string; lineas: any[] } {
+  const { off, hdr } = detectarLayout(rows);
   let cliente = "", fecha = "";
-  const fmtCelda = (v: any): string => {
-    if (v == null || v === "") return "";
-    if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
-    return String(v).trim();
-  };
-  for (let i = 0; i < Math.min(rows.length, 8); i++) {
-    const b = String(rows[i]?.[1] ?? "").toLowerCase().trim();
-    if (b === "cliente" && !cliente) cliente = String(rows[i]?.[2] ?? "").trim();
-    if (b === "fecha" && !fecha) fecha = fmtCelda(rows[i]?.[2]);
+  for (let i = 0; i < hdr; i++) {
+    const lbl = String(rows[i]?.[off] ?? "").toLowerCase().trim();
+    if (lbl === "cliente" && !cliente) cliente = String(rows[i]?.[off + 1] ?? "").trim();
+    if (lbl === "fecha" && !fecha) fecha = fmtCelda(rows[i]?.[off + 1]);
   }
   const lineas: any[] = [];
-  for (let i = 8; i < rows.length; i++) {
+  for (let i = hdr + 1; i < rows.length; i++) {
     const r = rows[i]; if (!r) continue;
-    const producto = String(r[1] ?? "").trim();
-    const medida = String(r[2] ?? "").trim();
-    const cantidad = Number(r[3]);
-    const monto = Number(r[5]);
+    const producto = String(r[off] ?? "").trim();
+    const medida = String(r[off + 1] ?? "").trim();
+    const cantidad = Number(r[off + 2]);
+    const monto = Number(r[off + 4]);
     if (!producto || producto.toLowerCase() === "descripcion producto") continue;
     if (!(cantidad > 0) || !(monto > 0)) continue;
     lineas.push({ producto, medida, cantidad, monto });
@@ -33,15 +53,28 @@ function parsePlantilla(rows: any[][]): { cliente: string; fecha: string; lineas
   return { cliente, fecha, lineas };
 }
 
+const totalDe = (l: any[]) => (l ?? []).reduce((a: number, x: any) => a + Number(x.monto), 0);
+
 export default function ImportarFacturasExcel({ label = "Importar histórico (Excel)", style }: { label?: string; style?: React.CSSProperties }) {
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
   const [anio, setAnio] = useState(2025);
-  const [preview, setPreview] = useState<any[]>([]);
+  const [preview, setPreview] = useState<Hoja[]>([]);
   const [result, setResult] = useState<any>(null);
 
+  const seleccionadas = preview.filter((f) => f.sel && !f.error);
+
   const importar = useMutation({
-    mutationFn: () => facturasApi.importarHistorico({ anio, facturas: preview }),
+    mutationFn: () => facturasApi.importarHistorico({
+      anio,
+      facturas: seleccionadas.map((f) => ({
+        archivo: f.archivo,
+        // La hoja solo viaja si el archivo trae varias: así el número de las
+        // facturas ya importadas (un archivo = una hoja) no cambia.
+        hoja: f.multi ? f.hoja : undefined,
+        cliente: f.cliente, fecha: f.fecha, lineas: f.lineas,
+      })),
+    }),
     onSuccess: (r) => {
       setResult(r);
       qc.invalidateQueries({ queryKey: ["ventas-facturas"] });
@@ -55,25 +88,39 @@ export default function ImportarFacturasExcel({ label = "Importar histórico (Ex
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     setResult(null);
-    const facturas: any[] = [];
+    const hojas: Hoja[] = [];
     for (const file of files) {
+      const fallido = (): Hoja => ({ archivo: file.name, hoja: "", multi: false, cliente: "", fecha: "", lineas: [], sel: false, error: true });
       try {
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-        const { cliente, fecha, lineas } = parsePlantilla(rows);
-        facturas.push({ archivo: file.name, cliente, fecha, lineas });
+        // Reviso TODAS las pestañas: me quedo con las que parecen un despacho
+        const delArchivo: Hoja[] = [];
+        for (const hoja of wb.SheetNames) {
+          const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { header: 1, defval: "" });
+          const { cliente, fecha, lineas } = parsePlantilla(rows);
+          if (!cliente || lineas.length === 0) continue;
+          delArchivo.push({ archivo: file.name, hoja, multi: false, cliente, fecha, lineas, sel: false });
+        }
+        if (delArchivo.length === 0) { hojas.push(fallido()); continue; }
+        // Dejo marcada solo la hoja de mayor monto (la principal). El resto se omite salvo que José la marque.
+        const multi = delArchivo.length > 1;
+        let mejor = 0;
+        delArchivo.forEach((c, i) => { if (totalDe(c.lineas) > totalDe(delArchivo[mejor].lineas)) mejor = i; });
+        delArchivo.forEach((c, i) => { c.multi = multi; c.sel = i === mejor; });
+        hojas.push(...delArchivo);
       } catch {
-        facturas.push({ archivo: file.name, cliente: "", fecha: "", lineas: [], error: true });
+        hojas.push(fallido());
       }
     }
-    setPreview(facturas);
+    setPreview(hojas);
     setModal(true);
   };
 
-  const totalLineas = preview.reduce((s, f) => s + (f.lineas?.length ?? 0), 0);
-  const totalMonto = preview.reduce((s, f) => s + (f.lineas ?? []).reduce((a: number, l: any) => a + Number(l.monto), 0), 0);
+  const toggle = (i: number) => setPreview((p) => p.map((c, j) => (j === i ? { ...c, sel: !c.sel } : c)));
+
+  const totalLineas = seleccionadas.reduce((s, f) => s + f.lineas.length, 0);
+  const totalMonto = seleccionadas.reduce((s, f) => s + totalDe(f.lineas), 0);
 
   return (
     <>
@@ -127,24 +174,28 @@ export default function ImportarFacturasExcel({ label = "Importar histórico (Ex
                 </div>
 
                 <div style={{ fontSize: 13, color: "#374151", marginBottom: 8 }}>
-                  <strong>{preview.length}</strong> archivos · <strong>{totalLineas}</strong> líneas · total {usd(totalMonto)}
+                  Marca las pestañas que quieres cargar. <strong>{seleccionadas.length}</strong> de {preview.filter((f) => !f.error).length} · <strong>{totalLineas}</strong> líneas · total {usd(totalMonto)}
                 </div>
                 <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", maxHeight: 280, overflowY: "auto", marginBottom: 14 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ background: "#f1f5f9", position: "sticky", top: 0 }}>
-                      {["Archivo", "Cliente", "Fecha", "Líneas", "Total"].map((h) => <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 600, color: "#64748b" }}>{h}</th>)}
+                      {["", "Archivo", "Pestaña", "Cliente", "Fecha", "Líneas", "Total"].map((h, i) => <th key={i} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 600, color: "#64748b" }}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {preview.map((f, i) => {
-                        const tot = (f.lineas ?? []).reduce((a: number, l: any) => a + Number(l.monto), 0);
-                        const ok = !f.error && f.cliente && (f.lineas?.length ?? 0) > 0;
+                        const ok = !f.error;
+                        const repetido = i > 0 && preview[i - 1].archivo === f.archivo;
                         return (
-                          <tr key={i} style={{ borderBottom: "1px solid #f8fafc", background: ok ? "#fff" : "#fef2f2" }}>
-                            <td style={{ padding: "5px 10px" }}>{f.archivo}</td>
+                          <tr key={i} style={{ borderBottom: "1px solid #f8fafc", background: !ok ? "#fef2f2" : f.sel ? "#fff" : "#f8fafc", opacity: ok && !f.sel ? 0.6 : 1 }}>
+                            <td style={{ padding: "5px 10px" }}>
+                              {ok && <input type="checkbox" checked={f.sel} onChange={() => toggle(i)} style={{ cursor: "pointer", width: 15, height: 15 }} />}
+                            </td>
+                            <td style={{ padding: "5px 10px", color: repetido ? "#cbd5e1" : "#1e293b" }}>{repetido ? "↳" : f.archivo}</td>
+                            <td style={{ padding: "5px 10px", fontWeight: f.sel ? 600 : 400 }}>{f.hoja || "—"}</td>
                             <td style={{ padding: "5px 10px", color: f.cliente ? "#1e293b" : "#dc2626" }}>{f.cliente || "— sin cliente —"}</td>
                             <td style={{ padding: "5px 10px" }}>{f.fecha || "—"}</td>
-                            <td style={{ padding: "5px 10px", textAlign: "center" }}>{f.lineas?.length ?? 0}</td>
-                            <td style={{ padding: "5px 10px", textAlign: "right" }}>{usd(tot)}</td>
+                            <td style={{ padding: "5px 10px", textAlign: "center" }}>{f.lineas.length}</td>
+                            <td style={{ padding: "5px 10px", textAlign: "right" }}>{usd(totalDe(f.lineas))}</td>
                           </tr>
                         );
                       })}
@@ -153,8 +204,8 @@ export default function ImportarFacturasExcel({ label = "Importar histórico (Ex
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                   <button onClick={() => { setModal(false); setPreview([]); }} style={btnSecondary}>Cancelar</button>
-                  <button onClick={() => importar.mutate()} disabled={preview.length === 0 || importar.isPending} style={btnPrimary}>
-                    {importar.isPending ? "Importando..." : `Importar ${preview.length} facturas`}
+                  <button onClick={() => importar.mutate()} disabled={seleccionadas.length === 0 || importar.isPending} style={btnPrimary}>
+                    {importar.isPending ? "Importando..." : `Importar ${seleccionadas.length} factura${seleccionadas.length === 1 ? "" : "s"}`}
                   </button>
                 </div>
               </>
