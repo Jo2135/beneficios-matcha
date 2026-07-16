@@ -1,12 +1,11 @@
-import { useState, Fragment } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { pedidosApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { Boxes, ChevronDown, ChevronRight, Zap, Wrench, Link2 } from "lucide-react";
+import { Boxes } from "lucide-react";
 
 type Pedido = { cliente: string; vendedor: string | null; numero: string; estado: string; fecha: string; cantidad: number };
 type Item = { productoId: number; codigo: string | null; nombre: string; medida: string; cantidad: number; pedidos: Pedido[] };
-type Grupo = { total: number; items: Item[] };
 
 const ESTADOS = [
   { key: "APROBADA", label: "Aprobadas" },
@@ -14,19 +13,23 @@ const ESTADOS = [
   { key: "COMPLETADA", label: "Completadas" },
 ];
 
-const INFO: Record<string, { titulo: string; sub: string; color: string; icono: any }> = {
-  curvas:     { titulo: "Curvas",     sub: "Curva Eléctrica Blanca y Negra — se fabrican",     color: "#2563eb", icono: Zap },
-  niples:     { titulo: "Niples",     sub: "Niple Azul — se fabrican",                          color: "#7c3aed", icono: Wrench },
-  conexiones: { titulo: "Conexiones", sub: "Solo las que se compran (los codos 2\" y 4\" que fabrica Ecoplast no cuentan)", color: "#ea580c", icono: Link2 },
+// Mismos colores del Excel: curvas en blanco, niples en azul, conexiones en durazno.
+const INFO: Record<string, { titulo: string; fila: string; franja: string }> = {
+  curvas:     { titulo: "Curvas Eléctricas", fila: "#ffffff", franja: "#e2efda" },
+  niples:     { titulo: "Niples",            fila: "#bdd7ee", franja: "#9fc5e8" },
+  conexiones: { titulo: "Conexiones (solo las que se compran)", fila: "#fce4d6", franja: "#f8cbad" },
 };
 
-const num = (n: number) => Number(n).toLocaleString("es-VE", { maximumFractionDigits: 2 });
-const fecha = (f: string) => new Date(f).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
+const VERDE = "#548235";
+const DURAZNO = "#f8cbad";
+
+const num = (n: number) => (n ? Number(n).toLocaleString("es-VE", { maximumFractionDigits: 2 }) : "");
+
+type Fila = { grupo: string; nombre: string; medida: string; porCliente: Map<string, number>; total: number };
 
 export default function PedidosProduccion() {
   const { usuario } = useAuth();
   const [estados, setEstados] = useState<string[]>(["APROBADA"]);
-  const [abierto, setAbierto] = useState<Record<string, boolean>>({});
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["pedidos-demanda", estados],
@@ -34,10 +37,29 @@ export default function PedidosProduccion() {
     enabled: estados.length > 0,
   });
 
+  // Cruce productos × clientes
+  const { clientes, porGrupo } = useMemo(() => {
+    const cli = new Set<string>();
+    const porGrupo: { grupo: string; filas: Fila[] }[] = [];
+    for (const g of (data?.puedeVer ?? []) as string[]) {
+      const filas: Fila[] = [];
+      for (const it of (data.grupos[g].items ?? []) as Item[]) {
+        const m = new Map<string, number>();
+        for (const p of it.pedidos) {
+          m.set(p.cliente, (m.get(p.cliente) ?? 0) + p.cantidad);
+          cli.add(p.cliente);
+        }
+        filas.push({ grupo: g, nombre: it.nombre, medida: it.medida, porCliente: m, total: it.cantidad });
+      }
+      porGrupo.push({ grupo: g, filas });
+    }
+    return { clientes: [...cli].sort((a, b) => a.localeCompare(b, "es")), porGrupo };
+  }, [data]);
+
   const toggleEstado = (k: string) =>
     setEstados((e) => (e.includes(k) ? e.filter((x) => x !== k) : [...e, k]));
 
-  const soloCurvas = usuario?.rol === "VENDEDOR";
+  const hayDatos = porGrupo.some((g) => g.filas.length > 0);
 
   return (
     <div style={{ padding: 24 }}>
@@ -46,12 +68,11 @@ export default function PedidosProduccion() {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>Pedidos de Producción</h1>
       </div>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>
-        {soloCurvas
+        {usuario?.rol === "VENDEDOR"
           ? "Cuántas curvas hay pedidas y qué cliente las está pidiendo."
           : "Cuánto hay pedido de curvas, niples y conexiones, y qué cliente lo pide."}
       </p>
 
-      {/* Filtro de estado del pedido */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Contar pedidos:</span>
         {ESTADOS.map((e) => {
@@ -60,8 +81,8 @@ export default function PedidosProduccion() {
             <button key={e.key} onClick={() => toggleEstado(e.key)}
               style={{
                 padding: "6px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: "pointer",
-                border: on ? "1px solid #2563eb" : "1px solid #d1d5db",
-                background: on ? "#2563eb" : "#fff", color: on ? "#fff" : "#64748b",
+                border: on ? `1px solid ${VERDE}` : "1px solid #d1d5db",
+                background: on ? VERDE : "#fff", color: on ? "#fff" : "#64748b",
               }}>
               {e.label}
             </button>
@@ -73,88 +94,74 @@ export default function PedidosProduccion() {
       {isLoading && <Aviso texto="Cargando..." />}
       {error && <Aviso texto="No tienes permiso para ver esta pantalla." color="#dc2626" />}
 
-      {data && (
-        <div style={{ display: "grid", gap: 16 }}>
-          {(data.puedeVer as string[]).map((g) => {
-            const grupo: Grupo = data.grupos[g];
-            const info = INFO[g];
-            const Icono = info.icono;
-            return (
-              <div key={g} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: "1px solid #f1f5f9" }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 9, background: info.color + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icono size={19} color={info.color} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>{info.titulo}</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8" }}>{info.sub}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: info.color }}>{num(grupo.total)}</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>unidades pedidas</div>
-                  </div>
-                </div>
+      {data && !hayDatos && (
+        <Aviso texto={`No hay nada pedido en: ${estados.map((e) => ESTADOS.find((x) => x.key === e)?.label).join(", ")}.`} />
+      )}
 
-                {grupo.items.length === 0 ? (
-                  <div style={{ padding: "18px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
-                    No hay {info.titulo.toLowerCase()} en los pedidos seleccionados.
-                  </div>
-                ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc" }}>
-                        {["", "Código", "Producto", "Medida", "Cantidad", "Clientes"].map((h, i) => (
-                          <th key={i} style={{ padding: "7px 12px", textAlign: i >= 4 ? "right" : "left", fontWeight: 600, color: "#64748b", fontSize: 11 }}>{h}</th>
+      {data && hayDatos && (
+        <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, overflowX: "auto", background: "#fff" }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ ...thBase, ...pegajosa(0), zIndex: 3, background: "#fff", minWidth: 210 }} />
+                <th style={{ ...thBase, ...pegajosa(210), zIndex: 3, background: "#fff", minWidth: 120 }} />
+                {clientes.map((c) => (
+                  <th key={c} style={{ ...thBase, background: VERDE, color: "#fff", minWidth: 96, textAlign: "center" }}>{c}</th>
+                ))}
+                <th style={{ ...thBase, background: VERDE, color: "#fff", minWidth: 96, textAlign: "center" }}>TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {porGrupo.map(({ grupo, filas }) => {
+                if (filas.length === 0) return null;
+                const info = INFO[grupo];
+                const subt = (c: string) => filas.reduce((s, f) => s + (f.porCliente.get(c) ?? 0), 0);
+                const totGrupo = filas.reduce((s, f) => s + f.total, 0);
+                return (
+                  <Fragment key={grupo}>
+                    <tr>
+                      <td colSpan={2 + clientes.length + 1}
+                        style={{ background: info.franja, padding: "5px 10px", fontWeight: 700, fontSize: 11, color: "#1e293b", letterSpacing: 0.4, textTransform: "uppercase", borderTop: "1px solid #cbd5e1" }}>
+                        {info.titulo}
+                      </td>
+                    </tr>
+                    {filas.map((f, i) => (
+                      <tr key={`${grupo}-${i}`}>
+                        <td style={{ ...tdBase, ...pegajosa(0), background: info.fila, fontWeight: 700, color: "#1e293b" }}>{f.nombre}</td>
+                        <td style={{ ...tdBase, ...pegajosa(210), background: info.fila, fontWeight: 700, color: "#1e293b" }}>{f.medida}</td>
+                        {clientes.map((c) => (
+                          <td key={c} style={{ ...tdBase, background: info.fila, textAlign: "center", color: "#334155" }}>
+                            {num(f.porCliente.get(c) ?? 0)}
+                          </td>
                         ))}
+                        <td style={{ ...tdBase, background: DURAZNO, textAlign: "center", fontWeight: 700, color: "#1e293b" }}>{num(f.total)}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {grupo.items.map((it) => {
-                        const k = `${g}-${it.productoId}`;
-                        const open = !!abierto[k];
-                        return (
-                          <Fragment key={k}>
-                            <tr onClick={() => setAbierto((a) => ({ ...a, [k]: !open }))}
-                              style={{ borderTop: "1px solid #f1f5f9", cursor: "pointer", background: open ? "#f8fafc" : "#fff" }}>
-                              <td style={{ padding: "7px 12px", width: 28 }}>
-                                {open ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#94a3b8" />}
-                              </td>
-                              <td style={{ padding: "7px 12px", color: "#94a3b8", fontSize: 12 }}>{it.codigo ?? "—"}</td>
-                              <td style={{ padding: "7px 12px", color: "#1e293b", fontWeight: 500 }}>{it.nombre}</td>
-                              <td style={{ padding: "7px 12px", color: "#64748b" }}>{it.medida}</td>
-                              <td style={{ padding: "7px 12px", textAlign: "right", fontWeight: 700, color: info.color }}>{num(it.cantidad)}</td>
-                              <td style={{ padding: "7px 12px", textAlign: "right", color: "#94a3b8", fontSize: 12 }}>{it.pedidos.length}</td>
-                            </tr>
-                            {open && it.pedidos.map((p, i) => (
-                              <tr key={`${k}-${i}`} style={{ background: "#f8fafc", fontSize: 12 }}>
-                                <td />
-                                <td style={{ padding: "5px 12px", color: "#94a3b8" }}>{p.numero}</td>
-                                <td style={{ padding: "5px 12px", color: "#1e293b", fontWeight: 600 }}>{p.cliente}</td>
-                                <td style={{ padding: "5px 12px", color: "#64748b" }}>
-                                  {p.vendedor ?? "—"} · {fecha(p.fecha)}
-                                </td>
-                                <td style={{ padding: "5px 12px", textAlign: "right", color: "#475569", fontWeight: 600 }}>{num(p.cantidad)}</td>
-                                <td style={{ padding: "5px 12px", textAlign: "right" }}>
-                                  <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, background: "#e2e8f0", color: "#475569", fontWeight: 600 }}>
-                                    {p.estado.replace("_", " ")}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            );
-          })}
+                    ))}
+                    <tr>
+                      <td style={{ ...tdBase, ...pegajosa(0), background: info.franja, fontWeight: 700, fontSize: 12 }}>Total {info.titulo.split(" ")[0]}</td>
+                      <td style={{ ...tdBase, ...pegajosa(210), background: info.franja }} />
+                      {clientes.map((c) => (
+                        <td key={c} style={{ ...tdBase, background: info.franja, textAlign: "center", fontWeight: 700 }}>{num(subt(c))}</td>
+                      ))}
+                      <td style={{ ...tdBase, background: DURAZNO, textAlign: "center", fontWeight: 800 }}>{num(totGrupo)}</td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
 }
+
+const thBase: React.CSSProperties = {
+  padding: "7px 10px", fontWeight: 700, fontSize: 12, border: "1px solid #cbd5e1",
+  position: "sticky", top: 0, zIndex: 2, whiteSpace: "nowrap",
+};
+const tdBase: React.CSSProperties = { padding: "5px 10px", border: "1px solid #cbd5e1", whiteSpace: "nowrap" };
+const pegajosa = (left: number): React.CSSProperties => ({ position: "sticky", left, zIndex: 1 });
 
 function Aviso({ texto, color = "#64748b" }: { texto: string; color?: string }) {
   return (
