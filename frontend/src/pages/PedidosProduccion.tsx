@@ -7,10 +7,13 @@ import { Boxes } from "lucide-react";
 type Pedido = { cliente: string; vendedor: string | null; numero: string; estado: string; fecha: string; cantidad: number };
 type Item = { productoId: number; codigo: string | null; nombre: string; medida: string; cantidad: number; pedidos: Pedido[] };
 
+// Aprobada = el pedido está EN FABRICACIÓN: es lo que de verdad hay que producir.
+// En Despacho = ya está producido y se está cargando. Completada = ya se entregó.
+// Por eso el filtro arranca solo en Aprobadas; los otros dos son para consultar.
 const ESTADOS = [
-  { key: "APROBADA", label: "Aprobadas" },
-  { key: "EN_DESPACHO", label: "En Despacho" },
-  { key: "COMPLETADA", label: "Completadas" },
+  { key: "APROBADA", label: "Aprobadas", ayuda: "En fabricación — esto es lo que falta por producir" },
+  { key: "EN_DESPACHO", label: "En Despacho", ayuda: "Ya producido, cargando mercancía" },
+  { key: "COMPLETADA", label: "Completadas", ayuda: "Ya entregado" },
 ];
 
 // Mismos colores del Excel: curvas en blanco, niples en azul, conexiones en durazno.
@@ -78,7 +81,7 @@ export default function PedidosProduccion() {
         {ESTADOS.map((e) => {
           const on = estados.includes(e.key);
           return (
-            <button key={e.key} onClick={() => toggleEstado(e.key)}
+            <button key={e.key} onClick={() => toggleEstado(e.key)} title={e.ayuda}
               style={{
                 padding: "6px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: "pointer",
                 border: on ? `1px solid ${VERDE}` : "1px solid #d1d5db",
@@ -95,7 +98,11 @@ export default function PedidosProduccion() {
       {error && <Aviso texto="No tienes permiso para ver esta pantalla." color="#dc2626" />}
 
       {data && !hayDatos && (
-        <Aviso texto={`No hay nada pedido en: ${estados.map((e) => ESTADOS.find((x) => x.key === e)?.label).join(", ")}.`} />
+        <Aviso texto={
+          estados.length === 1 && estados[0] === "APROBADA"
+            ? "No hay nada en fabricación en este momento: ningún pedido está en estado Aprobada. En cuanto apruebes un pedido, aquí verás qué hay que producir."
+            : `No hay curvas, niples ni conexiones en: ${estados.map((e) => ESTADOS.find((x) => x.key === e)?.label).join(", ")}.`
+        } />
       )}
 
       {data && hayDatos && (
