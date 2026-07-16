@@ -56,6 +56,7 @@ export async function login(req: Request, res: Response) {
       rol: usuario.rol,
       vendedorId: usuario.vendedorId,
       vendedor: usuario.vendedor,
+      puedeVerCurvas: usuario.puedeVerCurvas,
     },
   });
 }
@@ -199,12 +200,13 @@ export async function cambiarPassword(req: Request, res: Response) {
 
 export async function actualizarUsuario(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const { nombre, email, rol, vendedorId, password } = req.body;
+  const { nombre, email, rol, vendedorId, password, puedeVerCurvas } = req.body;
 
   const data: any = {};
   if (nombre)  data.nombre = nombre;
   if (email)   data.email  = email;
   if (rol)     data.rol    = rol;
+  if (puedeVerCurvas !== undefined) data.puedeVerCurvas = Boolean(puedeVerCurvas);
   data.vendedorId = vendedorId ? Number(vendedorId) : null;
   if (password && password.length >= 6) {
     data.passwordHash = await bcrypt.hash(password, 12);

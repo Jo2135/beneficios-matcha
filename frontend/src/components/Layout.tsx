@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Users, Package, FileText, Truck, Receipt, Banknote,
   BarChart3, Settings, ChevronLeft, ChevronRight, DollarSign,
-  UserCog, LogOut, Shield, Briefcase, Factory, Calendar, ShoppingCart, SlidersHorizontal, LayoutGrid, Wallet, LayoutDashboard,
+  UserCog, LogOut, Shield, Briefcase, Factory, Calendar, ShoppingCart, SlidersHorizontal, LayoutGrid, Wallet, LayoutDashboard, Boxes,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -28,6 +28,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: "/despachos",        label: "Despachos",         icon: Truck,    roles: ["MASTER","ADMIN"] },
     { path: "/planificador-carga", label: "Planificador Carga", icon: LayoutGrid, roles: ["MASTER","ADMIN"] },
     { path: "/orden-produccion", label: "Orden Producción",  icon: Factory,  roles: ["MASTER","ADMIN"] },
+    { path: "/pedidos-produccion", label: "Pedidos Producción", icon: Boxes, roles: ["MASTER","ADMIN","VENDEDOR"], soloSiVeCurvas: true },
     { path: "/facturas",    label: "Facturas",            icon: Receipt,   roles: ["MASTER","ADMIN"] },
     { path: "/facturacion-externa", label: "Facturación Externa", icon: ShoppingCart, roles: ["MASTER","ADMIN"] },
     { path: "/pagos",       label: "Pagos",               icon: Banknote,  roles: ["MASTER","ADMIN"] },
@@ -38,7 +39,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: "/vendedores",  label: "Vendedores",          icon: Users,     roles: ["MASTER","ADMIN"] },
     { path: "/tablas-ganancias", label: "Tablas de Ganancias", icon: SlidersHorizontal, roles: ["MASTER"] },
     { path: "/configuracion",label: "Configuración",     icon: Settings,  roles: ["MASTER"] },
-  ].filter((item) => !usuario || item.roles.includes(usuario.rol));
+  ].filter((item) => {
+    if (!usuario) return true;
+    if (!item.roles.includes(usuario.rol)) return false;
+    // Un vendedor solo ve Pedidos Producción si le marcaron la casilla en Usuarios.
+    if ((item as any).soloSiVeCurvas && usuario.rol === "VENDEDOR" && !usuario.puedeVerCurvas) return false;
+    return true;
+  });
 
   const rolInfo = usuario ? ROL_BADGE[usuario.rol] : null;
   const RolIcon = rolInfo?.icon ?? Shield;

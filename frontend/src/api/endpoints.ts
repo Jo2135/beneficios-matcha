@@ -239,6 +239,12 @@ export const tablasApi = {
     api.post("/tablas/pin", data).then((r) => r.data),
 };
 
+// Pedidos de producción: cuánto hay pedido de curvas / niples / conexiones
+export const pedidosApi = {
+  demanda: (estados: string[]) =>
+    api.get("/pedidos/demanda", { params: { estados: estados.join(",") } }).then((r) => r.data),
+};
+
 // Cuentas bancarias
 export const cuentasApi = {
   listar: () => api.get("/cuentas").then((r) => r.data),

@@ -18,6 +18,7 @@ import * as balance from "../controllers/balance.controller";
 import * as tablas from "../controllers/tablas.controller";
 import * as comprasExternas from "../controllers/comprasExternas.controller";
 import * as planCarga from "../controllers/planCarga.controller";
+import * as pedidos from "../controllers/pedidos.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -105,6 +106,10 @@ router.get("/seguimiento/pendientes", requireRol("MASTER", "ADMIN"), w(seguimien
 
 // ─── Facturas ─────────────────────────────────────────────────────────────
 router.get("/facturas", requireRol("MASTER", "ADMIN"), w(facturas.listar));
+// ─── PEDIDOS DE PRODUCCIÓN (curvas / niples / conexiones) ─────────────────
+// Sin requireRol: el propio controlador decide según rol + la casilla puedeVerCurvas.
+router.get("/pedidos/demanda", w(pedidos.demandaPedidos));
+
 router.get("/facturas/balance", requireRol("MASTER", "ADMIN"), w(facturas.balanceGeneral));
 router.get("/facturas/cliente/:clienteId/resumen", requireRol("MASTER", "ADMIN"), w(facturas.resumenCliente));
 router.get("/facturas/cliente/:clienteId/con-pagos", requireRol("MASTER", "ADMIN"), w(facturas.listarClienteConPagos));

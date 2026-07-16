@@ -11,6 +11,7 @@ interface Usuario {
   email: string;
   rol: "MASTER" | "ADMIN" | "VENDEDOR";
   vendedorId: number | null;
+  puedeVerCurvas?: boolean;
   vendedor?: { id: number; nombre: string; comisionPct: string | number | null } | null;
   activo: boolean;
   ultimoAcceso: string | null;
@@ -35,7 +36,7 @@ export default function Usuarios() {
   const [error, setError] = useState("");
   const [editComision, setEditComision] = useState<{ usuarioId: number; nombre: string; valor: string } | null>(null);
   const [editUsuario, setEditUsuario] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ nombre: "", email: "", rol: "VENDEDOR" as "MASTER" | "ADMIN" | "VENDEDOR", vendedorId: "", password: "" });
+  const [editForm, setEditForm] = useState({ nombre: "", email: "", rol: "VENDEDOR" as "MASTER" | "ADMIN" | "VENDEDOR", vendedorId: "", password: "", puedeVerCurvas: false });
 
   const { data: usuarios = [] } = useQuery<Usuario[]>({
     queryKey: ["usuarios"],
@@ -89,7 +90,7 @@ export default function Usuarios() {
 
   const editarMutation = useMutation({
     mutationFn: (data: typeof editForm & { id: number }) =>
-      api.put(`/auth/usuarios/${data.id}`, { nombre: data.nombre, email: data.email, rol: data.rol, vendedorId: data.vendedorId || null, password: data.password || undefined }),
+      api.put(`/auth/usuarios/${data.id}`, { nombre: data.nombre, email: data.email, rol: data.rol, vendedorId: data.vendedorId || null, password: data.password || undefined, puedeVerCurvas: data.puedeVerCurvas }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["usuarios"] });
       setEditUsuario(null);
@@ -99,7 +100,7 @@ export default function Usuarios() {
 
   const abrirEditar = (u: Usuario) => {
     setEditUsuario(u);
-    setEditForm({ nombre: u.nombre, email: u.email, rol: u.rol, vendedorId: String(u.vendedorId ?? ""), password: "" });
+    setEditForm({ nombre: u.nombre, email: u.email, rol: u.rol, vendedorId: String(u.vendedorId ?? ""), password: "", puedeVerCurvas: !!u.puedeVerCurvas });
   };
 
   return (
@@ -282,6 +283,22 @@ export default function Usuarios() {
                   {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
                 </select>
               </label>
+              {editForm.rol === "VENDEDOR" && (
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 12px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={editForm.puedeVerCurvas}
+                    onChange={(e) => setEditForm({ ...editForm, puedeVerCurvas: e.target.checked })}
+                    style={{ width: 15, height: 15, marginTop: 1, cursor: "pointer" }}
+                  />
+                  <span style={{ fontSize: 13 }}>
+                    <span style={{ fontWeight: 600, color: "#1e3a8a" }}>Puede ver pedidos de curvas</span>
+                    <span style={{ display: "block", fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      Le habilita la pantalla "Pedidos Producción", donde ve cuántas curvas hay pedidas y qué cliente las pide. No ve niples ni conexiones.
+                    </span>
+                  </span>
+                </label>
+              )}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
               <button onClick={() => setEditUsuario(null)} style={{ padding: "10px 20px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", cursor: "pointer", fontSize: 14 }}>

@@ -25,6 +25,7 @@ import EstadoCuenta from "./pages/EstadoCuenta";
 import FacturacionExterna from "./pages/FacturacionExterna";
 import TablasGanancias from "./pages/TablasGanancias";
 import PlanificadorCarga from "./pages/PlanificadorCarga";
+import PedidosProduccion from "./pages/PedidosProduccion";
 import PagosVendedores from "./pages/PagosVendedores";
 
 const queryClient = new QueryClient({
@@ -68,6 +69,8 @@ function AppRoutes() {
   const { rol } = usuario;
   const esMaster = rol === "MASTER";
   const puedeEditar = rol === "MASTER" || rol === "ADMIN";
+  // Pedidos de producción: admins ven los tres conteos; un vendedor solo si tiene la casilla.
+  const vePedidos = puedeEditar || !!usuario.puedeVerCurvas;
 
   return (
     <Layout>
@@ -76,6 +79,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/catalogo" element={<Catalogo />} />
+        {vePedidos && <Route path="/pedidos-produccion" element={<PedidosProduccion />} />}
 
         {/* Solo MASTER y ADMIN */}
         {puedeEditar && <Route path="/precios" element={<ListasPrecios />} />}

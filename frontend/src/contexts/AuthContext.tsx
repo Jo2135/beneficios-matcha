@@ -10,6 +10,7 @@ export interface UsuarioSesion {
   rol: Rol;
   vendedorId: number | null;
   vendedor?: { id: number; nombre: string; comisionPct: string } | null;
+  puedeVerCurvas?: boolean;
 }
 
 interface AuthContextType {

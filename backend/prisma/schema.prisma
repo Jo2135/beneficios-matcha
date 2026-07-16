@@ -496,6 +496,9 @@ model Usuario {
   vendedorId   Int?       @unique
   vendedor     Vendedor?  @relation(fields: [vendedorId], references: [id])
   activo       Boolean    @default(true)
+  // Deja que un VENDEDOR consulte cuántas curvas hay pedidas y qué cliente las pide.
+  // MASTER y ADMIN ven los tres conteos (curvas, niples, conexiones) sin necesitar esto.
+  puedeVerCurvas Boolean  @default(false)
   creadoEn     DateTime   @default(now())
   ultimoAcceso DateTime?
 
