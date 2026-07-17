@@ -18,35 +18,63 @@ const fmtCelda = (v: any): string => {
   return String(v).trim();
 };
 
-// Ubica la fila de encabezado y en qué columna arranca la plantilla.
-// Formato normal: encabezado en fila 9, columna B. Planillas viejas (conexiones): columna A.
-function detectarLayout(rows: any[][]): { off: number; hdr: number } {
-  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+const norm = (v: any) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+// Localiza la fila de encabezado y QUÉ columna es cada dato leyendo los títulos.
+// Así da igual el orden real de las columnas: sirve tanto para la plantilla de
+// cotización (Cantidad después de la descripción) como para las notas de despacho
+// (Cantidad en la primera columna). Devuelve null si la hoja no tiene tabla de productos.
+function detectarColumnas(rows: any[][]):
+  | { hdr: number; cProd: number; cMedida: number; cCant: number; cMonto: number }
+  | null {
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const r = rows[i]; if (!r) continue;
-    for (let c = 0; c < 4; c++) {
-      if (String(r[c] ?? "").toLowerCase().trim() === "descripcion producto") return { off: c, hdr: i };
+    let cProd = -1, cMedida = -1, cCant = -1, cMonto = -1;
+    for (let c = 0; c < r.length; c++) {
+      const t = norm(r[c]);
+      if (!t) continue;
+      if (cProd < 0 && t.includes("descripcion")) cProd = c;
+      else if (cMedida < 0 && t === "medida") cMedida = c;
+      else if (cCant < 0 && t.includes("cantidad")) cCant = c;
+      // Monto = el TOTAL de la línea (no el precio unitario). Tomo la primera que aparezca.
+      else if (cMonto < 0 && /monto|costo\s*total|costo\s*x|importe|sub\s*total/.test(t)) cMonto = c;
+    }
+    // Una tabla válida necesita al menos descripción, cantidad y monto.
+    if (cProd >= 0 && cCant >= 0 && cMonto >= 0) {
+      return { hdr: i, cProd, cMedida: cMedida >= 0 ? cMedida : cProd + 1, cCant, cMonto };
     }
   }
-  return { off: 1, hdr: 8 };
+  return null;
 }
 
-// Lee UNA hoja tipo plantilla y extrae cliente, fecha y líneas vendidas
+// Lee UNA hoja y extrae cliente, fecha y líneas vendidas.
 function parsePlantilla(rows: any[][]): { cliente: string; fecha: string; lineas: any[] } {
-  const { off, hdr } = detectarLayout(rows);
+  const col = detectarColumnas(rows);
+  if (!col) return { cliente: "", fecha: "", lineas: [] };
+
+  // Cliente y Fecha: busco las etiquetas en CUALQUIER columna por encima de la tabla,
+  // y tomo el valor de la primera celda no vacía a su derecha.
   let cliente = "", fecha = "";
-  for (let i = 0; i < hdr; i++) {
-    const lbl = String(rows[i]?.[off] ?? "").toLowerCase().trim();
-    if (lbl === "cliente" && !cliente) cliente = String(rows[i]?.[off + 1] ?? "").trim();
-    if (lbl === "fecha" && !fecha) fecha = fmtCelda(rows[i]?.[off + 1]);
-  }
-  const lineas: any[] = [];
-  for (let i = hdr + 1; i < rows.length; i++) {
+  for (let i = 0; i < col.hdr; i++) {
     const r = rows[i]; if (!r) continue;
-    const producto = String(r[off] ?? "").trim();
-    const medida = String(r[off + 1] ?? "").trim();
-    const cantidad = Number(r[off + 2]);
-    const monto = Number(r[off + 4]);
-    if (!producto || producto.toLowerCase() === "descripcion producto") continue;
+    for (let c = 0; c < r.length; c++) {
+      const lbl = norm(r[c]);
+      if (lbl !== "cliente" && lbl !== "fecha") continue;
+      let val: any = "";
+      for (let k = c + 1; k < r.length; k++) { if (String(r[k] ?? "").trim() !== "") { val = r[k]; break; } }
+      if (lbl === "cliente" && !cliente) cliente = String(val ?? "").trim();
+      if (lbl === "fecha" && !fecha) fecha = fmtCelda(val);
+    }
+  }
+
+  const lineas: any[] = [];
+  for (let i = col.hdr + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const producto = String(r[col.cProd] ?? "").trim();
+    const medida = String(r[col.cMedida] ?? "").trim();
+    const cantidad = Number(r[col.cCant]);
+    const monto = Number(r[col.cMonto]);
+    if (!producto || norm(producto).includes("descripcion")) continue;
     if (!(cantidad > 0) || !(monto > 0)) continue;
     lineas.push({ producto, medida, cantidad, monto });
   }
