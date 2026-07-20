@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi, clientesApi, cuentasApi, empresasApi, authApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown } from "lucide-react";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown, BarChart2 } from "lucide-react";
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 import ImportarFacturasExcel from "../components/ImportarFacturasExcel";
@@ -35,6 +36,7 @@ function fecha(raw: any) {
 export default function Facturas() {
   const qc = useQueryClient();
   const { esMaster, puedeEditar } = useAuth();
+  const navigate = useNavigate();
   const [filtro, setFiltro] = useState("TODAS");
   const [busqueda, setBusqueda] = useState("");
   const [desde, setDesde] = useState("");
@@ -287,7 +289,32 @@ export default function Facturas() {
                       <EstIcon size={11} /> {est.label}
                     </span>
                   </td>
-                  <td style={tdStyle}><span style={{ fontSize: 12, color: "#94a3b8" }}>Ver →</span></td>
+                  <td style={tdStyle}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>Ver →</span>
+                      {/* Ganancias/Balance calculan por despacho: solo facturas nacidas de uno */}
+                      {f.ordenDespachoId && (
+                        <>
+                          <button
+                            title="Ver distribución de ganancias del despacho"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${f.ordenDespachoId}/ganancias`); }}
+                            style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#16a34a" }}
+                          >
+                            <BarChart2 size={12} /> Ganancias
+                          </button>
+                          {esMaster && (
+                            <button
+                              title="Ver balance de pagos del despacho"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${f.ordenDespachoId}/balance`); }}
+                              style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#2563eb" }}
+                            >
+                              <BarChart2 size={12} /> Balance
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
