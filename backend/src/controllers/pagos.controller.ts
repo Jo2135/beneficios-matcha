@@ -90,10 +90,25 @@ export async function asignarAFactura(req: Request, res: Response) {
 
   const yaAsignado = pago.asignaciones.reduce((s, a) => s + Number(a.montoAsignado), 0);
   const nuevoTotal = asignaciones.reduce((s, a) => s + a.montoAsignado, 0);
-  if (yaAsignado + nuevoTotal > Number(pago.monto)) {
+  const disponible = Number(pago.monto) - yaAsignado;
+  if (nuevoTotal > disponible + 0.005) {
     return res.status(400).json({
-      error: `Monto excede el disponible. Disponible: ${Number(pago.monto) - yaAsignado}`,
+      error: `El monto excede lo disponible de este pago. Ya asignado antes: $${yaAsignado.toFixed(2)} — disponible: $${disponible.toFixed(2)}`,
     });
+  }
+
+  // Ninguna asignación puede superar el saldo de su factura (dejaría el saldo negativo)
+  for (const asig of asignaciones) {
+    const f = await prisma.factura.findUnique({
+      where: { id: asig.facturaId },
+      select: { numero: true, saldoPendiente: true },
+    });
+    if (!f) return res.status(400).json({ error: `Factura ${asig.facturaId} no encontrada` });
+    if (asig.montoAsignado > Number(f.saldoPendiente) + 0.005) {
+      return res.status(400).json({
+        error: `${f.numero} solo tiene $${Number(f.saldoPendiente).toFixed(2)} de saldo y le estás asignando $${asig.montoAsignado.toFixed(2)}. Ajusta el monto.`,
+      });
+    }
   }
 
   const ops = [];
@@ -155,6 +170,8 @@ export async function pagosPendientes(req: Request, res: Response) {
     include: {
       cliente: { select: { nombre: true } },
       cuenta: { select: { nombre: true } },
+      // Para que la ventana de asignar calcule lo que de verdad queda disponible
+      asignaciones: { select: { montoAsignado: true } },
     },
     orderBy: { fecha: "desc" },
   });

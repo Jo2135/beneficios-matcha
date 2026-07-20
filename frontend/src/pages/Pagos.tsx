@@ -94,6 +94,7 @@ export default function Pagos() {
       setModalPago(false);
       setForm(FORM_VACIO);
     },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo registrar el pago"),
   });
 
   const asignar = useMutation({
@@ -106,6 +107,8 @@ export default function Pagos() {
       setModalAsignar(null);
       setAsignaciones([]);
     },
+    // Sin esto, un rechazo del servidor dejaba la ventana muda ("no hace nada")
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo asignar el pago"),
   });
 
   const hayFiltros = busqueda || desde || hasta;
@@ -132,7 +135,17 @@ export default function Pagos() {
   }, [pagos, busqueda, desde, hasta]);
 
   const totalAsignado = asignaciones.reduce((s, a) => s + (a.montoAsignado || 0), 0);
-  const disponible = modalAsignar ? Number(modalAsignar.monto) : 0;
+  // Lo disponible del pago es su monto MENOS lo que ya se le asignó antes
+  // (un pago puede asignarse en partes; antes se mostraba el monto completo siempre).
+  const yaAsignadoPrevio = modalAsignar
+    ? (modalAsignar.asignaciones ?? []).reduce((s: number, a: any) => s + Number(a.montoAsignado), 0)
+    : 0;
+  const disponible = modalAsignar ? Number(modalAsignar.monto) - yaAsignadoPrevio : 0;
+  // Facturas cuyo monto tecleado supera su saldo (bloquea Confirmar con aviso)
+  const filasExcedidas = asignaciones.filter((a) => {
+    const f = (facturasAbiertas as any[]).find((x: any) => x.id === a.facturaId);
+    return f && a.montoAsignado > Number(f.saldoPendiente) + 0.005;
+  });
 
   return (
     <div style={{ padding: 24 }}>
@@ -384,8 +397,11 @@ export default function Pagos() {
             <div style={{ color: "#64748b", fontSize: 14, marginBottom: 18 }}>
               Monto disponible:{" "}
               <strong style={{ color: "#059669", fontSize: 16 }}>
-                {Number(modalAsignar.monto).toFixed(2)} {MONEDA_LABEL[modalAsignar.moneda]}
+                {disponible.toFixed(2)} {MONEDA_LABEL[modalAsignar.moneda]}
               </strong>
+              {yaAsignadoPrevio > 0 && (
+                <span style={{ color: "#94a3b8" }}> (pago de {Number(modalAsignar.monto).toFixed(2)} — ya asignaste {yaAsignadoPrevio.toFixed(2)} antes)</span>
+              )}
               {modalAsignar.cliente && ` · ${modalAsignar.cliente.nombre}`}
               {" · "}{fmtFecha(modalAsignar.fecha)}
             </div>
@@ -424,7 +440,11 @@ export default function Pagos() {
                             type="number" step="0.01" min="0"
                             placeholder="0.00"
                             value={idx >= 0 ? asignaciones[idx].montoAsignado : ""}
-                            style={{ ...inp, width: 120, padding: "6px 10px" }}
+                            style={{
+                              ...inp, width: 120, padding: "6px 10px",
+                              ...(idx >= 0 && asignaciones[idx].montoAsignado > Number(f.saldoPendiente) + 0.005
+                                ? { border: "1.5px solid #dc2626", background: "#fef2f2" } : {}),
+                            }}
                             onChange={(e) => {
                               const val = Number(e.target.value);
                               const updated = [...asignaciones];
@@ -437,6 +457,11 @@ export default function Pagos() {
                               setAsignaciones(updated);
                             }}
                           />
+                          {idx >= 0 && asignaciones[idx].montoAsignado > Number(f.saldoPendiente) + 0.005 && (
+                            <div style={{ fontSize: 11, color: "#dc2626", marginTop: 3, fontWeight: 600 }}>
+                              Supera el saldo ({usd(f.saldoPendiente)}) — bájalo para poder confirmar
+                            </div>
+                          )}
                           {idx >= 0 && (
                             <input
                               placeholder="Nota: destino del pago..."
@@ -460,8 +485,10 @@ export default function Pagos() {
               <button onClick={() => setModalAsignar(null)} style={btnSecondary}>Cancelar</button>
               <button
                 onClick={() => asignar.mutate()}
-                disabled={asignaciones.length === 0 || totalAsignado > disponible || asignar.isPending}
-                style={btnPrimary}
+                disabled={asignaciones.length === 0 || totalAsignado > disponible + 0.005 || filasExcedidas.length > 0 || asignar.isPending}
+                style={{ ...btnPrimary, opacity: asignaciones.length === 0 || totalAsignado > disponible + 0.005 || filasExcedidas.length > 0 ? 0.5 : 1 }}
+                title={filasExcedidas.length > 0 ? "Hay montos que superan el saldo de su factura"
+                  : totalAsignado > disponible + 0.005 ? "El total supera lo disponible del pago" : undefined}
               >
                 {asignar.isPending ? "Asignando..." : "Confirmar Asignación"}
               </button>
