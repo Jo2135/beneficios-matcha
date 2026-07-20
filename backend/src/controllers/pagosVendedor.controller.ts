@@ -1,4 +1,7 @@
 import { Request, Response } from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { prisma } from "../lib/prisma";
 
 // ─── Pagos rendidos por VENDEDORES, con flujo de aprobación ──────────────────
@@ -214,6 +217,70 @@ export async function aprobar(req: Request, res: Response) {
   const resultado = await aplicarPagoVendedor(id);
   const completo = await prisma.pago.findUnique({ where: { id }, include: INCLUDE_PAGO });
   res.json({ pago: completo, resultado });
+}
+
+// ─── Comprobante del pago (imagen o PDF del depósito) ────────────────────────
+// Mismo esquema que las facturas de compras externas: multer a disco + estático /uploads.
+
+const comprobantesDir = path.join(process.cwd(), "public", "uploads", "comprobantes");
+if (!fs.existsSync(comprobantesDir)) fs.mkdirSync(comprobantesDir, { recursive: true });
+
+const comprobanteStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, comprobantesDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `pago-${req.params.id}-${Date.now()}${ext}`);
+  },
+});
+export const uploadComprobanteMiddleware = multer({
+  storage: comprobanteStorage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error("Solo se permiten imágenes JPG, PNG, WEBP o PDF"));
+  },
+}).single("imagen");
+
+const borrarArchivo = (url: string | null) => {
+  if (!url) return;
+  const f = path.join(process.cwd(), "public", url.replace(/^\//, ""));
+  if (fs.existsSync(f)) fs.unlinkSync(f);
+};
+
+// POST /pagos-vendedor/:id/comprobante — lo anexa el vendedor dueño del pago o un admin/master
+export async function subirComprobante(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const usuario = req.usuario!;
+  if (!req.file) return res.status(400).json({ error: "No se recibió ningún archivo" });
+
+  const pago = await prisma.pago.findUnique({ where: { id }, select: { vendedorId: true, comprobanteUrl: true } });
+  const esAdmin = usuario.rol === "MASTER" || usuario.rol === "ADMIN";
+  const esDueno = usuario.rol === "VENDEDOR" && pago?.vendedorId != null && pago.vendedorId === usuario.vendedorId;
+  if (!pago || !pago.vendedorId || (!esAdmin && !esDueno)) {
+    // multer ya guardó el archivo: no dejar huérfanos
+    borrarArchivo(`/uploads/comprobantes/${req.file.filename}`);
+    if (!pago || !pago.vendedorId) return res.status(404).json({ error: "Pago de vendedor no encontrado" });
+    return res.status(403).json({ error: "Solo puedes anexar comprobantes a tus propios pagos" });
+  }
+
+  borrarArchivo(pago.comprobanteUrl); // si reemplaza uno anterior
+  const comprobanteUrl = `/uploads/comprobantes/${req.file.filename}`;
+  await prisma.pago.update({ where: { id }, data: { comprobanteUrl } });
+  res.json({ comprobanteUrl });
+}
+
+// DELETE /pagos-vendedor/:id/comprobante — solo MASTER/ADMIN (la ruta lo exige)
+export async function eliminarComprobante(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const pago = await prisma.pago.findUnique({ where: { id }, select: { vendedorId: true, comprobanteUrl: true } });
+  if (!pago || !pago.vendedorId) return res.status(404).json({ error: "Pago de vendedor no encontrado" });
+  if (!pago.comprobanteUrl) return res.status(400).json({ error: "Este pago no tiene comprobante" });
+
+  borrarArchivo(pago.comprobanteUrl);
+  await prisma.pago.update({ where: { id }, data: { comprobanteUrl: null } });
+  res.json({ ok: true });
 }
 
 // ─── POST /pagos-vendedor/:id/rechazar (MASTER/ADMIN) ────────────────────────

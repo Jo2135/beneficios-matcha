@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pagosVendedorApi, authApi, tasaCambioApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
-import { Wallet, Plus, CheckCircle, XCircle, Clock, FileText } from "lucide-react";
+import { Wallet, Plus, CheckCircle, XCircle, Clock, FileText, Paperclip, Trash2, Camera } from "lucide-react";
+
+const API_BASE = import.meta.env.VITE_API_URL?.replace("/api", "") ?? "http://localhost:5101";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fecha = (raw: any) => (raw ? new Date(raw).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" }) : "—");
@@ -32,8 +34,11 @@ export default function PagosVendedores() {
   // Formulario
   const [vendedorId, setVendedorId] = useState<number | "">("");   // solo admin
   const [form, setForm] = useState<any>({ fecha: hoyISO(), metodoPago: "", monto: "", tasa: "", facturaDestinoId: "", observaciones: "" });
+  const [comprobante, setComprobante] = useState<File | null>(null);   // imagen/PDF opcional del depósito
   const [resultado, setResultado] = useState<any>(null);
   const [tasasAprobar, setTasasAprobar] = useState<Record<number, string>>({}); // tasa por pago pendiente (Bs/COP)
+  const adjuntarRef = useRef<HTMLInputElement>(null);
+  const [adjuntarId, setAdjuntarId] = useState<number | null>(null);   // pago al que se anexa desde el historial
 
   const { data: vendedores = [] } = useQuery({ queryKey: ["vendedores"], queryFn: authApi.listarVendedores, enabled: puedeEditar });
   const { data: tasa } = useQuery({ queryKey: ["tasa-vigente"], queryFn: tasaCambioApi.vigente });
@@ -55,21 +60,41 @@ export default function PagosVendedores() {
     ? Number(form.monto) / Number(form.tasa) : 0;
 
   const crear = useMutation({
-    mutationFn: () => pagosVendedorApi.crear({
-      ...form,
-      monto: Number(form.monto),
-      tasa: esMonedaExtranjera && puedeEditar ? Number(form.tasa) : undefined,
-      facturaDestinoId: form.facturaDestinoId || undefined,
-      vendedorId: puedeEditar ? Number(vendedorId) : undefined,
-    }),
+    mutationFn: async () => {
+      const r = await pagosVendedorApi.crear({
+        ...form,
+        monto: Number(form.monto),
+        tasa: esMonedaExtranjera && puedeEditar ? Number(form.tasa) : undefined,
+        facturaDestinoId: form.facturaDestinoId || undefined,
+        vendedorId: puedeEditar ? Number(vendedorId) : undefined,
+      });
+      // El comprobante es opcional: si falla su subida, el pago igual quedó registrado
+      if (comprobante && r?.pago?.id) {
+        try { await pagosVendedorApi.subirComprobante(r.pago.id, comprobante); }
+        catch { alert("El pago se registró, pero no se pudo subir el comprobante. Puedes anexarlo desde el historial."); }
+      }
+      return r;
+    },
     onSuccess: (r: any) => {
       setResultado(r);
       setForm({ fecha: hoyISO(), metodoPago: "", monto: "", tasa: "", facturaDestinoId: "", observaciones: "" });
+      setComprobante(null);
       qc.invalidateQueries({ queryKey: ["pagos-vendedor"] });
       qc.invalidateQueries({ queryKey: ["pagos-vendedor-facturas"] });
       qc.invalidateQueries({ queryKey: ["facturas-balance"] });
     },
     onError: (e: any) => alert(e?.response?.data?.error ?? "Error al registrar el pago"),
+  });
+
+  const subirComp = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => pagosVendedorApi.subirComprobante(id, file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pagos-vendedor"] }),
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo subir el comprobante"),
+  });
+  const borrarComp = useMutation({
+    mutationFn: (id: number) => pagosVendedorApi.eliminarComprobante(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pagos-vendedor"] }),
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo eliminar el comprobante"),
   });
 
   const aprobar = useMutation({
@@ -168,6 +193,19 @@ export default function PagosVendedores() {
             <input style={inSt} placeholder="Referencia del depósito, banco, comprobante..." value={form.observaciones}
               onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
           </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label style={lbl}>Comprobante del pago <span style={{ fontWeight: 400, color: "#94a3b8" }}>(opcional — foto o PDF del depósito)</span></label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", border: "1px dashed #93c5fd", borderRadius: 8, background: "#eff6ff", cursor: "pointer", fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}>
+              <Camera size={15} /> {comprobante ? comprobante.name : "Elegir imagen o PDF"}
+              <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }}
+                onChange={(e) => setComprobante(e.target.files?.[0] ?? null)} />
+            </label>
+            {comprobante && (
+              <button onClick={() => setComprobante(null)} style={{ marginLeft: 8, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 12 }}>
+                Quitar
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "#64748b" }}>
@@ -213,6 +251,11 @@ export default function PagosVendedores() {
                     {Number(p.monto).toLocaleString("es-VE")} {p.moneda}
                     {esExt && <span style={{ color: "#92400e" }}> · fija la tasa para aprobar</span>}
                     {p.observaciones && <> · {p.observaciones}</>}
+                    {p.comprobanteUrl && (
+                      <> · <a href={`${API_BASE}${p.comprobanteUrl}`} target="_blank" rel="noreferrer" style={{ color: "#1d4ed8", fontWeight: 600 }}>
+                        <Paperclip size={11} style={{ verticalAlign: "-1px" }} /> Ver comprobante
+                      </a></>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -257,15 +300,23 @@ export default function PagosVendedores() {
             </select>
           )}
         </div>
+        {/* input oculto: se dispara desde el botón "Anexar" de cada fila */}
+        <input ref={adjuntarRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file && adjuntarId) subirComp.mutate({ id: adjuntarId, file });
+            setAdjuntarId(null);
+          }} />
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Fecha", ...(esVendedor ? [] : ["Vendedor"]), "Modo", "Cantidad", "USD", "Estado", "Abonado a"].map((h) => <th key={h} style={th}>{h}</th>)}
+              {["Fecha", ...(esVendedor ? [] : ["Vendedor"]), "Modo", "Cantidad", "USD", "Estado", "Abonado a", "Comprobante"].map((h) => <th key={h} style={th}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {(pagos as any[]).length === 0 && (
-              <tr><td colSpan={7} style={{ ...td, textAlign: "center", padding: 30, color: "#94a3b8" }}>Sin pagos registrados</td></tr>
+              <tr><td colSpan={esVendedor ? 7 : 8} style={{ ...td, textAlign: "center", padding: 30, color: "#94a3b8" }}>Sin pagos registrados</td></tr>
             )}
             {(pagos as any[]).map((p: any) => {
               const ap = APROBACION[p.aprobacion] ?? APROBACION.PENDIENTE;
@@ -306,6 +357,37 @@ export default function PagosVendedores() {
                           </span>
                         ))}
                       </div>
+                    )}
+                  </td>
+                  <td style={td}>
+                    {p.comprobanteUrl ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <a href={`${API_BASE}${p.comprobanteUrl}`} target="_blank" rel="noreferrer" title="Ver comprobante">
+                          {p.comprobanteUrl.toLowerCase().endsWith(".pdf") ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#1d4ed8", fontWeight: 600 }}>
+                              <Paperclip size={13} /> PDF
+                            </span>
+                          ) : (
+                            <img src={`${API_BASE}${p.comprobanteUrl}`} alt="Comprobante"
+                              style={{ height: 34, width: 48, objectFit: "cover", borderRadius: 5, border: "1px solid #e2e8f0", cursor: "zoom-in", display: "block" }} />
+                          )}
+                        </a>
+                        {puedeEditar && (
+                          <button title="Eliminar comprobante"
+                            onClick={() => { if (confirm("¿Eliminar el comprobante de este pago?")) borrarComp.mutate(p.id); }}
+                            disabled={borrarComp.isPending}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", padding: 2 }}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </span>
+                    ) : (
+                      <button title="Anexar comprobante (foto o PDF del depósito)"
+                        onClick={() => { setAdjuntarId(p.id); adjuntarRef.current?.click(); }}
+                        disabled={subirComp.isPending}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#f1f5f9", border: "1px dashed #cbd5e1", borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+                        <Paperclip size={12} /> Anexar
+                      </button>
                     )}
                   </td>
                 </tr>

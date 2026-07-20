@@ -135,6 +135,9 @@ router.get("/pagos-vendedor/facturas-pendientes", w(pagosVendedor.facturasPendie
 router.post("/pagos-vendedor", w(pagosVendedor.crear));
 router.post("/pagos-vendedor/:id/aprobar", requireRol("MASTER", "ADMIN"), w(pagosVendedor.aprobar));
 router.post("/pagos-vendedor/:id/rechazar", requireRol("MASTER", "ADMIN"), w(pagosVendedor.rechazar));
+// Comprobante: lo anexa el vendedor dueño o un admin (el controlador valida); borra solo admin/master
+router.post("/pagos-vendedor/:id/comprobante", pagosVendedor.uploadComprobanteMiddleware, w(pagosVendedor.subirComprobante));
+router.delete("/pagos-vendedor/:id/comprobante", requireRol("MASTER", "ADMIN"), w(pagosVendedor.eliminarComprobante));
 
 // ─── Pagos ────────────────────────────────────────────────────────────────
 router.get("/pagos", requireRol("MASTER", "ADMIN"), w(pagos.listar));

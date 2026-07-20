@@ -341,6 +341,7 @@ model Pago {
   aprobadoEn       DateTime?
   facturaDestinoId Int?      // factura elegida al cargar (null = automático FIFO)
   motivoRechazo    String?
+  comprobanteUrl   String?   // imagen/PDF del depósito (la ve el vendedor y los admins; borra solo admin/master)
 
   asignaciones PagoAsignacion[]
 }

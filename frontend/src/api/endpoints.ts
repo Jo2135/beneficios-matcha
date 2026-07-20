@@ -161,6 +161,14 @@ export const pagosVendedorApi = {
   crear: (data: any) => api.post("/pagos-vendedor", data).then((r) => r.data),
   aprobar: (id: number, tasa?: number) => api.post(`/pagos-vendedor/${id}/aprobar`, tasa ? { tasa } : {}).then((r) => r.data),
   rechazar: (id: number, motivo?: string) => api.post(`/pagos-vendedor/${id}/rechazar`, { motivo }).then((r) => r.data),
+  subirComprobante: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("imagen", file);
+    return api.post(`/pagos-vendedor/${id}/comprobante`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  eliminarComprobante: (id: number) => api.delete(`/pagos-vendedor/${id}/comprobante`).then((r) => r.data),
 };
 
 // Pagos
