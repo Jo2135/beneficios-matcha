@@ -335,8 +335,17 @@ export async function finalizar(req: Request, res: Response) {
 
 export async function eliminar(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const despacho = await prisma.ordenDespacho.findUnique({ where: { id }, select: { estado: true, numero: true } });
+  const despacho = await prisma.ordenDespacho.findUnique({
+    where: { id },
+    select: { estado: true, numero: true, _count: { select: { facturas: true } } },
+  });
   if (!despacho) return res.status(404).json({ error: "Despacho no encontrado" });
+  // Un despacho con factura generada NO se borra: hacerlo dejaría la factura huérfana
+  // (sin Ganancias ni Balance). Antes solo se bloqueaba el estado ENTREGADO, pero la
+  // factura puede existir estando el despacho aún En Ruta/Parcial — ese era el hueco.
+  if (despacho._count.facturas > 0) {
+    return res.status(400).json({ error: "No se puede eliminar un despacho que ya tiene factura generada. Anula la factura primero." });
+  }
   if (despacho.estado === "ENTREGADO") {
     return res.status(400).json({ error: "No se puede eliminar un despacho ya entregado (tiene factura generada)" });
   }
