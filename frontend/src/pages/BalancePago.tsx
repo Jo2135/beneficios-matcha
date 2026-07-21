@@ -50,7 +50,11 @@ function fechasUnicas(items: Item[]): string[] {
 // Cuando una carga lleva varios clientes, estos gastos son del viaje completo y
 // José reparte el monto entre las facturas. Aquí fija la porción de ESTE
 // despacho antes de generar (o regenerar) el balance. Vacío = tabla automática.
-function GastosCargaEditor({ despachoId, generado }: { despachoId: number; generado: boolean }) {
+function GastosCargaEditor({ despachoId, generado, onRecalcular }: {
+  despachoId: number; generado: boolean;
+  // Recalcula el balance ya generado; devuelve true si de verdad recalculó.
+  onRecalcular?: () => Promise<boolean>;
+}) {
   const qc = useQueryClient();
   const [vals, setVals] = useState<{ obreros: string; pigmento: string; electricidad: string } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -79,12 +83,17 @@ function GastosCargaEditor({ despachoId, generado }: { despachoId: number; gener
         if (c.val === c.base) await apiClient.patch("/tablas", { campo: c.campo, despachoId, eliminar: true });
         else await apiClient.patch("/tablas", { campo: c.campo, valor: c.val, despachoId });
       }
+      // Rearmar el balance de una vez para que los montos se reflejen (sin el paso aparte)
+      return onRecalcular ? await onRecalcular() : false;
     },
-    onSuccess: () => {
-      setMsg(generado
-        ? "Gastos guardados. Pulsa \"Regenerar\" para que el balance los tome."
-        : "Gastos guardados. Ahora genera el balance.");
+    onSuccess: (recalculado) => {
+      setMsg(
+        recalculado ? "Gastos guardados y balance recalculado."
+        : !generado ? "Gastos guardados. Ahora genera el balance."
+        : "Gastos guardados. Este balance ya tiene pagos: pulsa \"Regenerar\" (arriba) cuando quieras recalcular."
+      );
       qc.invalidateQueries({ queryKey: ["ganancias-gastos", despachoId] });
+      qc.invalidateQueries({ queryKey: ["balance", despachoId] });
     },
     onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudieron guardar los gastos"),
   });
@@ -125,7 +134,7 @@ function GastosCargaEditor({ despachoId, generado }: { despachoId: number; gener
           disabled={invalido || guardar.isPending}
           style={{ background: "#d97706", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: invalido ? 0.5 : 1 }}
         >
-          {guardar.isPending ? "Guardando…" : "Guardar gastos"}
+          {guardar.isPending ? "Guardando…" : generado ? "Guardar y recalcular" : "Guardar gastos"}
         </button>
         <button
           onClick={() => { setVals({ obreros: String(gastos.base.obreros), pigmento: String(gastos.base.pigmento), electricidad: String(gastos.base.electricidad) }); setMsg(null); }}
@@ -303,8 +312,25 @@ export default function BalancePago() {
         </div>
       )}
 
-      {/* Gastos de la carga: ajustar y luego Regenerar */}
-      {isMaster && <GastosCargaEditor despachoId={despachoId} generado={true} />}
+      {/* Gastos de la carga: al guardar, recalcula el balance de una vez */}
+      {isMaster && (
+        <GastosCargaEditor
+          despachoId={despachoId}
+          generado={true}
+          onRecalcular={async () => {
+            // Regenerar borra los pagos (cuotas en cascada): si ya hay pagos o
+            // ajustes manuales, NO recalculo solo — dejo que use "Regenerar" (que avisa).
+            const hayPagos = balance.items.some((i) => i.cuotas.length > 0);
+            const hayEdits = balance.items.some((i) => i.esEditable && i.notas);
+            if (hayPagos || hayEdits) return false;
+            // Conservar el ayudante ya registrado en el balance
+            const item = balance.items.find((i) => i.nombre === "Ayudante");
+            const ayudante = item ? Number(item.montoTotal) : 0;
+            await apiClient.post(`/despachos/${despachoId}/balance/generar`, { ayudante });
+            return true;
+          }}
+        />
+      )}
 
       {/* Contador de estado */}
       {(() => {
