@@ -521,7 +521,16 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const curvaAlberto   = curvaFabrica - curvaMaterial;
 
   // ── Gastos generales ──────────────────────────────────────────────────────
-  const gastos = gastosPorTotal(facturaTotal);
+  // Base: tabla escalonada según el total de la factura. Pero cuando una CARGA
+  // lleva varios clientes, los obreros/pigmento/electricidad son de la carga
+  // completa y José reparte el monto entre las facturas: esos montos manuales
+  // (override por despacho) mandan sobre la tabla.
+  const gastosBase = gastosPorTotal(facturaTotal);
+  const gastos = {
+    obreros:      tablas.gastosOv.obreros  ?? gastosBase.obreros,
+    pigmento:     tablas.gastosOv.pigmento ?? gastosBase.pigmento,
+    electricidad: tablas.gastosOv.elect    ?? gastosBase.electricidad,
+  };
 
   // ── Ganancia general I25 / I26 ────────────────────────────────────────────
   const gananciaDesglose: { cat: string; kg: number; rate: number; ganancia: number }[] = [];
@@ -909,7 +918,18 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     despacho: { id: despacho.id, numero: despacho.numero },
     facturaTotal,
     costoMateria: { ...costoMateria, total: totalCostoMateria },
-    gastos: { ...gastos, total: gastos.obreros + gastos.pigmento + gastos.electricidad },
+    gastos: {
+      ...gastos,
+      total: gastos.obreros + gastos.pigmento + gastos.electricidad,
+      // Para el editor de la pantalla Balance: qué daría la tabla automática
+      // y cuáles montos están fijados a mano para esta carga.
+      base: gastosBase,
+      ajustado: {
+        obreros:      tablas.gastosOv.obreros  != null,
+        pigmento:     tablas.gastosOv.pigmento != null,
+        electricidad: tablas.gastosOv.elect    != null,
+      },
+    },
     curvas: {
       detalle: curvasDetalle,
       totalVenta: curvaTotalVenta,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api as apiClient } from "../api/client";
@@ -44,6 +44,100 @@ function fechasUnicas(items: Item[]): string[] {
   const set = new Set<string>();
   items.forEach((i) => i.cuotas.forEach((c) => set.add(c.fecha.slice(0, 10))));
   return [...set].sort();
+}
+
+// ─── Gastos de la carga (obreros / pigmento / electricidad) ──────────────────
+// Cuando una carga lleva varios clientes, estos gastos son del viaje completo y
+// José reparte el monto entre las facturas. Aquí fija la porción de ESTE
+// despacho antes de generar (o regenerar) el balance. Vacío = tabla automática.
+function GastosCargaEditor({ despachoId, generado }: { despachoId: number; generado: boolean }) {
+  const qc = useQueryClient();
+  const [vals, setVals] = useState<{ obreros: string; pigmento: string; electricidad: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const { data: g } = useQuery({
+    queryKey: ["ganancias-gastos", despachoId],
+    queryFn: () => apiClient.get(`/despachos/${despachoId}/ganancias`).then((r) => r.data),
+  });
+  const gastos = g?.gastos;
+
+  useEffect(() => {
+    if (gastos && vals === null) {
+      setVals({ obreros: String(gastos.obreros), pigmento: String(gastos.pigmento), electricidad: String(gastos.electricidad) });
+    }
+  }, [gastos, vals]);
+
+  const guardar = useMutation({
+    mutationFn: async () => {
+      const campos = [
+        { campo: "gastos_obreros",  val: Number(vals!.obreros),      base: Number(gastos.base.obreros) },
+        { campo: "gastos_pigmento", val: Number(vals!.pigmento),     base: Number(gastos.base.pigmento) },
+        { campo: "gastos_elect",    val: Number(vals!.electricidad), base: Number(gastos.base.electricidad) },
+      ];
+      for (const c of campos) {
+        // Igual a la tabla automática = quitar el ajuste; distinto = fijar monto manual
+        if (c.val === c.base) await apiClient.patch("/tablas", { campo: c.campo, despachoId, eliminar: true });
+        else await apiClient.patch("/tablas", { campo: c.campo, valor: c.val, despachoId });
+      }
+    },
+    onSuccess: () => {
+      setMsg(generado
+        ? "Gastos guardados. Pulsa \"Regenerar\" para que el balance los tome."
+        : "Gastos guardados. Ahora genera el balance.");
+      qc.invalidateQueries({ queryKey: ["ganancias-gastos", despachoId] });
+    },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudieron guardar los gastos"),
+  });
+
+  if (!gastos || !vals) return null;
+
+  const invalido = Object.values(vals).some((v) => v.trim() === "" || !(Number(v) >= 0));
+  const campos: { key: "obreros" | "pigmento" | "electricidad"; label: string }[] = [
+    { key: "obreros", label: "Obreros" },
+    { key: "pigmento", label: "Pigmento" },
+    { key: "electricidad", label: "Electricidad y Gasoil" },
+  ];
+
+  return (
+    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 2 }}>Gastos de esta carga</div>
+      <div style={{ fontSize: 11, color: "#a16207", marginBottom: 10 }}>
+        Si el viaje llevó varios clientes, reparte aquí lo que corresponde a este despacho. La tabla automática (según total de factura) da: obreros ${fmt(Number(gastos.base.obreros))} · pigmento ${fmt(Number(gastos.base.pigmento))} · electricidad ${fmt(Number(gastos.base.electricidad))}.
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+        {campos.map(({ key, label }) => {
+          const manual = Number(vals[key]) !== Number(gastos.base[key]);
+          return (
+            <label key={key} style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
+              {label}{" "}
+              {manual && <span style={{ fontSize: 10, background: "#fde68a", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>manual</span>}
+              <input
+                type="number" min="0" step="0.01"
+                value={vals[key]}
+                onChange={(e) => { setVals({ ...vals, [key]: e.target.value }); setMsg(null); }}
+                style={{ display: "block", marginTop: 3, width: 130, padding: "7px 10px", border: manual ? "1.5px solid #f59e0b" : "1px solid #d1d5db", borderRadius: 8, fontSize: 13 }}
+              />
+            </label>
+          );
+        })}
+        <button
+          onClick={() => guardar.mutate()}
+          disabled={invalido || guardar.isPending}
+          style={{ background: "#d97706", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: invalido ? 0.5 : 1 }}
+        >
+          {guardar.isPending ? "Guardando…" : "Guardar gastos"}
+        </button>
+        <button
+          onClick={() => { setVals({ obreros: String(gastos.base.obreros), pigmento: String(gastos.base.pigmento), electricidad: String(gastos.base.electricidad) }); setMsg(null); }}
+          title="Volver a los montos de la tabla automática (recuerda Guardar)"
+          style={{ background: "none", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 12, color: "#64748b" }}
+        >
+          Tabla automática
+        </button>
+      </div>
+      {msg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "#16a34a" }}>✓ {msg}</div>}
+    </div>
+  );
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -118,15 +212,19 @@ export default function BalancePago() {
 
   if (isError || !balance) {
     return (
-      <div style={{ padding: 40, maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-        <p style={{ color: "#64748b", marginBottom: 20 }}>El balance aún no ha sido generado para este despacho.</p>
-        <button
-          onClick={preguntarAyudanteYGenerar}
-          disabled={generar.isPending}
-          style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", cursor: "pointer", fontSize: 15 }}
-        >
-          {generar.isPending ? "Generando…" : "Generar Balance"}
-        </button>
+      <div style={{ padding: 40, maxWidth: 640, margin: "0 auto" }}>
+        {/* Primero se decide la porción de gastos de esta carga; luego se genera */}
+        {isMaster && <GastosCargaEditor despachoId={despachoId} generado={false} />}
+        <div style={{ textAlign: "center" }}>
+          <p style={{ color: "#64748b", marginBottom: 20 }}>El balance aún no ha sido generado para este despacho.</p>
+          <button
+            onClick={preguntarAyudanteYGenerar}
+            disabled={generar.isPending}
+            style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", cursor: "pointer", fontSize: 15 }}
+          >
+            {generar.isPending ? "Generando…" : "Generar Balance"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -204,6 +302,9 @@ export default function BalancePago() {
           <div style={{ fontSize: 20, fontWeight: 800, color: "#0891b2" }}>${fmt(Number(balance.gananciaVendedor))}</div>
         </div>
       )}
+
+      {/* Gastos de la carga: ajustar y luego Regenerar */}
+      {isMaster && <GastosCargaEditor despachoId={despachoId} generado={true} />}
 
       {/* Contador de estado */}
       {(() => {

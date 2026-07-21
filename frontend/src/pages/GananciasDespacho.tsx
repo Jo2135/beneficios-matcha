@@ -189,9 +189,9 @@ export default function GananciasDespacho() {
 
           {/* Gastos generales */}
           <Section titulo={`Gastos Generales (base ${usd(d.facturaTotal)})`}>
-            <FilaCosto label="Obreros"              valor={usd(d.gastos.obreros)} />
-            <FilaCosto label="Pigmento"             valor={usd(d.gastos.pigmento)} />
-            <FilaCosto label="Electricidad y Gasoil" valor={usd(d.gastos.electricidad)} />
+            <FilaCosto label={`Obreros${d.gastos.ajustado?.obreros ? " (monto manual de la carga)" : ""}`}              valor={usd(d.gastos.obreros)} />
+            <FilaCosto label={`Pigmento${d.gastos.ajustado?.pigmento ? " (monto manual de la carga)" : ""}`}             valor={usd(d.gastos.pigmento)} />
+            <FilaCosto label={`Electricidad y Gasoil${d.gastos.ajustado?.electricidad ? " (monto manual de la carga)" : ""}`} valor={usd(d.gastos.electricidad)} />
             <FilaCostoTotal label="Total Gastos" valor={usd(d.gastos.total)} />
           </Section>
 
