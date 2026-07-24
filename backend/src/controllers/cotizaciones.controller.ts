@@ -28,6 +28,10 @@ interface LineaInput {
   cantidad: number;
   notaCantidad?: string;
   descuentoPct?: number;
+  // Precio pactado para ESTA cotización (casos especiales). Solo lo honra
+  // MASTER/ADMIN; la diferencia contra la lista cae en Extra Material al
+  // calcular ganancias (el extra es el residuo de la factura).
+  precioManual?: number;
 }
 
 export async function listar(req: Request, res: Response) {
@@ -101,16 +105,19 @@ export async function crear(req: Request, res: Response) {
   fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));
 
   // Resolver precios con snapshot
+  const esAdminPrecio = req.usuario!.rol === "MASTER" || req.usuario!.rol === "ADMIN";
   const lineasConPrecios = await Promise.all(
     lineas.map(async (linea, idx) => {
       const detallePrecio = precioMap.get(linea.productoId);
+      const precioManual = esAdminPrecio && linea.precioManual != null && Number(linea.precioManual) >= 0
+        ? Number(linea.precioManual) : null;
 
-      if (!detallePrecio) {
+      if (!detallePrecio && precioManual === null) {
         throw new Error(`Producto ${linea.productoId} no tiene precio en ninguna lista del cliente`);
       }
 
-      const descuento = linea.descuentoPct ?? detallePrecio.descuentoPct;
-      const precioBase = detallePrecio.precioUnitario;
+      const descuento = linea.descuentoPct ?? detallePrecio?.descuentoPct ?? 0;
+      const precioBase = precioManual ?? detallePrecio!.precioUnitario;
       const precioFinal = precioBase * (1 - descuento / 100);
       const totalLinea = precioFinal * linea.cantidad;
 
@@ -127,7 +134,7 @@ export async function crear(req: Request, res: Response) {
         descuentoPct: descuento,
         precioFinal,
         totalLinea,
-        listaPrecioOrigenId: detallePrecio.listaPrecioId,
+        listaPrecioOrigenId: detallePrecio?.listaPrecioId ?? null,
         pesoTotalKg,
         orden: idx,
       };
@@ -197,14 +204,17 @@ export async function actualizar(req: Request, res: Response) {
   if (!cliente) return res.status(404).json({ error: "Cliente no encontrado" });
 
   const precioMap = await getPrecioMap(clienteId);
+  const esAdminPrecio = usuario.rol === "MASTER" || usuario.rol === "ADMIN";
 
   const lineasConPrecios = await Promise.all(
     lineas.map(async (linea, idx) => {
       const detallePrecio = precioMap.get(linea.productoId);
-      if (!detallePrecio) throw new Error(`Producto ${linea.productoId} no tiene precio en ninguna lista del cliente`);
+      const precioManual = esAdminPrecio && linea.precioManual != null && Number(linea.precioManual) >= 0
+        ? Number(linea.precioManual) : null;
+      if (!detallePrecio && precioManual === null) throw new Error(`Producto ${linea.productoId} no tiene precio en ninguna lista del cliente`);
 
-      const descuento = linea.descuentoPct ?? detallePrecio.descuentoPct;
-      const precioBase = detallePrecio.precioUnitario;
+      const descuento = linea.descuentoPct ?? detallePrecio?.descuentoPct ?? 0;
+      const precioBase = precioManual ?? detallePrecio!.precioUnitario;
       const precioFinal = precioBase * (1 - descuento / 100);
       const totalLinea = precioFinal * linea.cantidad;
 
@@ -219,7 +229,7 @@ export async function actualizar(req: Request, res: Response) {
         descuentoPct: descuento,
         precioFinal,
         totalLinea,
-        listaPrecioOrigenId: detallePrecio.listaPrecioId,
+        listaPrecioOrigenId: detallePrecio?.listaPrecioId ?? null,
         pesoTotalKg,
         orden: idx,
       };

@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { clientesApi, productosApi, listasApi, cotizacionesApi, authApi } from "../api/endpoints";
-import { Search, Trash2, ArrowLeft, FileText, Truck } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { clientesApi, productosApi, listasApi, cotizacionesApi, authApi, categoriasApi } from "../api/endpoints";
+import { Search, Trash2, ArrowLeft, FileText, Truck, PackagePlus, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Linea {
@@ -32,6 +32,7 @@ export default function NuevaCotizacion() {
   const { id: editIdStr } = useParams<{ id?: string }>();
   const editId = editIdStr ? Number(editIdStr) : null;
   const { usuario, esVendedor, puedeEditar } = useAuth();
+  const qc = useQueryClient();
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [vendedorIdSel, setVendedorIdSel] = useState<number | null>(null);
   const [notas, setNotas] = useState("");
@@ -107,15 +108,48 @@ export default function NuevaCotizacion() {
     return d ? Number(d.precioUnitario) : null;
   };
 
-  const agregarProducto = (p: any) => {
-    const rawPrecio = getPrecio(p.id);
+  // ── Crear producto sobre la marcha (solo master/admin) ────────────────────
+  const [modalProducto, setModalProducto] = useState(false);
+  const [nuevoProd, setNuevoProd] = useState({ nombre: "", medida: "", categoriaId: "", origen: "INTERNO", pesoUnitarioKg: "", precio: "" });
+  const { data: categorias = [] } = useQuery({
+    queryKey: ["categorias"],
+    queryFn: categoriasApi.listar,
+    enabled: modalProducto,
+  });
+  const crearProducto = useMutation({
+    mutationFn: () => productosApi.crear({
+      nombre: nuevoProd.nombre.trim(),
+      medida: nuevoProd.medida.trim(),
+      categoriaId: Number(nuevoProd.categoriaId),
+      origen: nuevoProd.origen,
+      pesoUnitarioKg: nuevoProd.pesoUnitarioKg ? Number(nuevoProd.pesoUnitarioKg) : undefined,
+    }),
+    onSuccess: (p: any) => {
+      // Entra directo a la cotización con el precio indicado (precio manual);
+      // para dejarlo fijo, agregarlo luego a la lista de precios del cliente.
+      agregarProducto({ ...p, categoria: undefined }, Number(nuevoProd.precio) > 0 ? Number(nuevoProd.precio) : 0);
+      qc.invalidateQueries({ queryKey: ["productos"] });
+      setModalProducto(false);
+      setNuevoProd({ nombre: "", medida: "", categoriaId: "", origen: "INTERNO", pesoUnitarioKg: "", precio: "" });
+    },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo crear el producto"),
+  });
+
+  const agregarProducto = (p: any, precioForzado?: number) => {
+    const rawPrecio = precioForzado ?? getPrecio(p.id);
     if (rawPrecio === null) {
-      alert(`"${p.nombre} ${p.medida}" no tiene precio en la lista de este cliente.\n\nAgrégalo en Listas de Precios.`);
-      setBusqueda("");
-      setDropdownAbierto(false);
-      return;
+      // Master/Admin puede agregarlo con precio manual (lo escribe en la línea);
+      // el vendedor sigue necesitando que esté en la lista.
+      if (puedeEditar) {
+        if (!confirm(`"${p.nombre} ${p.medida}" no tiene precio en la lista de este cliente.\n\n¿Agregarlo con PRECIO MANUAL? (escríbelo en la columna Precio Unit.)`)) {
+          setBusqueda(""); setDropdownAbierto(false); return;
+        }
+      } else {
+        alert(`"${p.nombre} ${p.medida}" no tiene precio en la lista de este cliente.\n\nAgrégalo en Listas de Precios.`);
+        setBusqueda(""); setDropdownAbierto(false); return;
+      }
     }
-    const precio = redondearPrecio(rawPrecio, p.nombre);
+    const precio = rawPrecio === null ? 0 : redondearPrecio(rawPrecio, p.nombre);
     setLineas((prev) => {
       const existe = prev.find((l) => l.productoId === p.id);
       if (existe) {
@@ -171,12 +205,20 @@ export default function NuevaCotizacion() {
     };
   }, [lineas, clienteSeleccionado]);
 
-  const lineasPayload = lineas.map((l) => ({
-    productoId: l.productoId,
-    cantidad: l.cantidad,
-    descuentoPct: l.descuentoPct || undefined,
-    notaCantidad: l.notaCantidad || undefined,
-  }));
+  const lineasPayload = lineas.map((l) => {
+    // Si master/admin escribió un precio distinto al de la lista (o el producto
+    // no tiene lista), viaja como precio pactado de ESTA cotización.
+    const deLista = getPrecio(l.productoId);
+    const listaRedondeada = deLista !== null ? redondearPrecio(deLista, l.nombre) : null;
+    const esManual = puedeEditar && (listaRedondeada === null || l.precioUnitario !== listaRedondeada);
+    return {
+      productoId: l.productoId,
+      cantidad: l.cantidad,
+      descuentoPct: l.descuentoPct || undefined,
+      notaCantidad: l.notaCantidad || undefined,
+      precioManual: esManual ? l.precioUnitario : undefined,
+    };
+  });
 
   const crear = useMutation({
     mutationFn: () => cotizacionesApi.crear({ clienteId, vendedorId: vendedorIdSel || undefined, notas: notas || undefined, validezDias, lineas: lineasPayload }),
@@ -191,7 +233,8 @@ export default function NuevaCotizacion() {
   });
 
   const isPending = crear.isPending || guardarEdicion.isPending;
-  const puedeCrear = !!clienteId && lineas.length > 0 && !isPending;
+  const hayPrecioCero = lineas.some((l) => !(l.precioUnitario > 0));
+  const puedeCrear = !!clienteId && lineas.length > 0 && !isPending && !hayPrecioCero;
   const handleSubmit = () => editId ? guardarEdicion.mutate() : crear.mutate();
 
   return (
@@ -301,6 +344,15 @@ export default function NuevaCotizacion() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <p style={{ ...sectionLabel, marginBottom: 0 }}>Productos</p>
           {!clienteId && <span style={{ fontSize: 13, color: "#94a3b8" }}>Selecciona un cliente primero</span>}
+          {clienteId && puedeEditar && (
+            <button
+              onClick={() => setModalProducto(true)}
+              title="Crear un producto que no está en el catálogo y agregarlo a esta cotización"
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#16a34a" }}
+            >
+              <PackagePlus size={14} /> Crear producto
+            </button>
+          )}
         </div>
 
         {/* Buscador */}
@@ -346,6 +398,62 @@ export default function NuevaCotizacion() {
           </div>
         )}
 
+        {/* Modal: crear producto sobre la marcha */}
+        {modalProducto && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}
+            onClick={() => setModalProducto(false)}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: 22, width: "min(480px, 94vw)" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Crear producto</h3>
+                <button onClick={() => setModalProducto(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}><X size={18} /></button>
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Nombre *
+                  <input style={inputStyle} value={nuevoProd.nombre} placeholder="Ej: Tubo Gris PVC" onChange={(e) => setNuevoProd({ ...nuevoProd, nombre: e.target.value })} />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Medida *
+                    <input style={inputStyle} value={nuevoProd.medida} placeholder={'Ej: 1/2" x 6mts'} onChange={(e) => setNuevoProd({ ...nuevoProd, medida: e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Categoría *
+                    <select style={inputStyle} value={nuevoProd.categoriaId} onChange={(e) => setNuevoProd({ ...nuevoProd, categoriaId: e.target.value })}>
+                      <option value="">— Elegir —</option>
+                      {(categorias as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Origen
+                    <select style={inputStyle} value={nuevoProd.origen} onChange={(e) => setNuevoProd({ ...nuevoProd, origen: e.target.value })}>
+                      <option value="INTERNO">Fabricado (interno)</option>
+                      <option value="EXTERNO">Comprado (externo)</option>
+                    </select>
+                  </label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Peso kg/u
+                    <input type="number" min="0" step="0.0001" style={inputStyle} value={nuevoProd.pesoUnitarioKg} placeholder="opcional" onChange={(e) => setNuevoProd({ ...nuevoProd, pesoUnitarioKg: e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Precio $ *
+                    <input type="number" min="0" step="0.01" style={inputStyle} value={nuevoProd.precio} placeholder="0.00" onChange={(e) => setNuevoProd({ ...nuevoProd, precio: e.target.value })} />
+                  </label>
+                </div>
+                <div style={{ fontSize: 11, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "7px 10px" }}>
+                  El precio vale para ESTA cotización (precio manual). Para dejarlo fijo, agrégalo después en Listas de Precios. El peso kg/u se usa para materiales y ganancias: si lo dejas vacío, este producto no aporta kilos al cálculo.
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+                <button onClick={() => setModalProducto(false)} style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+                <button
+                  onClick={() => crearProducto.mutate()}
+                  disabled={!nuevoProd.nombre.trim() || !nuevoProd.medida.trim() || !nuevoProd.categoriaId || !(Number(nuevoProd.precio) > 0) || crearProducto.isPending}
+                  style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: (!nuevoProd.nombre.trim() || !nuevoProd.medida.trim() || !nuevoProd.categoriaId || !(Number(nuevoProd.precio) > 0)) ? 0.5 : 1 }}
+                >
+                  {crearProducto.isPending ? "Creando…" : "Crear y agregar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tabla */}
         {lineas.length > 0 && (
           <div style={{ overflowX: "auto" }}>
@@ -372,7 +480,32 @@ export default function NuevaCotizacion() {
                         <div style={{ fontWeight: 600, color: "#1e293b" }}>{l.nombre}</div>
                         {l.medida && <div style={{ fontSize: 11, color: "#94a3b8" }}>{l.medida}</div>}
                       </td>
-                      <td style={{ ...tdStyle, color: "#475569" }}>${l.precioUnitario.toFixed(l.nombre.toLowerCase().includes("curva") ? 3 : 2)}</td>
+                      <td style={{ ...tdStyle, color: "#475569" }}>
+                        {puedeEditar ? (() => {
+                          const deLista = getPrecio(l.productoId);
+                          const listaRed = deLista !== null ? redondearPrecio(deLista, l.nombre) : null;
+                          const esManual = listaRed === null || l.precioUnitario !== listaRed;
+                          return (
+                            <div>
+                              <input
+                                type="number" min={0} step={l.nombre.toLowerCase().includes("curva") ? 0.001 : 0.01}
+                                value={l.precioUnitario === 0 ? "" : l.precioUnitario}
+                                placeholder="0.00"
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => actualizarLinea(idx, "precioUnitario", e.target.value === "" ? 0 : Math.max(0, Number(e.target.value)))}
+                                style={{ ...inputSmall, width: 88, ...(esManual ? { border: "1.5px solid #f59e0b", background: "#fffbeb" } : {}) }}
+                              />
+                              {esManual && (
+                                <div style={{ fontSize: 10, color: "#b45309", marginTop: 2, whiteSpace: "nowrap" }}>
+                                  {listaRed !== null ? `lista: $${listaRed.toFixed(l.nombre.toLowerCase().includes("curva") ? 3 : 2)} · la diferencia va al Extra` : "precio manual (sin lista)"}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })() : (
+                          <>${l.precioUnitario.toFixed(l.nombre.toLowerCase().includes("curva") ? 3 : 2)}</>
+                        )}
+                      </td>
                       <td style={tdStyle}>
                         <input
                           type="number"
@@ -448,6 +581,9 @@ export default function NuevaCotizacion() {
                 <TotalStat label="Descuento" value={`-$${totales.descuento.toFixed(2)}`} color="#dc2626" />
               )}
               <TotalStat label="Total Neto" value={`$${totales.neto.toFixed(2)}`} big />
+              {hayPrecioCero && (
+                <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>Hay líneas con precio $0 — escribe el precio para poder guardar</span>
+              )}
               <button
                 onClick={handleSubmit}
                 disabled={!puedeCrear}
