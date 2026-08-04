@@ -23,7 +23,8 @@ export async function generarBalance(req: Request, res: Response) {
     // para poder llevarle control y registrar sus pagos como a cualquier concepto.
     const gananciaVendedor = r2(g.comisionesVendedores?.total ?? 0);
 
-    // Ayudante (se pregunta al generar; 0 si no hay)
+    // Ayudante: ahora es un concepto adicional guardado (ver más abajo). Si aún
+    // llega por el cuerpo (balances viejos), se respeta para no perderlo.
     const ayudante = Number(req.body?.ayudante ?? 0) || 0;
 
     // ── Filas del balance (orden según la referencia del usuario) ───────────────
@@ -71,7 +72,9 @@ export async function generarBalance(req: Request, res: Response) {
 
     // Flete + Ayudante (Ayudante se pregunta al generar)
     add("Flete",    g.fletesCliente?.total ?? 0);
-    add("Ayudante", ayudante);
+    // Solo si llega por el cuerpo (compatibilidad): hoy el Ayudante es un
+    // concepto adicional guardado y se agrega con los demás, más abajo.
+    if (ayudante > 0.005) add("Ayudante", ayudante);
 
     // Ganancia Muchachos (equipo de flete)
     if ((g.gananciaMuchachos?.total ?? 0) > 0) {
@@ -101,6 +104,12 @@ export async function generarBalance(req: Request, res: Response) {
     if (g.niples) {
       if (g.niples.materiales > 0.005) add("Materiales de Niples", g.niples.materiales);
       if (g.niples.ganancia   > 0.005) add("Ganancia Niples",      g.niples.ganancia);
+    }
+
+    // ── Conceptos adicionales del despacho (Comisión 2, Viáticos, Carga
+    //    Externa, Ayudante...). Cada uno su fila, con su saldo y sus pagos.
+    for (const c of (g.conceptosExtra?.detalle ?? []) as any[]) {
+      if (Number(c.monto) > 0.005) add(c.nombre, Number(c.monto));
     }
 
     // ── Ganancia de los vendedores: una fila por vendedor (varios clientes del

@@ -247,6 +247,15 @@ export const tablasApi = {
     api.post("/tablas/pin", data).then((r) => r.data),
 };
 
+// Conceptos adicionales de un despacho (Comisión 2, Viáticos, Carga Externa, Ayudante)
+export const conceptosApi = {
+  listar: (despachoId: number) => api.get(`/despachos/${despachoId}/conceptos`).then((r) => r.data),
+  crear: (despachoId: number, data: { nombre: string; monto: number; cobradoAlCliente: boolean }) =>
+    api.post(`/despachos/${despachoId}/conceptos`, data).then((r) => r.data),
+  actualizar: (conceptoId: number, data: any) => api.patch(`/conceptos/${conceptoId}`, data).then((r) => r.data),
+  eliminar: (conceptoId: number) => api.delete(`/conceptos/${conceptoId}`).then((r) => r.data),
+};
+
 // Pedidos de producción: cuánto hay pedido de curvas / niples / conexiones
 export const pedidosApi = {
   demanda: (estados: string[]) =>

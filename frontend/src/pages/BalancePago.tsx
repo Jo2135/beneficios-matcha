@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api as apiClient } from "../api/client";
+import { conceptosApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft, RefreshCw, Plus, Trash2, FileText, Edit3, Check, X, Download,
@@ -44,6 +45,116 @@ function fechasUnicas(items: Item[]): string[] {
   const set = new Set<string>();
   items.forEach((i) => i.cuotas.forEach((c) => set.add(c.fecha.slice(0, 10))));
   return [...set].sort();
+}
+
+// ─── Conceptos adicionales del despacho ──────────────────────────────────────
+// Comisión 2, Viáticos, Carga Externa, Ayudante... No salen de los productos,
+// por eso no entran en ningún porcentaje. Quedan guardados en el despacho: a
+// diferencia del viejo "Ayudante", sobreviven a Regenerar.
+const ATAJOS = ["Comisión 2", "Viáticos", "Carga Externa", "Ayudante"];
+
+function ConceptosExtraEditor({ despachoId, generado, onRecalcular }: {
+  despachoId: number; generado: boolean; onRecalcular?: () => Promise<boolean>;
+}) {
+  const qc = useQueryClient();
+  const [nombre, setNombre] = useState("");
+  const [monto, setMonto] = useState("");
+  const [cobrado, setCobrado] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const { data: conceptos = [] } = useQuery<any[]>({
+    queryKey: ["conceptos", despachoId],
+    queryFn: () => conceptosApi.listar(despachoId),
+  });
+
+  const refrescar = async (aviso?: string) => {
+    qc.invalidateQueries({ queryKey: ["conceptos", despachoId] });
+    qc.invalidateQueries({ queryKey: ["ganancias-gastos", despachoId] });
+    const recalc = onRecalcular ? await onRecalcular() : false;
+    qc.invalidateQueries({ queryKey: ["balance", despachoId] });
+    setMsg(aviso ?? (recalc ? "Guardado y balance recalculado."
+      : generado ? "Guardado. Pulsa \"Regenerar\" cuando quieras aplicarlo al balance."
+      : "Guardado. Ahora genera el balance."));
+  };
+
+  const crear = useMutation({
+    mutationFn: () => conceptosApi.crear(despachoId, { nombre: nombre.trim(), monto: Number(monto), cobradoAlCliente: cobrado }),
+    onSuccess: (r: any) => { setNombre(""); setMonto(""); refrescar(r?.aviso); },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo agregar el concepto"),
+  });
+  const borrar = useMutation({
+    mutationFn: (id: number) => conceptosApi.eliminar(id),
+    onSuccess: (r: any) => refrescar(r?.aviso),
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo eliminar"),
+  });
+
+  const totalCobrado = conceptos.filter((c) => c.cobradoAlCliente).reduce((s, c) => s + Number(c.monto), 0);
+  const totalGasto = conceptos.filter((c) => !c.cobradoAlCliente).reduce((s, c) => s + Number(c.monto), 0);
+  const valido = nombre.trim() !== "" && Number(monto) > 0;
+
+  return (
+    <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#5b21b6", marginBottom: 2 }}>Conceptos adicionales</div>
+      <div style={{ fontSize: 11, color: "#7c3aed", marginBottom: 10 }}>
+        Montos que no salen de los productos vendidos, así que no entran en ningún porcentaje (comisión del vendedor, flete, Ganancias_2).
+      </div>
+
+      {conceptos.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          {conceptos.map((c) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#fff", border: "1px solid #e9d5ff", borderRadius: 7, marginBottom: 5 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", flex: 1 }}>{c.nombre}</span>
+              <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 8, fontWeight: 600, background: c.cobradoAlCliente ? "#dcfce7" : "#fee2e2", color: c.cobradoAlCliente ? "#166534" : "#991b1b" }}>
+                {c.cobradoAlCliente ? "lo paga el cliente" : "lo paga Ecoplast"}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#5b21b6", minWidth: 90, textAlign: "right" }}>${fmt(Number(c.monto))}</span>
+              <button onClick={() => { if (confirm(`¿Eliminar "${c.nombre}"?`)) borrar.mutate(c.id); }}
+                disabled={borrar.isPending} title="Eliminar concepto"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", padding: 2 }}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>
+            {totalCobrado > 0 && <>Cobrado al cliente: <strong>${fmt(totalCobrado)}</strong> (sube su factura){totalGasto > 0 && " · "}</>}
+            {totalGasto > 0 && <>Gasto de Ecoplast: <strong>${fmt(totalGasto)}</strong> (baja el Extra Material)</>}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {ATAJOS.map((a) => (
+          <button key={a} onClick={() => { setNombre(a); setCobrado(a !== "Ayudante"); setMsg(null); }}
+            style={{ background: nombre === a ? "#7c3aed" : "#fff", color: nombre === a ? "#fff" : "#6d28d9", border: "1px solid #ddd6fe", borderRadius: 999, padding: "4px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            {a}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Concepto
+          <input value={nombre} onChange={(e) => { setNombre(e.target.value); setMsg(null); }} placeholder="Ej: Viáticos"
+            style={{ display: "block", marginTop: 3, width: 200, padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13 }} />
+        </label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Monto $
+          <input type="number" min="0" step="0.01" value={monto} onChange={(e) => { setMonto(e.target.value); setMsg(null); }} placeholder="0.00"
+            style={{ display: "block", marginTop: 3, width: 120, padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13 }} />
+        </label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>¿Quién lo paga?
+          <select value={cobrado ? "cliente" : "ecoplast"} onChange={(e) => setCobrado(e.target.value === "cliente")}
+            style={{ display: "block", marginTop: 3, width: 210, padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, background: "#fff" }}>
+            <option value="cliente">El cliente (sube su factura)</option>
+            <option value="ecoplast">Ecoplast (baja el Extra)</option>
+          </select>
+        </label>
+        <button onClick={() => crear.mutate()} disabled={!valido || crear.isPending}
+          style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: valido ? 1 : 0.5 }}>
+          {crear.isPending ? "Agregando…" : "Agregar"}
+        </button>
+      </div>
+      {msg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "#16a34a" }}>✓ {msg}</div>}
+    </div>
+  );
 }
 
 // ─── Gastos de la carga (obreros / pigmento / electricidad) ──────────────────
@@ -178,16 +289,9 @@ export default function BalancePago() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["balance", despachoId] }),
   });
 
-  // Pregunta si hay ayudante (y su costo) y luego genera el balance
-  const preguntarAyudanteYGenerar = () => {
-    let ayudante = 0;
-    if (window.confirm("¿Hay ayudante en este despacho?")) {
-      const resp = window.prompt("¿Cuál es el costo del ayudante? ($)", "0");
-      if (resp === null) return; // canceló
-      ayudante = Number(resp.replace(",", ".")) || 0;
-    }
-    generar.mutate(ayudante);
-  };
+  // El Ayudante ya no se pregunta aquí: ahora es un "concepto adicional"
+  // guardado en el despacho, así no se pierde al regenerar.
+  const preguntarAyudanteYGenerar = () => generar.mutate(0);
 
   const handleRegenerar = () => {
     const hayPagos = balance?.items.some(i => i.cuotas.length > 0);
@@ -224,6 +328,7 @@ export default function BalancePago() {
       <div style={{ padding: 40, maxWidth: 640, margin: "0 auto" }}>
         {/* Primero se decide la porción de gastos de esta carga; luego se genera */}
         {isMaster && <GastosCargaEditor despachoId={despachoId} generado={false} />}
+        {isMaster && <ConceptosExtraEditor despachoId={despachoId} generado={false} />}
         <div style={{ textAlign: "center" }}>
           <p style={{ color: "#64748b", marginBottom: 20 }}>El balance aún no ha sido generado para este despacho.</p>
           <button
@@ -237,6 +342,17 @@ export default function BalancePago() {
       </div>
     );
   }
+
+  // Rearma el balance tras cambiar gastos o conceptos. Devuelve false (y no toca
+  // nada) si ya hay pagos o montos editados a mano: regenerar borra las cuotas,
+  // así que en ese caso decide el usuario con el botón "Regenerar", que avisa.
+  const recalcularBalance = async (): Promise<boolean> => {
+    const hayPagos = balance.items.some((i) => i.cuotas.length > 0);
+    const hayEdits = balance.items.some((i) => i.esEditable && i.notas);
+    if (hayPagos || hayEdits) return false;
+    await apiClient.post(`/despachos/${despachoId}/balance/generar`, {});
+    return true;
+  };
 
   const items = balance.items;
   const fechas = fechasUnicas(items);
@@ -312,24 +428,12 @@ export default function BalancePago() {
         </div>
       )}
 
-      {/* Gastos de la carga: al guardar, recalcula el balance de una vez */}
+      {/* Gastos de la carga y conceptos adicionales: al guardar, recalculan solos */}
       {isMaster && (
-        <GastosCargaEditor
-          despachoId={despachoId}
-          generado={true}
-          onRecalcular={async () => {
-            // Regenerar borra los pagos (cuotas en cascada): si ya hay pagos o
-            // ajustes manuales, NO recalculo solo — dejo que use "Regenerar" (que avisa).
-            const hayPagos = balance.items.some((i) => i.cuotas.length > 0);
-            const hayEdits = balance.items.some((i) => i.esEditable && i.notas);
-            if (hayPagos || hayEdits) return false;
-            // Conservar el ayudante ya registrado en el balance
-            const item = balance.items.find((i) => i.nombre === "Ayudante");
-            const ayudante = item ? Number(item.montoTotal) : 0;
-            await apiClient.post(`/despachos/${despachoId}/balance/generar`, { ayudante });
-            return true;
-          }}
-        />
+        <>
+          <GastosCargaEditor despachoId={despachoId} generado={true} onRecalcular={recalcularBalance} />
+          <ConceptosExtraEditor despachoId={despachoId} generado={true} onRecalcular={recalcularBalance} />
+        </>
       )}
 
       {/* Contador de estado */}

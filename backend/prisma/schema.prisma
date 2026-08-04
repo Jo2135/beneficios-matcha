@@ -215,6 +215,7 @@ model OrdenDespacho {
   lineas   DespachoLinea[]
   facturas Factura[]
   balance  BalancePago?
+  conceptosExtra DespachoConceptoExtra[]
 }
 
 enum EstadoDespacho {
@@ -241,6 +242,23 @@ model DespachoLinea {
   // Tubo Gris PVC comprado a proveedor (costo y proveedor por línea)
   proveedorGris        String?       // "casa_del_tubo" | "alirio"
   costoGrisUnit        Decimal?      @db.Decimal(12, 4)
+}
+
+/// Conceptos sueltos de un despacho que NO salen de los productos vendidos
+/// (Comisión 2, Viáticos, Carga Externa, Ayudante...). Se escriben a mano y
+/// sobreviven a "Regenerar" porque viven aquí y no entre los items del balance.
+model DespachoConceptoExtra {
+  id               Int           @id @default(autoincrement())
+  ordenDespachoId  Int
+  ordenDespacho    OrdenDespacho @relation(fields: [ordenDespachoId], references: [id], onDelete: Cascade)
+  nombre           String
+  monto            Decimal       @db.Decimal(12, 2)
+  /// true  = lo paga el CLIENTE: se suma al total de su factura y sale en el
+  ///         balance, así que es neutro para el Extra Material.
+  /// false = lo paga ECOPLAST (ej. Ayudante): no toca la factura y baja el Extra.
+  cobradoAlCliente Boolean       @default(true)
+  orden            Int           @default(0)
+  creadoEn         DateTime      @default(now())
 }
 
 enum EstadoLinea {
@@ -270,6 +288,10 @@ model Factura {
   totalPagado      Decimal       @db.Decimal(12, 2) @default(0)
   saldoPendiente   Decimal       @db.Decimal(12, 2) @default(0)
   notas            String?
+  /// Cuánto del total viene de conceptos adicionales cobrados al cliente
+  /// (Comisión 2, Viáticos...). Permite sumarlos/quitarlos sin recalcular la
+  /// base desde las líneas, que arrastraría redondeos.
+  montoConceptosExtra Decimal      @default(0) @db.Decimal(12, 2)
   // Descuento pactado de la comisión del vendedor SOLO en esta factura
   // (null = usa el % normal del cliente)
   comisionTuberiaPctOverride    Decimal? @db.Decimal(5, 2)

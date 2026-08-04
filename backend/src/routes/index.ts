@@ -19,6 +19,7 @@ import * as tablas from "../controllers/tablas.controller";
 import * as comprasExternas from "../controllers/comprasExternas.controller";
 import * as planCarga from "../controllers/planCarga.controller";
 import * as pedidos from "../controllers/pedidos.controller";
+import * as conceptosExtra from "../controllers/conceptosExtra.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -159,6 +160,12 @@ router.patch("/despachos/lineas/:lineaId/gris", requireRol("MASTER", "ADMIN"), w
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
 router.get("/despachos/:id/balance", requireRol("MASTER"), w(balance.getBalance));
 router.get("/despachos/:id/balance/snapshot", requireRol("MASTER"), w(balance.getSnapshot));
+// Conceptos adicionales del despacho (Comisión 2, Viáticos, Carga Externa, Ayudante)
+router.get("/despachos/:id/conceptos", requireRol("MASTER"), w(conceptosExtra.listar));
+router.post("/despachos/:id/conceptos", requireRol("MASTER"), w(conceptosExtra.crear));
+router.patch("/conceptos/:conceptoId", requireRol("MASTER"), w(conceptosExtra.actualizar));
+router.delete("/conceptos/:conceptoId", requireRol("MASTER"), w(conceptosExtra.eliminar));
+
 router.patch("/balance/items/:itemId", requireRol("MASTER"), w(balance.actualizarItem));
 router.post("/balance/items/:itemId/cuotas", requireRol("MASTER"), w(balance.agregarCuota));
 router.patch("/balance/cuotas/:cuotaId", requireRol("MASTER"), w(balance.actualizarCuota));

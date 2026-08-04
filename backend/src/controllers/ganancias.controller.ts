@@ -415,6 +415,22 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
 
   const facturaTotal = despacho.facturas.reduce((s, f) => s + Number(f.totalNeto), 0);
 
+  // Conceptos sueltos del despacho (Comisión 2, Viáticos, Carga Externa, Ayudante).
+  // No salen de los productos: las bases de % (comisión vendedor, flete, G2) se
+  // arman con las LÍNEAS de factura/cotización, así que los excluyen solas.
+  // Lo cobrado al cliente sí está dentro de facturaTotal (se sumó a su factura),
+  // por eso se descuenta para los tramos de gastos generales y en el Extra.
+  const conceptosExtraDb = await prisma.despachoConceptoExtra.findMany({
+    where: { ordenDespachoId: id },
+    orderBy: [{ orden: "asc" }, { id: "asc" }],
+  });
+  const conceptosExtra = conceptosExtraDb.map((c) => ({
+    id: c.id, nombre: c.nombre, monto: Number(c.monto), cobradoAlCliente: c.cobradoAlCliente,
+  }));
+  const totalConceptosCobrados = conceptosExtra.filter((c) => c.cobradoAlCliente).reduce((s, c) => s + c.monto, 0);
+  const totalConceptosExtra    = conceptosExtra.reduce((s, c) => s + c.monto, 0);
+  const facturaProductos = facturaTotal - totalConceptosCobrados;
+
   // Comisión del vendedor ajustada por factura (descuento pactado). Mapa por cliente
   // para que el cálculo por cotización use el % de la factura de ese cliente.
   const facturaPorCliente = new Map<number, number>();
@@ -525,7 +541,8 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   // lleva varios clientes, los obreros/pigmento/electricidad son de la carga
   // completa y José reparte el monto entre las facturas: esos montos manuales
   // (override por despacho) mandan sobre la tabla.
-  const gastosBase = gastosPorTotal(facturaTotal);
+  // Tramo por la venta de PRODUCTOS: unos viáticos altos no deben saltar de tramo
+  const gastosBase = gastosPorTotal(facturaProductos);
   const gastos = {
     obreros:      tablas.gastosOv.obreros  ?? gastosBase.obreros,
     pigmento:     tablas.gastosOv.pigmento ?? gastosBase.pigmento,
@@ -892,6 +909,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const gastosTotal = gastos.obreros + gastos.pigmento + gastos.electricidad;
   const g2Sum = sbugFinal + yolandaFinal + sandraFinal + comisionesFinal;
   const extraMaterial = facturaTotal
+    - totalConceptosExtra   // Comisión 2 / Viáticos / Carga Externa / Ayudante:
+                            // lo cobrado al cliente entra y sale (neutro); lo que
+                            // paga Ecoplast baja el Extra.
     - totalCostoMateria
     - curvaTotalVenta
     - gastosTotal
@@ -917,6 +937,13 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   return {
     despacho: { id: despacho.id, numero: despacho.numero },
     facturaTotal,
+    facturaProductos,
+    conceptosExtra: {
+      detalle: conceptosExtra,
+      totalCobrado: totalConceptosCobrados,
+      totalGasto: totalConceptosExtra - totalConceptosCobrados,
+      total: totalConceptosExtra,
+    },
     costoMateria: { ...costoMateria, total: totalCostoMateria },
     gastos: {
       ...gastos,
