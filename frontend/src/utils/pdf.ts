@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { esConexionProducto } from "./conexiones";
 
 // ─── LOGO LOADER ───────────────────────────────────────────────────────────────
 // Logos are loaded from src/assets/ at runtime via Vite's asset pipeline.
@@ -98,25 +99,9 @@ function esConexionExternaPdf(prod: { nombre: string; origen?: string }): boolea
 }
 
 /** Detecta si una línea es "Conexión" para agrupar en el PDF.
- *  Misma prioridad que el motor de ganancias: categoría → código → nombre → origen.
- *  Así los codos 2"/4" fabricados (INTERNO, cat Conexiones) cuentan como conexión. */
+ *  Delegado a la regla única (utils/conexiones.ts), espejo del motor. */
 function esConexionFrontend(linea: any): boolean {
-  const cat = String(linea.producto?.categoria?.nombre ?? "").toLowerCase().trim();
-  if (cat === "conexiones") return true;
-  const codigo = ((linea.producto?.codigo ?? "") as string).trim().toUpperCase().replace(/\s+/g, "");
-  if (codigo && /^(CO-|SC-|SI-|TE-|YE-|YR-|ABS-|TR-|UR-|URR-|AM-|AH-|TAR-|COR-|ASP-|CA-)/.test(codigo)) return true;
-  const n = (linea.producto?.nombre ?? "").toLowerCase()
-    .normalize("NFD").replace(/[̀-ͯ]/g, "");
-  if (n.includes("abrazadera")) return true;
-  if (n.includes("tee") && n.includes("rapid")) return true;
-  if (n.includes("union") && (n.includes("reduc") || n.includes("rapid"))) return true;
-  if (n.includes("adaptador") && (n.includes("macho") || n.includes("hembra"))) return true;
-  if (n.includes("cajeti")) return true;
-  if (n.includes("aspersor")) return true;
-  // Fallback: origen EXTERNO (excepto mangueras que son tuberías flexibles)
-  const origen = (linea.producto?.origen ?? "INTERNO").toUpperCase();
-  if (origen === "EXTERNO" && !n.includes("manguera")) return true;
-  return false;
+  return esConexionProducto(linea?.producto ?? {});
 }
 
 // ─── EMPRESA THEME ─────────────────────────────────────────────────────────────
@@ -663,9 +648,8 @@ export function pdfCotizacionGanancia(cot: any) {
   const ctPct = Number(cliente.comisionTuberiaPct ?? 0);
   const ccPct = Number(cliente.comisionConexionesPct ?? 0);
 
-  const esConexion = (l: any) =>
-    (l.producto?.origen ?? "INTERNO") === "EXTERNO" &&
-    !(l.producto?.nombre ?? "").toLowerCase().includes("manguera");
+  // Regla única (= motor): los codos 2"/4" fabricados son conexiones
+  const esConexion = (l: any) => esConexionProducto(l.producto ?? {});
 
   const lineasTub = lineas.filter((l) => !esConexion(l));
   const lineasCon = lineas.filter((l) => esConexion(l));

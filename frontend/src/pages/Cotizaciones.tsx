@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cotizacionesApi, despachosApi, seguimientoApi, tasaCambioApi } from "../api/endpoints";
 import { Plus, FileText, CheckCircle, XCircle, Send, ArrowRight, Truck, Download, Factory, TrendingUp, Trash2, Search, X, Edit2, Copy, MessageSquare, Clock, DollarSign } from "lucide-react";
 import { pdfCotizacion, pdfHojaProduccion, pdfCotizacionGanancia } from "../utils/pdf";
+import { esConexionProducto } from "../utils/conexiones";
 import { useAuth } from "../contexts/AuthContext";
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
@@ -494,9 +495,8 @@ export default function Cotizaciones() {
               const ccPct = Number(c.comisionConexionesPct ?? 0);
               if (ftPct + fcPct + ctPct + ccPct === 0) return null;
 
-              const esConexion = (l: any) =>
-                (l.producto?.origen ?? "INTERNO") === "EXTERNO" &&
-                !(l.producto?.nombre ?? "").toLowerCase().includes("manguera");
+              // Regla única (= motor): los codos 2"/4" fabricados son conexiones
+              const esConexion = (l: any) => esConexionProducto(l.producto ?? {});
 
               const totalTub = lineas.filter((l) => !esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);
               const totalCon = lineas.filter((l) => esConexion(l)).reduce((s, l) => s + Number(l.totalLinea), 0);

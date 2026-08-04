@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { clientesApi, productosApi, listasApi, cotizacionesApi, authApi, categoriasApi } from "../api/endpoints";
 import { Search, Trash2, ArrowLeft, FileText, Truck, PackagePlus, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { esConexionProducto } from "../utils/conexiones";
 
 interface Linea {
   productoId: number;
@@ -18,18 +19,11 @@ interface Linea {
   notaCantidad: string;
 }
 
-// Misma regla que el motor de ganancias (esConexion en ganancias.controller):
-// categoría "Conexiones" primero — así los codos 2"/4" que fabrica Ecoplast
-// (INTERNO, cat Conexiones) cuentan como conexión y el vendedor NO ve aquí
-// una ganancia de tubería que el motor no le va a pagar.
+// Regla única (utils/conexiones.ts, espejo del motor): los codos 2"/4"
+// fabricados cuentan como conexión — el vendedor no ve aquí una ganancia
+// de tubería que el motor no le va a pagar.
 function esConexionExterna(linea: Linea): boolean {
-  if ((linea.categoriaNombre ?? "").toLowerCase().trim() === "conexiones") return true;
-  const c = (linea.codigo ?? "").trim().toUpperCase().replace(/\s+/g, "");
-  if (c && /^(CO-|SC-|SI-|TE-|YE-|YR-|ABS-|TR-|UR-|URR-|AM-|AH-|TAR-|COR-|ASP-|CA-)/.test(c)) return true;
-  const n = linea.nombre.toLowerCase();
-  if (n.includes("abrazadera") || n.includes("cajeti") || n.includes("aspersor")) return true;
-  if (n.includes("adaptador") && (n.includes("macho") || n.includes("hembra"))) return true;
-  return linea.origen === "EXTERNO" && !n.includes("manguera");
+  return esConexionProducto({ codigo: linea.codigo, nombre: linea.nombre, origen: linea.origen, categoria: { nombre: linea.categoriaNombre } });
 }
 
 // Redondeo hacia arriba: Curvas → 3 decimales, resto → 2 decimales
