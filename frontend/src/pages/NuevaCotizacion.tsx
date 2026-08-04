@@ -10,14 +10,26 @@ interface Linea {
   nombre: string;
   medida: string;
   origen: string;
+  codigo?: string | null;
+  categoriaNombre?: string;
   precioUnitario: number;
   cantidad: number;
   descuentoPct: number;
   notaCantidad: string;
 }
 
+// Misma regla que el motor de ganancias (esConexion en ganancias.controller):
+// categoría "Conexiones" primero — así los codos 2"/4" que fabrica Ecoplast
+// (INTERNO, cat Conexiones) cuentan como conexión y el vendedor NO ve aquí
+// una ganancia de tubería que el motor no le va a pagar.
 function esConexionExterna(linea: Linea): boolean {
-  return linea.origen === "EXTERNO" && !linea.nombre.toLowerCase().includes("manguera");
+  if ((linea.categoriaNombre ?? "").toLowerCase().trim() === "conexiones") return true;
+  const c = (linea.codigo ?? "").trim().toUpperCase().replace(/\s+/g, "");
+  if (c && /^(CO-|SC-|SI-|TE-|YE-|YR-|ABS-|TR-|UR-|URR-|AM-|AH-|TAR-|COR-|ASP-|CA-)/.test(c)) return true;
+  const n = linea.nombre.toLowerCase();
+  if (n.includes("abrazadera") || n.includes("cajeti") || n.includes("aspersor")) return true;
+  if (n.includes("adaptador") && (n.includes("macho") || n.includes("hembra"))) return true;
+  return linea.origen === "EXTERNO" && !n.includes("manguera");
 }
 
 // Redondeo hacia arriba: Curvas → 3 decimales, resto → 2 decimales
@@ -68,6 +80,8 @@ export default function NuevaCotizacion() {
         nombre,
         medida: l.producto?.medida ?? "",
         origen: l.producto?.origen ?? "INTERNO",
+        codigo: l.producto?.codigo ?? null,
+        categoriaNombre: l.producto?.categoria?.nombre,
         precioUnitario: redondearPrecio(Number(l.precioUnitarioAplicado), nombre),
         cantidad: Number(l.cantidad),
         descuentoPct: Number(l.descuentoPct),
@@ -127,7 +141,8 @@ export default function NuevaCotizacion() {
     onSuccess: (p: any) => {
       // Entra directo a la cotización con el precio indicado (precio manual);
       // para dejarlo fijo, agregarlo luego a la lista de precios del cliente.
-      agregarProducto({ ...p, categoria: undefined }, Number(nuevoProd.precio) > 0 ? Number(nuevoProd.precio) : 0);
+      const catNombre = (categorias as any[]).find((c: any) => c.id === Number(nuevoProd.categoriaId))?.nombre;
+      agregarProducto({ ...p, categoria: p.categoria ?? (catNombre ? { nombre: catNombre } : undefined) }, Number(nuevoProd.precio) > 0 ? Number(nuevoProd.precio) : 0);
       qc.invalidateQueries({ queryKey: ["productos"] });
       setModalProducto(false);
       setNuevoProd({ nombre: "", medida: "", categoriaId: "", origen: "INTERNO", pesoUnitarioKg: "", precio: "" });
@@ -155,7 +170,7 @@ export default function NuevaCotizacion() {
       if (existe) {
         return prev.map((l) => l.productoId === p.id ? { ...l, cantidad: l.cantidad + 1 } : l);
       }
-      return [...prev, { productoId: p.id, nombre: p.nombre, medida: p.medida ?? "", origen: p.origen ?? "INTERNO", precioUnitario: precio, cantidad: 1, descuentoPct: 0, notaCantidad: "" }];
+      return [...prev, { productoId: p.id, nombre: p.nombre, medida: p.medida ?? "", origen: p.origen ?? "INTERNO", codigo: p.codigo ?? null, categoriaNombre: p.categoria?.nombre, precioUnitario: precio, cantidad: 1, descuentoPct: 0, notaCantidad: "" }];
     });
     setBusqueda("");
     setDropdownAbierto(false);

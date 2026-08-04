@@ -97,10 +97,14 @@ function esConexionExternaPdf(prod: { nombre: string; origen?: string }): boolea
     !prod.nombre.toLowerCase().includes("manguera");
 }
 
-/** Detecta si una línea es "Conexión" para agrupar en el PDF (por código primero, luego nombre/origen) */
+/** Detecta si una línea es "Conexión" para agrupar en el PDF.
+ *  Misma prioridad que el motor de ganancias: categoría → código → nombre → origen.
+ *  Así los codos 2"/4" fabricados (INTERNO, cat Conexiones) cuentan como conexión. */
 function esConexionFrontend(linea: any): boolean {
+  const cat = String(linea.producto?.categoria?.nombre ?? "").toLowerCase().trim();
+  if (cat === "conexiones") return true;
   const codigo = ((linea.producto?.codigo ?? "") as string).trim().toUpperCase().replace(/\s+/g, "");
-  if (codigo && /^(CO-|SC-|SI-|TE-|YE-|YR-)/.test(codigo)) return true;
+  if (codigo && /^(CO-|SC-|SI-|TE-|YE-|YR-|ABS-|TR-|UR-|URR-|AM-|AH-|TAR-|COR-|ASP-|CA-)/.test(codigo)) return true;
   const n = (linea.producto?.nombre ?? "").toLowerCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "");
   if (n.includes("abrazadera")) return true;
@@ -1397,7 +1401,8 @@ export function pdfDespachoGandica(params: {
     const d = Number(l.cantidadDespachada ?? 0);
     return d > 0 ? d : Number(l.cantidadPedida ?? l.cantidad ?? 0);
   };
-  const esConex = (l: any) => esConexionExternaPdf(l.producto ?? {});
+  // Regla completa (categoría/código/nombre): los codos internos van a Conexiones
+  const esConex = (l: any) => esConexionFrontend(l);
 
   const lineasTub = lineas.filter(l => !esConex(l));
   const lineasCon = lineas.filter(l => esConex(l));
