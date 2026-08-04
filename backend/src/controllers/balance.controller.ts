@@ -18,7 +18,9 @@ export async function generarBalance(req: Request, res: Response) {
     const add = (nombre: string, monto: number, editable = true) =>
       items.push({ nombre, montoTotal: r2(monto), esEditable: editable, orden: ord++ });
 
-    // ── Comisión del vendedor → sección SUPERIOR (no entra en la suma del balance)
+    // Total de comisiones (se sigue guardando para la caja-resumen y el PDF).
+    // OJO: desde ahora TAMBIÉN entra al balance como filas por vendedor (ver abajo),
+    // para poder llevarle control y registrar sus pagos como a cualquier concepto.
     const gananciaVendedor = r2(g.comisionesVendedores?.total ?? 0);
 
     // Ayudante (se pregunta al generar; 0 si no hay)
@@ -101,9 +103,22 @@ export async function generarBalance(req: Request, res: Response) {
       if (g.niples.ganancia   > 0.005) add("Ganancia Niples",      g.niples.ganancia);
     }
 
-    // ── Extra Material = (venta total − comisión vendedor) − suma de las filas ──
+    // ── Ganancia de los vendedores: una fila por vendedor (varios clientes del
+    //    mismo vendedor se suman). Antes iba solo arriba y fuera del total.
+    const porVendedor = new Map<string, number>();
+    for (const c of (g.comisionesVendedores?.detalle ?? []) as any[]) {
+      const nombre = String(c.vendedorNombre ?? "").trim() || "Vendedor";
+      porVendedor.set(nombre, (porVendedor.get(nombre) ?? 0) + Number(c.monto ?? 0));
+    }
+    for (const [nombre, monto] of porVendedor) {
+      if (monto > 0.005) add(`Ganancia Vendedor — ${nombre}`, monto);
+    }
+
+    // ── Extra Material = venta total − suma de las filas ───────────────────────
+    // (la comisión ya está entre las filas, por eso no se resta aparte: el Extra
+    //  da exactamente el mismo número que antes.)
     const sumaFilas = items.reduce((s, i) => s + i.montoTotal, 0);
-    const extraMaterial = r2(g.facturaTotal - gananciaVendedor - sumaFilas);
+    const extraMaterial = r2(g.facturaTotal - sumaFilas);
     add("Extra Material", extraMaterial);
 
     // ── Snapshot para auditoría ───────────────────────────────────────────────

@@ -306,7 +306,7 @@ export default function BalancePago() {
         }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#0e7490" }}>Ganancia del Vendedor</div>
-            <div style={{ fontSize: 11, color: "#64748b" }}>Comisión del vendedor — pago independiente, no se incluye en el total del balance</div>
+            <div style={{ fontSize: 11, color: "#64748b" }}>Resumen — ya incluida en el balance; el detalle por vendedor está en la tabla</div>
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#0891b2" }}>${fmt(Number(balance.gananciaVendedor))}</div>
         </div>

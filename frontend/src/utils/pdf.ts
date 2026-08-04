@@ -1674,7 +1674,7 @@ export function pdfBalancePago(data: BalancePDFData) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
-    doc.text("Comisión del vendedor — pago independiente, no se incluye en el total del balance", M + 4, 48.8);
+    doc.text("Resumen — ya incluida en el balance; el detalle por vendedor esta en la tabla", M + 4, 48.8);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(8, 145, 178);
