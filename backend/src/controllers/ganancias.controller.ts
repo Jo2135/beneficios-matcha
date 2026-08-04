@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { DEFAULTS } from "./tablas.controller";
+import { DEFAULTS, PEAD_CAMPO_POR_CODIGO } from "./tablas.controller";
 
 // ─── TABLAS FIJAS (fuente: archivos Excel de referencia) ──────────────────────
 // Si hay overrides en ConfigGanancias, éstos reemplazan los defaults al calcular.
@@ -66,17 +66,20 @@ async function cargarTablas(despachoId: number) {
       pigmento: ov.has("gastos_pigmento") ? ov.get("gastos_pigmento")! : null,
       elect:    ov.has("gastos_elect")   ? ov.get("gastos_elect")!   : null,
     },
+    // Peso de ganancia PEAD por código exacto (editable en Tablas de Ganancias).
+    // Distinto de Producto.pesoUnitarioKg (peso real de inventario) — este es
+    // el peso que entra en cantidad × peso × 0.49.
+    peadPeso: Object.fromEntries(
+      Object.entries(PEAD_CAMPO_POR_CODIGO).map(([codigo, campo]) => [codigo, get(campo, DEFAULTS[campo].valor)])
+    ) as Record<string, number>,
     hayOverrides: ov.size > 0,
     overridesCampos: [...ov.keys()],
   };
 }
 
-// Pesos de ganancia para tubería PEAD (Ganancias_1 — valores menores al sistema)
-const PEAD_PESO_CODE: Record<string, number> = {
-  "TUAM-2-PEAD": 0.85, "TUAM-3-PEAD": 1.2, "TUAM-4-PEAD": 2.25, "TUAM-6-PEAD": 5.5,
-  "TUAM-2-PEAD-R": 1.0, "TUAM-4-PEAD-R": 1.55, "TUAM-3-PEAD-R": 2.45,
-  "TUNA-4-PEAD-R": 2.9, "TUGR-2-PEAD": 2.2,
-};
+// Pesos de ganancia PEAD (Ganancias_1): ahora viven como DEFAULTS editables en
+// tablas.controller.ts (grupo "Pesos de Ganancia PEAD (kg)") — ver tablas.peadPeso
+// en cargarTablas(). Los valores de fábrica (sin editar) son los mismos de siempre.
 
 const PEAD_GANANCIA_RATE = 0.49;
 
@@ -481,7 +484,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
         kgGan[det.catGan] = (kgGan[det.catGan] ?? 0) + totalKg;
       } else if (det.esPead) {
         const c = normCodigo(codigo);
-        const pesoGan = (c && PEAD_PESO_CODE[c]) ? PEAD_PESO_CODE[c]
+        // tablas.peadPeso ya trae el override aplicado si José lo cambió en
+        // Tablas de Ganancias; si no hay override, cae en el mismo default.
+        const pesoGan = (c && tablas.peadPeso[c] != null) ? tablas.peadPeso[c]
                       : pesoGananciaPeadFromNombre(nombre, medida, pesoUnit);
         gananciaPEAD += cantidad * pesoGan * PEAD_GANANCIA_RATE;
       }

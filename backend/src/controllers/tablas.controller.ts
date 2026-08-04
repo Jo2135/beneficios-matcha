@@ -36,6 +36,27 @@ export const DEFAULTS: Record<string, { valor: number; label: string; grupo: str
   gastos_obreros:    { valor: 0, label: "Obreros (override)",       grupo: "Gastos Override por Despacho", unidad: "$" },
   gastos_pigmento:   { valor: 0, label: "Pigmento (override)",      grupo: "Gastos Override por Despacho", unidad: "$" },
   gastos_elect:      { valor: 0, label: "Electricidad (override)",   grupo: "Gastos Override por Despacho", unidad: "$" },
+  // Pesos de ganancia PEAD (Ganancias_1) — por código exacto de producto.
+  // Distinto del peso de inventario (Producto.pesoUnitarioKg): este es el
+  // peso que se usa SOLO para calcular la utilidad (cantidad × peso × 0.49).
+  pead_peso_tuam_2:  { valor: 0.85, label: "TUAM-2-PEAD (2\")",            grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_3:  { valor: 1.20, label: "TUAM-3-PEAD (3\")",            grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_4:  { valor: 2.25, label: "TUAM-4-PEAD (4\")",            grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_6:  { valor: 5.50, label: "TUAM-6-PEAD (6\")",            grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_2r: { valor: 1.00, label: "TUAM-2-PEAD-R (2\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_3r: { valor: 2.45, label: "TUAM-3-PEAD-R (3\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_4r: { valor: 1.55, label: "TUAM-4-PEAD-R (4\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuna_4r: { valor: 2.90, label: "TUNA-4-PEAD-R (4\" Naranja Reforzada)", grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tugr_2:  { valor: 2.20, label: "TUGR-2-PEAD (2\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+};
+
+// Campo de Tablas de Ganancias ↔ código exacto del producto (para el motor)
+export const PEAD_CAMPO_POR_CODIGO: Record<string, string> = {
+  "TUAM-2-PEAD": "pead_peso_tuam_2", "TUAM-3-PEAD": "pead_peso_tuam_3",
+  "TUAM-4-PEAD": "pead_peso_tuam_4", "TUAM-6-PEAD": "pead_peso_tuam_6",
+  "TUAM-2-PEAD-R": "pead_peso_tuam_2r", "TUAM-3-PEAD-R": "pead_peso_tuam_3r",
+  "TUAM-4-PEAD-R": "pead_peso_tuam_4r", "TUNA-4-PEAD-R": "pead_peso_tuna_4r",
+  "TUGR-2-PEAD": "pead_peso_tugr_2",
 };
 
 // ─── GET /api/tablas?despachoId=N ─────────────────────────────────────────────
