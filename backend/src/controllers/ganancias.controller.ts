@@ -409,6 +409,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
               producto: { select: { codigo: true, nombre: true, medida: true, costoCompra: true, categoria: { select: { nombre: true } } } },
             },
           },
+          devoluciones: {
+            select: { montoDevuelto: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } },
+          },
         },
       },
     },
@@ -596,6 +599,24 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     .filter((l) => l.esServicioExterno)
     .map((l) => ({ lineaId: l.id, nombre: `${l.nombre} ${l.medida}`.trim(), costo: l.costoServicioExterno }));
 
+  // ── Devoluciones ya registradas en facturas de este despacho ──────────────
+  // Comisión del vendedor, flete y redirección a socio equivalente se calculan
+  // sobre cot.lineas (el PEDIDO original, fijo desde que se cotizó) — no sobre
+  // despacho.facturas, así que una devolución no les llegaba sola. Se resta
+  // aquí, una vez, separado por tubería/conexión y por cliente (vía factura).
+  // OJO: esto es solo para devoluciones registradas — el "faltante" normal
+  // (cantidadDespachada < cantidadPedida sin devolución) sigue sin tocarse,
+  // porque son conceptos distintos.
+  const devueltoPorCliente = new Map<number, { tuberia: number; conexion: number }>();
+  for (const factura of despacho.facturas as any[]) {
+    for (const d of (factura.devoluciones ?? [])) {
+      const acc = devueltoPorCliente.get(factura.clienteId) ?? { tuberia: 0, conexion: 0 };
+      if (esConexion(d.producto?.codigo ?? null, d.producto?.nombre ?? "", d.producto?.categoria?.nombre)) acc.conexion += Number(d.montoDevuelto);
+      else acc.tuberia += Number(d.montoDevuelto);
+      devueltoPorCliente.set(factura.clienteId, acc);
+    }
+  }
+
   // ── Comisiones por cliente (misma fórmula que muestra NuevaCotizacion) ──────
   // Se calcula por cotización única: tubería × ctPct/(100+ctPct) + conexiones × ccPct/(100+ccPct)
   const cotizacionesVistas = new Set<number>();
@@ -625,6 +646,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
         totalTuberia += monto;
       }
     }
+    const devCom = cot.cliente?.id != null ? devueltoPorCliente.get(cot.cliente.id) : undefined;
+    totalTuberia = Math.max(0, totalTuberia - (devCom?.tuberia ?? 0));
+    totalConexiones = Math.max(0, totalConexiones - (devCom?.conexion ?? 0));
 
     const monto =
       (ctPct > 0 ? totalTuberia  * ctPct / (100 + ctPct) : 0) +
@@ -667,6 +691,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
         totalTuberia += monto;
       }
     }
+    const devFlete = cot.cliente?.id != null ? devueltoPorCliente.get(cot.cliente.id) : undefined;
+    totalTuberia = Math.max(0, totalTuberia - (devFlete?.tuberia ?? 0));
+    totalConexiones = Math.max(0, totalConexiones - (devFlete?.conexion ?? 0));
 
     const monto =
       (ftPct > 0 ? totalTuberia  * ftPct / (100 + ftPct) : 0) +
@@ -731,6 +758,8 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       if (!esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre))
         cotSinCon += Number(cl.totalLinea ?? 0);
     }
+    const devSocio = cot.cliente?.id != null ? devueltoPorCliente.get(cot.cliente.id) : undefined;
+    cotSinCon = Math.max(0, cotSinCon - (devSocio?.tuberia ?? 0));
     if (cotSinCon <= 0) continue;
 
     const montoRedirigido = cotSinCon - cotSinCon / (1 + tasa);

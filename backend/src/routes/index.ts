@@ -4,6 +4,7 @@ import * as productos from "../controllers/productos.controller";
 import * as listaPrecios from "../controllers/listaPrecios.controller";
 import * as cotizaciones from "../controllers/cotizaciones.controller";
 import * as facturas from "../controllers/facturas.controller";
+import * as devoluciones from "../controllers/devoluciones.controller";
 import * as pagos from "../controllers/pagos.controller";
 import * as pagosVendedor from "../controllers/pagosVendedor.controller";
 import * as despachos from "../controllers/despachos.controller";
@@ -120,6 +121,9 @@ router.get("/facturas/:id", requireRol("MASTER", "ADMIN"), w(facturas.obtener));
 router.patch("/facturas/:id/notas", requireRol("MASTER", "ADMIN"), w(facturas.actualizarNotas));
 router.patch("/facturas/:id/comision-vendedor", requireRol("MASTER"), w(facturas.actualizarComisionVendedor));
 router.delete("/facturas/:id", requireRol("MASTER"), w(facturas.eliminar));
+// Devoluciones de producto sobre una línea ya facturada
+router.post("/facturas/:facturaId/lineas/:lineaId/devolucion", requireRol("MASTER", "ADMIN"), w(devoluciones.crear));
+router.delete("/devoluciones/:id", requireRol("MASTER", "ADMIN"), w(devoluciones.eliminar));
 
 // ─── Cuentas bancarias ────────────────────────────────────────────────────
 router.get("/cuentas", w(cuentas.listar));

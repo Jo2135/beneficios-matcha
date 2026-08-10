@@ -67,6 +67,7 @@ model Producto {
   despachoLineas   DespachoLinea[]
   facturaLineas    FacturaLinea[]
   comprasExternasLineas CompraExternaLinea[]
+  devoluciones     FacturaDevolucion[]
 }
 
 enum OrigenProducto {
@@ -242,6 +243,8 @@ model DespachoLinea {
   // Tubo Gris PVC comprado a proveedor (costo y proveedor por línea)
   proveedorGris        String?       // "casa_del_tubo" | "alirio"
   costoGrisUnit        Decimal?      @db.Decimal(12, 4)
+
+  devolucionAjustes    FacturaDevolucionDespacho[]
 }
 
 /// Conceptos sueltos de un despacho que NO salen de los productos vendidos
@@ -299,11 +302,46 @@ model Factura {
   creadoEn         DateTime      @default(now())
   actualizadoEn    DateTime      @updatedAt
 
-  lineas    FacturaLinea[]
-  pagos     PagoAsignacion[]
-  gastos    DespachoGasto[]
-  ganancias DistribucionGanancia[]
+  lineas       FacturaLinea[]
+  pagos        PagoAsignacion[]
+  gastos       DespachoGasto[]
+  ganancias    DistribucionGanancia[]
   comprasExternasAsignaciones CompraExternaAsignacion[]
+  devoluciones FacturaDevolucion[]
+}
+
+/// Devolución de producto sobre una línea de factura ya emitida. Descuenta el
+/// monto de la factura (totalNeto/saldoPendiente) y, si la factura nace de un
+/// despacho, también descuenta cantidadDespachada de la(s) DespachoLinea que
+/// correspondan — así el motor de ganancias (que lee esa cantidad, no lo
+/// facturado) deja de pagar comisión/ganancia sobre lo que ya no se vendió.
+model FacturaDevolucion {
+  id             Int          @id @default(autoincrement())
+  facturaId      Int
+  factura        Factura      @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  facturaLineaId Int
+  facturaLinea   FacturaLinea @relation(fields: [facturaLineaId], references: [id], onDelete: Cascade)
+  productoId     Int
+  producto       Producto     @relation(fields: [productoId], references: [id])
+  cantidad       Decimal      @db.Decimal(10, 2)
+  montoDevuelto  Decimal      @db.Decimal(12, 2)
+  motivo         String?
+  creadoPorId    Int?
+  creadoPor      Usuario?     @relation(fields: [creadoPorId], references: [id])
+  creadoEn       DateTime     @default(now())
+
+  ajustesDespacho FacturaDevolucionDespacho[]
+}
+
+/// Detalle de qué DespachoLinea(s) se ajustaron por una devolución y cuánto,
+/// para poder revertir la devolución con precisión si fue un error.
+model FacturaDevolucionDespacho {
+  id              Int               @id @default(autoincrement())
+  devolucionId    Int
+  devolucion      FacturaDevolucion @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
+  despachoLineaId Int
+  despachoLinea   DespachoLinea     @relation(fields: [despachoLineaId], references: [id])
+  cantidad        Decimal           @db.Decimal(10, 2)
 }
 
 enum EstadoFactura {
@@ -329,6 +367,8 @@ model FacturaLinea {
   origen         OrigenProducto @default(INTERNO)
   pesoTotalKg    Decimal?       @db.Decimal(10, 4)
   orden          Int            @default(0)
+
+  devoluciones   FacturaDevolucion[]
 }
 
 // ─── PAGOS Y TESORERÍA ─────────────────────────────────────────────────────
@@ -528,6 +568,7 @@ model Usuario {
   seguimientos SeguimientoCotizacion[]
   pagosCreados   Pago[] @relation("PagoCreadoPor")
   pagosAprobados Pago[] @relation("PagoAprobadoPor")
+  devolucionesCreadas FacturaDevolucion[]
 }
 
 // ─── TASA DE CAMBIO ────────────────────────────────────────────────────────

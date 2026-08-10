@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi, clientesApi, cuentasApi, empresasApi, authApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown, BarChart2 } from "lucide-react";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown, BarChart2, Undo2 } from "lucide-react";
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 import ImportarFacturasExcel from "../components/ImportarFacturasExcel";
@@ -51,6 +51,9 @@ export default function Facturas() {
   const [generandoBalance, setGenerandoBalance] = useState(false);
   const [modalManual, setModalManual] = useState(false);
   const [mForm, setMForm] = useState<any>({ pagos: [] });
+  const [devolLineaId, setDevolLineaId] = useState<number | null>(null); // línea con el mini-form abierto
+  const [devolCant, setDevolCant] = useState("");
+  const [devolMotivo, setDevolMotivo] = useState("");
 
   const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: clientesApi.listar });
   const { data: cuentas = [] } = useQuery({ queryKey: ["cuentas-todas"], queryFn: cuentasApi.listarTodas });
@@ -79,6 +82,27 @@ export default function Facturas() {
       setEditNotas(false);
     },
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al guardar notas"),
+  });
+
+  const crearDevolucion = useMutation({
+    mutationFn: ({ lineaId, cantidad, motivo }: { lineaId: number; cantidad: number; motivo?: string }) =>
+      facturasApi.registrarDevolucion(facturaId!, lineaId, { cantidad, motivo }),
+    onSuccess: (r: any) => {
+      qc.invalidateQueries({ queryKey: ["factura", facturaId] });
+      qc.invalidateQueries({ queryKey: ["facturas-balance"] });
+      setDevolLineaId(null); setDevolCant(""); setDevolMotivo("");
+      if (r?.aviso) alert(r.aviso);
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al registrar la devolución"),
+  });
+
+  const borrarDevolucion = useMutation({
+    mutationFn: (id: number) => facturasApi.eliminarDevolucion(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["factura", facturaId] });
+      qc.invalidateQueries({ queryKey: ["facturas-balance"] });
+    },
+    onError: (e: any) => alert(e.response?.data?.error ?? "Error al revertir la devolución"),
   });
 
   const eliminarFac = useMutation({
@@ -552,31 +576,112 @@ export default function Facturas() {
                       <th style={{ ...thStyle, textAlign: "center" }}>Cant.</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>Precio Unit.</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
+                      {puedeEditar && <th style={{ ...thStyle, textAlign: "right" }}></th>}
                     </tr>
                   </thead>
                   <tbody>
                     {(factura.lineas ?? []).map((l: any) => (
-                      <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={tdStyle}>
-                          <div style={{ fontWeight: 600 }}>{l.producto?.nombre}</div>
-                          {l.producto?.categoria?.nombre && (
-                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{l.producto.categoria.nombre}</div>
+                      <Fragment key={l.id}>
+                        <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={tdStyle}>
+                            <div style={{ fontWeight: 600 }}>{l.producto?.nombre}</div>
+                            {l.producto?.categoria?.nombre && (
+                              <div style={{ fontSize: 11, color: "#94a3b8" }}>{l.producto.categoria.nombre}</div>
+                            )}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "center" }}>
+                            <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>
+                              {l.producto?.medida}
+                            </span>
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600 }}>{Number(l.cantidad)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right" }}>{usd(l.precioUnitario)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{usd(l.totalLinea)}</td>
+                          {puedeEditar && (
+                            <td style={{ ...tdStyle, textAlign: "right" }}>
+                              {Number(l.cantidad) > 0 && (
+                                <button
+                                  title="Registrar devolución de producto en esta línea"
+                                  onClick={() => { setDevolLineaId(devolLineaId === l.id ? null : l.id); setDevolCant(String(Number(l.cantidad))); setDevolMotivo(""); }}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, background: devolLineaId === l.id ? "#fef2f2" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 11, color: "#b91c1c", fontWeight: 600 }}
+                                >
+                                  <Undo2 size={12} /> Devolver
+                                </button>
+                              )}
+                            </td>
                           )}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>
-                            {l.producto?.medida}
-                          </span>
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600 }}>{Number(l.cantidad)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{usd(l.precioUnitario)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{usd(l.totalLinea)}</td>
-                      </tr>
+                        </tr>
+                        {devolLineaId === l.id && (
+                          <tr style={{ background: "#fef2f2" }}>
+                            <td colSpan={puedeEditar ? 6 : 5} style={{ padding: "10px 12px" }}>
+                              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                                <label style={{ fontSize: 11, fontWeight: 600, color: "#7f1d1d" }}>
+                                  Cantidad a devolver <span style={{ fontWeight: 400, color: "#94a3b8" }}>(máx. {Number(l.cantidad)})</span>
+                                  <input
+                                    type="number" min="0" max={Number(l.cantidad)} step="0.01"
+                                    value={devolCant} onChange={(e) => setDevolCant(e.target.value)}
+                                    style={{ display: "block", marginTop: 3, width: 110, padding: "6px 9px", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 13 }}
+                                  />
+                                </label>
+                                <label style={{ fontSize: 11, fontWeight: 600, color: "#7f1d1d", flex: 1, minWidth: 180 }}>
+                                  Motivo <span style={{ fontWeight: 400, color: "#94a3b8" }}>(opcional)</span>
+                                  <input
+                                    value={devolMotivo} onChange={(e) => setDevolMotivo(e.target.value)}
+                                    placeholder="Ej: producto dañado, pedido de más..."
+                                    style={{ display: "block", marginTop: 3, width: "100%", padding: "6px 9px", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 13, boxSizing: "border-box" }}
+                                  />
+                                </label>
+                                <div style={{ fontSize: 12, color: "#7f1d1d" }}>
+                                  Crédito: <strong>{usd((Number(devolCant) || 0) * Number(l.precioUnitario) * (1 - Number(l.descuentoPct ?? 0) / 100))}</strong>
+                                </div>
+                                <button onClick={() => setDevolLineaId(null)} style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 6, padding: "7px 14px", cursor: "pointer", fontSize: 12 }}>Cancelar</button>
+                                <button
+                                  onClick={() => crearDevolucion.mutate({ lineaId: l.id, cantidad: Number(devolCant), motivo: devolMotivo })}
+                                  disabled={!(Number(devolCant) > 0) || Number(devolCant) > Number(l.cantidad) || crearDevolucion.isPending}
+                                  style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, opacity: (Number(devolCant) > 0 && Number(devolCant) <= Number(l.cantidad)) ? 1 : 0.5 }}
+                                >
+                                  {crearDevolucion.isPending ? "Registrando…" : "Confirmar devolución"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
+
+            {/* Devoluciones registradas */}
+            {(factura.devoluciones ?? []).length > 0 && (
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Devoluciones registradas</div>
+                <div style={{ border: "1px solid #fecaca", borderRadius: 8, overflow: "hidden" }}>
+                  {(factura.devoluciones ?? []).map((d: any, i: number) => (
+                    <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#fef2f2", borderTop: i > 0 ? "1px solid #fecaca" : undefined, fontSize: 12 }}>
+                      <span style={{ color: "#94a3b8", minWidth: 76 }}>{new Date(d.creadoEn).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                      <span style={{ flex: 1, fontWeight: 600, color: "#7f1d1d" }}>
+                        {Number(d.cantidad)} × {d.producto?.nombre} {d.producto?.medida}
+                        {d.motivo && <span style={{ fontWeight: 400, color: "#991b1b" }}> — {d.motivo}</span>}
+                      </span>
+                      <span style={{ color: "#94a3b8" }}>{d.creadoPor?.nombre}</span>
+                      <span style={{ fontWeight: 700, color: "#dc2626" }}>−{usd(d.montoDevuelto)}</span>
+                      {puedeEditar && (
+                        <button
+                          title="Revertir esta devolución"
+                          onClick={() => { if (confirm("¿Revertir esta devolución? Vuelve la cantidad y el monto a la factura.")) borrarDevolucion.mutate(d.id); }}
+                          disabled={borrarDevolucion.isPending}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", padding: 2 }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Notas internas */}
             <div style={{ marginBottom: 18 }}>

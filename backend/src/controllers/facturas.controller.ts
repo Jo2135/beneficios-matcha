@@ -101,6 +101,10 @@ export async function obtener(req: Request, res: Response) {
       },
       gastos: { orderBy: { renglon: "asc" } },
       ganancias: { orderBy: { beneficiario: "asc" } },
+      devoluciones: {
+        include: { producto: { select: { nombre: true, medida: true } }, creadoPor: { select: { nombre: true } } },
+        orderBy: { creadoEn: "desc" },
+      },
     },
   });
   if (!factura) return res.status(404).json({ error: "Factura no encontrada" });

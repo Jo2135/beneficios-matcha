@@ -103,6 +103,9 @@ export const facturasApi = {
   eliminar: (id: number) => api.delete(`/facturas/${id}`).then((r) => r.data),
   listarConPagos: (clienteId: number) =>
     api.get(`/facturas/cliente/${clienteId}/con-pagos`).then((r) => r.data),
+  registrarDevolucion: (facturaId: number, lineaId: number, data: { cantidad: number; motivo?: string }) =>
+    api.post(`/facturas/${facturaId}/lineas/${lineaId}/devolucion`, data).then((r) => r.data),
+  eliminarDevolucion: (id: number) => api.delete(`/devoluciones/${id}`).then((r) => r.data),
 };
 
 // Empresas
