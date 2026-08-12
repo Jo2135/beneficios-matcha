@@ -318,7 +318,7 @@ function parseNipleMedida(medida: string): { diametro: string; longitud: number 
 
 /** Detecta si un producto es "conexión" — excluido de Ganancias_2.
  *  Prioridad: categoría "Conexiones" → código → nombre (fallback). */
-function esConexion(codigo: string | null, nombre: string, categoriaNombre?: string): boolean {
+export function esConexion(codigo: string | null, nombre: string, categoriaNombre?: string): boolean {
   // 1) Por categoría (lo más confiable ahora que existe la categoría Conexiones)
   if (categoriaNombre && norm(categoriaNombre) === "conexiones") return true;
   const c = normCodigo(codigo);

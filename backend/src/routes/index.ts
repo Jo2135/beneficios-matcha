@@ -5,6 +5,7 @@ import * as listaPrecios from "../controllers/listaPrecios.controller";
 import * as cotizaciones from "../controllers/cotizaciones.controller";
 import * as facturas from "../controllers/facturas.controller";
 import * as devoluciones from "../controllers/devoluciones.controller";
+import * as controlDespachos from "../controllers/controlDespachos.controller";
 import * as pagos from "../controllers/pagos.controller";
 import * as pagosVendedor from "../controllers/pagosVendedor.controller";
 import * as despachos from "../controllers/despachos.controller";
@@ -162,6 +163,9 @@ router.patch("/despachos/lineas/:lineaId/servicio-externo", requireRol("MASTER",
 router.patch("/despachos/lineas/:lineaId/gris", requireRol("MASTER", "ADMIN"), w(ganancias.actualizarGris));
 // Balance de Pagos — solo MASTER (los administradores no pueden ver el balance)
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
+// Control de Despachos + Deudas (por cobrar y deuda de materia prima) — solo MASTER
+router.get("/control-despachos", requireRol("MASTER"), w(controlDespachos.listar));
+
 router.get("/despachos/:id/balance", requireRol("MASTER"), w(balance.getBalance));
 router.get("/despachos/:id/balance/snapshot", requireRol("MASTER"), w(balance.getSnapshot));
 // Conceptos adicionales del despacho (Comisión 2, Viáticos, Carga Externa, Ayudante)

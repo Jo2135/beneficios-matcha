@@ -26,6 +26,7 @@ import FacturacionExterna from "./pages/FacturacionExterna";
 import TablasGanancias from "./pages/TablasGanancias";
 import PlanificadorCarga from "./pages/PlanificadorCarga";
 import PedidosProduccion from "./pages/PedidosProduccion";
+import ControlDespachos from "./pages/ControlDespachos";
 import PagosVendedores from "./pages/PagosVendedores";
 
 const queryClient = new QueryClient({
@@ -87,6 +88,7 @@ function AppRoutes() {
         {puedeEditar && <Route path="/planificador-carga" element={<PlanificadorCarga />} />}
         {puedeEditar && <Route path="/despachos/:id/ganancias" element={<GananciasDespacho />} />}
         {esMaster && <Route path="/despachos/:id/balance" element={<BalancePago />} />}
+        {esMaster && <Route path="/control-despachos" element={<ControlDespachos />} />}
         {puedeEditar && <Route path="/orden-produccion" element={<OrdenDespachos />} />}
         {puedeEditar && <Route path="/clientes/:clienteId/estado-cuenta" element={<EstadoCuenta />} />}
         {puedeEditar && <Route path="/facturas" element={<Facturas />} />}

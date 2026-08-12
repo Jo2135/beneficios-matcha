@@ -250,6 +250,14 @@ export const tablasApi = {
     api.post("/tablas/pin", data).then((r) => r.data),
 };
 
+// Control de Despachos + Deudas (por cobrar y deuda de materia prima)
+export const controlDespachosApi = {
+  listar: (params?: { desde?: string; hasta?: string }) =>
+    api.get("/control-despachos", { params }).then((r) => r.data),
+  abonarMaterial: (itemId: number, data: { fecha: string; monto: number; notas?: string }) =>
+    api.post(`/balance/items/${itemId}/cuotas`, data).then((r) => r.data),
+};
+
 // Conceptos adicionales de un despacho (Comisión 2, Viáticos, Carga Externa, Ayudante)
 export const conceptosApi = {
   listar: (despachoId: number) => api.get(`/despachos/${despachoId}/conceptos`).then((r) => r.data),
