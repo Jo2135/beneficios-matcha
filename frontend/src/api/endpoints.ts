@@ -106,6 +106,9 @@ export const facturasApi = {
   registrarDevolucion: (facturaId: number, lineaId: number, data: { cantidad: number; motivo?: string }) =>
     api.post(`/facturas/${facturaId}/lineas/${lineaId}/devolucion`, data).then((r) => r.data),
   eliminarDevolucion: (id: number) => api.delete(`/devoluciones/${id}`).then((r) => r.data),
+  candidatasDespacho: (id: number) => api.get(`/facturas/${id}/candidatas-despacho`).then((r) => r.data),
+  generarDespacho: (id: number, data?: { cotizacionId?: number; estado?: string }) =>
+    api.post(`/facturas/${id}/generar-despacho`, data ?? {}).then((r) => r.data),
 };
 
 // Empresas

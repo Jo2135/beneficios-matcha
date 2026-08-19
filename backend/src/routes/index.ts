@@ -125,6 +125,9 @@ router.delete("/facturas/:id", requireRol("MASTER"), w(facturas.eliminar));
 // Devoluciones de producto sobre una línea ya facturada
 router.post("/facturas/:facturaId/lineas/:lineaId/devolucion", requireRol("MASTER", "ADMIN"), w(devoluciones.crear));
 router.delete("/devoluciones/:id", requireRol("MASTER", "ADMIN"), w(devoluciones.eliminar));
+// Reconstruir el despacho de una factura hecha con "Factura Directa"
+router.get("/facturas/:id/candidatas-despacho", requireRol("MASTER", "ADMIN"), w(devoluciones.candidatasDespacho));
+router.post("/facturas/:id/generar-despacho", requireRol("MASTER", "ADMIN"), w(devoluciones.generarDespachoDesdeFactura));
 
 // ─── Cuentas bancarias ────────────────────────────────────────────────────
 router.get("/cuentas", w(cuentas.listar));

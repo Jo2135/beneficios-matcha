@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { siguienteNumero } from "../utils/secuencia";
 
 /**
  * Devolución de producto sobre una línea de factura ya emitida.
@@ -159,4 +160,97 @@ export async function eliminar(req: Request, res: Response) {
   });
 
   res.json({ ok: true });
+}
+
+// ─── Generar despacho para una factura creada con "Factura Directa" ──────────
+// Ese boton crea la factura saltandose el despacho, y sin despacho no hay
+// Ganancias ni Balance. Esto reconstruye el despacho desde la cotizacion de
+// origen y enlaza la MISMA factura (no duplica nada).
+
+/** GET /facturas/:id/candidatas-despacho — cotizaciones que podrian ser el origen */
+export async function candidatasDespacho(req: Request, res: Response) {
+  const facturaId = Number(req.params.id);
+  const f = await prisma.factura.findUnique({
+    where: { id: facturaId },
+    select: { id: true, clienteId: true, totalNeto: true, ordenDespachoId: true },
+  });
+  if (!f) return res.status(404).json({ error: "Factura no encontrada" });
+  if (f.ordenDespachoId) return res.status(400).json({ error: "Esta factura ya tiene despacho" });
+
+  const cots = await prisma.cotizacion.findMany({
+    where: { clienteId: f.clienteId, despachoLineas: { none: {} }, lineas: { some: {} } },
+    select: { id: true, numero: true, estado: true, totalNeto: true, creadoEn: true, _count: { select: { lineas: true } } },
+    orderBy: { creadoEn: "desc" },
+    take: 10,
+  });
+  // La que cuadra en monto va primero: es casi siempre la correcta
+  const conMatch = cots.map((c) => ({ ...c, coincideMonto: Math.abs(Number(c.totalNeto) - Number(f.totalNeto)) < 0.02 }))
+                       .sort((a, b) => Number(b.coincideMonto) - Number(a.coincideMonto));
+  res.json({ candidatas: conMatch });
+}
+
+/** POST /facturas/:id/generar-despacho { cotizacionId?, estado? } */
+export async function generarDespachoDesdeFactura(req: Request, res: Response) {
+  const facturaId = Number(req.params.id);
+  const { cotizacionId, estado } = req.body ?? {};
+
+  const factura = await prisma.factura.findUnique({
+    where: { id: facturaId },
+    select: {
+      id: true, numero: true, ordenDespachoId: true, clienteId: true, fechaEmision: true, totalNeto: true,
+      lineas: { select: { productoId: true, cantidad: true, orden: true }, orderBy: { orden: "asc" } },
+    },
+  });
+  if (!factura) return res.status(404).json({ error: "Factura no encontrada" });
+  if (factura.ordenDespachoId) return res.status(400).json({ error: "Esta factura ya tiene despacho" });
+  if (factura.lineas.length === 0) return res.status(400).json({ error: "La factura no tiene productos" });
+
+  // Cotizacion de origen: la indicada, o la unica que cuadre en cliente y monto
+  let cotId = cotizacionId ? Number(cotizacionId) : null;
+  if (!cotId) {
+    const cands = await prisma.cotizacion.findMany({
+      where: { clienteId: factura.clienteId, despachoLineas: { none: {} }, lineas: { some: {} } },
+      select: { id: true, totalNeto: true },
+    });
+    const exactas = cands.filter((c) => Math.abs(Number(c.totalNeto) - Number(factura.totalNeto)) < 0.02);
+    if (exactas.length === 1) cotId = exactas[0].id;
+    else return res.status(400).json({
+      error: exactas.length === 0
+        ? "No se encontro la cotizacion de origen: elige cual usar."
+        : `Hay ${exactas.length} cotizaciones con el mismo monto: elige cual usar.`,
+    });
+  }
+  const cot = await prisma.cotizacion.findUnique({ where: { id: cotId }, select: { id: true, clienteId: true, numero: true } });
+  if (!cot) return res.status(404).json({ error: "Cotizacion no encontrada" });
+  if (cot.clienteId !== factura.clienteId) return res.status(400).json({ error: "Esa cotizacion es de otro cliente" });
+
+  const estadoFinal = ["PENDIENTE", "EN_RUTA", "ENTREGADO", "PARCIAL"].includes(String(estado)) ? String(estado) : "EN_RUTA";
+
+  const despachoId = await prisma.$transaction(async (tx) => {
+    const numero = await siguienteNumero("DES");
+    const d = await tx.ordenDespacho.create({
+      data: {
+        numero, estado: estadoFinal as any,
+        fechaSalida: factura.fechaEmision ?? new Date(),
+        notas: `Generado desde ${factura.numero} (facturada con "Factura Directa", sin despacho) / ${cot.numero}`,
+      },
+    });
+    for (const l of factura.lineas) {
+      await tx.despachoLinea.create({
+        data: {
+          ordenDespachoId: d.id, cotizacionId: cot.id, productoId: l.productoId,
+          cantidadPedida: l.cantidad,
+          cantidadDespachada: l.cantidad,   // el motor de ganancias lee esto
+          cantidadFaltante: 0,
+          estado: "DESPACHADO",
+        },
+      });
+    }
+    await tx.factura.update({ where: { id: factura.id }, data: { ordenDespachoId: d.id } });
+    if (cot.id) await tx.cotizacion.update({ where: { id: cot.id }, data: { estado: "COMPLETADA" } });
+    return d.id;
+  });
+
+  const creado = await prisma.ordenDespacho.findUnique({ where: { id: despachoId }, select: { id: true, numero: true, estado: true } });
+  res.status(201).json({ despacho: creado, cotizacion: cot.numero });
 }

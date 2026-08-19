@@ -2,7 +2,7 @@ import { useState, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { facturasApi, clientesApi, cuentasApi, empresasApi, authApi } from "../api/endpoints";
-import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown, BarChart2, Undo2 } from "lucide-react";
+import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCircle, Trash2, Search, X, Plus, Minus, ArrowUp, ArrowDown, BarChart2, Undo2, Truck } from "lucide-react";
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 import ImportarFacturasExcel from "../components/ImportarFacturasExcel";
@@ -82,6 +82,27 @@ export default function Facturas() {
       setEditNotas(false);
     },
     onError: (e: any) => alert(e.response?.data?.error ?? "Error al guardar notas"),
+  });
+
+  const generarDespacho = useMutation({
+    mutationFn: (cotizacionId?: number) => facturasApi.generarDespacho(facturaId!, cotizacionId ? { cotizacionId } : undefined),
+    onSuccess: (r: any) => {
+      qc.invalidateQueries({ queryKey: ["factura", facturaId] });
+      qc.invalidateQueries({ queryKey: ["facturas-balance"] });
+      alert(`Despacho ${r.despacho?.numero} creado desde ${r.cotizacion}. Ya puedes ver Ganancias y Balance.`);
+    },
+    onError: async (e: any) => {
+      const msg = e?.response?.data?.error ?? "No se pudo generar el despacho";
+      // Si hay varias cotizaciones posibles, se ofrece elegir
+      try {
+        const { candidatas } = await facturasApi.candidatasDespacho(facturaId!);
+        if (!candidatas?.length) { alert(msg); return; }
+        const lista = candidatas.map((c: any, i: number) => `${i + 1}) ${c.numero} · ${c.estado} · $${Number(c.totalNeto).toFixed(2)}${c.coincideMonto ? " (coincide)" : ""}`).join("   |   ");
+        const sel = window.prompt(`${msg}   —   ${lista}   —   Escribe el número de la opción:`);
+        const idx = Number(sel) - 1;
+        if (candidatas[idx]) generarDespacho.mutate(candidatas[idx].id);
+      } catch { alert(msg); }
+    },
   });
 
   const crearDevolucion = useMutation({
@@ -513,6 +534,20 @@ export default function Facturas() {
                 >
                   <Download size={13} /> {generandoBalance ? "Generando..." : "PDF Balance Cliente"}
                 </button>
+                {puedeEditar && !factura.ordenDespachoId && (
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`Esta factura se creó con "Factura Directa" y no tiene despacho, por eso no hay Ganancias ni Balance.
+
+¿Generar ahora su despacho desde la cotización?`)) return;
+                      generarDespacho.mutate(undefined);
+                    }}
+                    disabled={generarDespacho.isPending}
+                    style={{ ...btnAction, background: "#fef3c7", color: "#92400e", display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Truck size={13} /> {generarDespacho.isPending ? "Generando..." : "Generar despacho"}
+                  </button>
+                )}
                 {esMaster && (
                   <button
                     onClick={() => {
