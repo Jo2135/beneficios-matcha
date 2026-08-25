@@ -5,19 +5,24 @@ import { siguienteNumero } from "../utils/secuencia";
 export async function listar(req: Request, res: Response) {
   const despachos = await prisma.ordenDespacho.findMany({
     include: {
+      // Antes se traia solo 1 linea (take: 1) para sacar el cliente: la lista
+      // mostraba "1 lineas" siempre y un unico cliente, aunque el despacho
+      // fuera consolidado. Ahora se trae el minimo para contar y listar todos.
       lineas: {
-        take: 1,
-        include: {
-          cotizacion: {
-            include: { cliente: { select: { nombre: true } } },
-          },
-        },
+        select: { cotizacion: { select: { cliente: { select: { nombre: true } } } } },
       },
+      _count: { select: { lineas: true } },
       facturas: { select: { id: true, numero: true } },
     },
     orderBy: { creadoEn: "desc" },
   });
-  res.json(despachos);
+  // Se resume aqui para no mandar cientos de lineas al navegador
+  const resumen = despachos.map((d) => {
+    const clientes = [...new Set(d.lineas.map((l) => l.cotizacion?.cliente?.nombre).filter(Boolean))] as string[];
+    const { lineas, ...resto } = d;
+    return { ...resto, clientes, totalLineas: d._count.lineas };
+  });
+  res.json(resumen);
 }
 
 export async function obtener(req: Request, res: Response) {

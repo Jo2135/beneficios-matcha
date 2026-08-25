@@ -55,6 +55,7 @@ export default function Despachos() {
       lista = lista.filter((d) =>
         d.numero?.toLowerCase().includes(q) ||
         d.chofer?.toLowerCase().includes(q) ||
+        (d.clientes ?? []).some((c: string) => c.toLowerCase().includes(q)) ||
         d.lineas?.[0]?.cotizacion?.cliente?.nombre?.toLowerCase().includes(q)
       );
     }
@@ -264,7 +265,9 @@ export default function Despachos() {
             {despachosFiltrados.map((d) => {
               const est = ESTADO_DESPACHO[d.estado];
               const EstIcon = est?.icon;
-              const cliente = d.lineas?.[0]?.cotizacion?.cliente?.nombre ?? "—";
+              // Un despacho consolidado lleva varios clientes: se muestran todos
+              const listaClientes: string[] = d.clientes ?? (d.lineas?.[0]?.cotizacion?.cliente?.nombre ? [d.lineas[0].cotizacion.cliente.nombre] : []);
+              const cliente = listaClientes.length ? listaClientes.join(" · ") : "—";
               return (
                 <tr key={d.id} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer" }} onClick={() => abrirDespacho(d.id)}>
                   <td style={tdStyle}><span style={{ fontWeight: 700, color: "#2563eb" }}>{d.numero}</span></td>
@@ -278,7 +281,12 @@ export default function Despachos() {
                       {EstIcon && <EstIcon size={11} />} {est?.label}
                     </span>
                   </td>
-                  <td style={{ ...tdStyle, color: "#64748b" }}>{d.lineas?.length ?? 0} líneas</td>
+                  <td style={{ ...tdStyle, color: "#64748b" }}>
+                    {d.totalLineas ?? d.lineas?.length ?? 0} líneas
+                    {listaClientes.length > 1 && (
+                      <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>{listaClientes.length} clientes</div>
+                    )}
+                  </td>
                   <td style={tdStyle}>
                     {d.facturas?.length > 0
                       ? <span style={{ ...badge, color: "#16a34a", background: "#dcfce7" }}>{d.facturas[0].numero}</span>
