@@ -358,3 +358,98 @@ export async function eliminar(req: Request, res: Response) {
   await prisma.ordenDespacho.delete({ where: { id } });
   res.json({ ok: true });
 }
+
+/**
+ * POST /despachos/:id/lineas — agrega un producto al despacho a ultima hora.
+ *
+ * Se agrega TAMBIEN a la cotizacion del cliente, no solo al despacho, porque:
+ *  - finalizar() saca el precio de la cotizacion; sin linea alli, el producto
+ *    se descartaria en silencio al facturar.
+ *  - el motor de ganancias calcula comision del vendedor, flete y Ganancias_2
+ *    sobre las lineas de la COTIZACION; si no esta, no genera comision.
+ * El pedido del cliente efectivamente crecio, asi que la cotizacion debe
+ * reflejarlo.
+ */
+export async function agregarLinea(req: Request, res: Response) {
+  const despachoId = Number(req.params.id);
+  const { cotizacionId, productoId, cantidad, precioUnitario } = req.body;
+
+  const cant = Number(cantidad);
+  if (!cotizacionId || !productoId) return res.status(400).json({ error: "Indica la cotización y el producto" });
+  if (!(cant > 0)) return res.status(400).json({ error: "La cantidad debe ser mayor a cero" });
+
+  const despacho = await prisma.ordenDespacho.findUnique({
+    where: { id: despachoId },
+    select: { estado: true, lineas: { select: { cotizacionId: true, productoId: true } } },
+  });
+  if (!despacho) return res.status(404).json({ error: "Despacho no encontrado" });
+  if (despacho.estado === "ENTREGADO") return res.status(400).json({ error: "El despacho ya fue finalizado" });
+
+  const cotIds = new Set(despacho.lineas.map((l) => l.cotizacionId));
+  if (!cotIds.has(Number(cotizacionId))) {
+    return res.status(400).json({ error: "Esa cotización no pertenece a este despacho" });
+  }
+  if (despacho.lineas.some((l) => l.cotizacionId === Number(cotizacionId) && l.productoId === Number(productoId))) {
+    return res.status(400).json({ error: "Ese producto ya está en el despacho para ese cliente: edita su cantidad en la tabla" });
+  }
+
+  const cotizacion = await prisma.cotizacion.findUnique({
+    where: { id: Number(cotizacionId) },
+    select: { id: true, clienteId: true, numero: true, lineas: { select: { orden: true, totalLinea: true } } },
+  });
+  if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
+
+  const producto = await prisma.producto.findUnique({
+    where: { id: Number(productoId) },
+    select: { id: true, nombre: true, medida: true, pesoUnitarioKg: true },
+  });
+  if (!producto) return res.status(404).json({ error: "Producto no encontrado" });
+
+  // Precio: el indicado a mano, o el de la lista del cliente
+  let precio = Number(precioUnitario);
+  let listaOrigenId: number | null = null;
+  if (!(precio > 0)) {
+    const asignaciones = await prisma.clienteListaPrecios.findMany({
+      where: { clienteId: cotizacion.clienteId },
+      include: { listaPrecio: { include: { detalle: { where: { productoId: Number(productoId) } } } } },
+    });
+    for (const a of asignaciones) {
+      const det = a.listaPrecio.detalle[0];
+      if (det) { precio = Number(det.precioUnitario) * (1 - Number(det.descuentoPct) / 100); listaOrigenId = a.listaPrecioId; break; }
+    }
+  }
+  if (!(precio > 0)) {
+    return res.status(400).json({ error: `"${producto.nombre} ${producto.medida}" no tiene precio en la lista de este cliente: escribe el precio a mano.` });
+  }
+
+  const totalLinea = Math.round(precio * cant * 100) / 100;
+  const ordenNuevo = cotizacion.lineas.reduce((m, l) => Math.max(m, l.orden), -1) + 1;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.cotizacionLinea.create({
+      data: {
+        cotizacionId: cotizacion.id, productoId: producto.id, cantidad: cant,
+        precioUnitarioAplicado: precio, descuentoPct: 0, precioFinal: precio, totalLinea,
+        listaPrecioOrigenId: listaOrigenId,
+        pesoTotalKg: producto.pesoUnitarioKg ? Number(producto.pesoUnitarioKg) * cant : null,
+        orden: ordenNuevo,
+        notaCantidad: "Agregado en el despacho",
+      },
+    });
+    // Totales de la cotizacion (el pedido crecio)
+    const suma = cotizacion.lineas.reduce((s, l) => s + Number(l.totalLinea), 0) + totalLinea;
+    await tx.cotizacion.update({
+      where: { id: cotizacion.id },
+      data: { totalBruto: suma, totalNeto: suma },
+    });
+    // Linea del despacho, ya marcada como despachada (se agrega porque salio)
+    await tx.despachoLinea.create({
+      data: {
+        ordenDespachoId: despachoId, cotizacionId: cotizacion.id, productoId: producto.id,
+        cantidadPedida: cant, cantidadDespachada: cant, cantidadFaltante: 0, estado: "DESPACHADO",
+      },
+    });
+  });
+
+  res.status(201).json({ ok: true, producto: `${producto.nombre} ${producto.medida}`, precio, cotizacion: cotizacion.numero });
+}

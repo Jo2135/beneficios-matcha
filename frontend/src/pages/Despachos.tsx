@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { despachosApi, cotizacionesApi } from "../api/endpoints";
+import { despachosApi, cotizacionesApi, productosApi } from "../api/endpoints";
 import { Truck, CheckCircle, AlertTriangle, Clock, Package, Download, Trash2, Search, X, BarChart2, Plus } from "lucide-react";
 import { pdfDespacho, pdfDespachoGandica } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
@@ -30,6 +30,13 @@ export default function Despachos() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [agregarCotModal, setAgregarCotModal] = useState(false);
+  // Agregar un producto que no se habia cotizado (se sumo al camion a ultima hora)
+  const [addProdModal, setAddProdModal] = useState(false);
+  const [apCotId, setApCotId] = useState<number | "">("");
+  const [apBusca, setApBusca] = useState("");
+  const [apProd, setApProd] = useState<any>(null);
+  const [apCant, setApCant] = useState("");
+  const [apPrecio, setApPrecio] = useState("");
 
   // Gandica PDF modal
   const [gandicaModal, setGandicaModal] = useState(false);
@@ -169,6 +176,23 @@ export default function Despachos() {
   const yaFinalizado = despacho?.estado === "ENTREGADO";
   const clienteNombre = despacho?.lineas?.[0]?.cotizacion?.cliente?.nombre ?? "—";
   const esGandica = clienteNombre.toLowerCase().includes("gandica");
+
+  const { data: productosCat = [] } = useQuery({
+    queryKey: ["productos"], queryFn: () => productosApi.listar(), enabled: addProdModal,
+  });
+  const agregarProducto = useMutation({
+    mutationFn: () => despachosApi.agregarLinea(despachoId!, {
+      cotizacionId: Number(apCotId), productoId: apProd.id, cantidad: Number(apCant),
+      precioUnitario: Number(apPrecio) > 0 ? Number(apPrecio) : undefined,
+    }),
+    onSuccess: (r: any) => {
+      qc.invalidateQueries({ queryKey: ["despacho", despachoId] });
+      qc.invalidateQueries({ queryKey: ["despachos"] });
+      setAddProdModal(false); setApProd(null); setApCant(""); setApPrecio(""); setApBusca("");
+      alert(`"${r.producto}" agregado a ${r.cotizacion} a $${Number(r.precio).toFixed(2)}.`);
+    },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo agregar el producto"),
+  });
 
   // Agrupar líneas por cotización para mostrar separadas en la tabla
   const lineasAgrupadas = useMemo(() => {
@@ -394,6 +418,72 @@ export default function Despachos() {
         </div>
       )}
 
+      {/* Modal: agregar un producto no cotizado (se sumó al camión a última hora) */}
+      {addProdModal && (
+        <div style={{ ...modalOverlay, zIndex: 100 }} onClick={() => setAddProdModal(false)}>
+          <div style={{ ...modalBox, width: "min(560px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1e293b" }}>Agregar producto al despacho</h3>
+              <button onClick={() => setAddProdModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", fontSize: 18 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>
+              Para lo que se sumó a última hora y no estaba cotizado. También se agrega a la cotización del cliente, para que entre en la factura y en la comisión.
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Cliente / cotización
+                <select value={apCotId} onChange={(e) => { setApCotId(Number(e.target.value) || ""); setApProd(null); setApPrecio(""); }}
+                  style={{ display: "block", marginTop: 3, width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}>
+                  {lineasAgrupadas.map((g: any) => (
+                    <option key={g.cotizacion?.id} value={g.cotizacion?.id}>
+                      {g.cotizacion?.numero} — {g.cotizacion?.cliente?.nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Producto
+                <input value={apProd ? `${apProd.nombre} ${apProd.medida}` : apBusca}
+                  onChange={(e) => { setApBusca(e.target.value); setApProd(null); }}
+                  placeholder="Escribe para buscar..."
+                  style={{ display: "block", marginTop: 3, width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+              </label>
+              {!apProd && apBusca.length >= 2 && (
+                <div style={{ maxHeight: 170, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+                  {(productosCat as any[])
+                    .filter((p: any) => `${p.codigo ?? ""} ${p.nombre} ${p.medida}`.toLowerCase().includes(apBusca.toLowerCase()))
+                    .slice(0, 12)
+                    .map((p: any) => (
+                      <div key={p.id} onClick={() => { setApProd(p); setApBusca(""); }}
+                        style={{ padding: "7px 11px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f1f5f9" }}>
+                        <span style={{ fontWeight: 600 }}>{p.nombre}</span>{" "}
+                        <span style={{ color: "#64748b" }}>{p.medida}</span>
+                        {p.codigo && <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: 6 }}>{p.codigo}</span>}
+                      </div>
+                    ))}
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Cantidad despachada
+                  <input type="number" min="0" step="0.01" value={apCant} onChange={(e) => setApCant(e.target.value)} placeholder="0"
+                    style={{ display: "block", marginTop: 3, width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                </label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Precio $ <span style={{ fontWeight: 400, color: "#94a3b8" }}>(vacío = lista)</span>
+                  <input type="number" min="0" step="0.0001" value={apPrecio} onChange={(e) => setApPrecio(e.target.value)} placeholder="de la lista"
+                    style={{ display: "block", marginTop: 3, width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                </label>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button onClick={() => setAddProdModal(false)} style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+              <button onClick={() => agregarProducto.mutate()}
+                disabled={!apProd || !apCotId || !(Number(apCant) > 0) || agregarProducto.isPending}
+                style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: (!apProd || !apCotId || !(Number(apCant) > 0)) ? 0.5 : 1 }}>
+                {agregarProducto.isPending ? "Agregando..." : "Agregar al despacho"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal seleccionar cotización a agregar */}
       {agregarCotModal && (
         <div style={{ ...modalOverlay, zIndex: 100 }} onClick={() => setAgregarCotModal(false)}>
@@ -480,6 +570,15 @@ export default function Despachos() {
                   style={{ ...btnAction, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
                 >
                   <Plus size={14} /> Agregar Cotización
+                </button>
+              )}
+              {!yaFinalizado && (
+                <button
+                  onClick={() => { setAddProdModal(true); setApCotId(lineasAgrupadas[0]?.cotizacion?.id ?? ""); }}
+                  title="Sumar un producto que no se había cotizado"
+                  style={{ ...btnAction, background: "#f5f3ff", color: "#6d28d9", border: "1px solid #ddd6fe" }}
+                >
+                  <Plus size={14} /> Agregar Producto
                 </button>
               )}
               {esGandica && (
