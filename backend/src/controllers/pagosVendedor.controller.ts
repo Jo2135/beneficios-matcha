@@ -89,9 +89,17 @@ async function aplicarPagoVendedor(pagoId: number) {
     }
 
     const totalAsignado = asignadas.reduce((s, a) => s + a.monto, 0);
+    // Si el pago entró sin cliente (modo automático), queda con el de la primera
+    // factura abonada — así la pantalla de Pagos no lo muestra como "Libre".
+    const clienteDeducido = !pago.clienteId && asignadas.length > 0
+      ? (await tx.factura.findUnique({ where: { id: asignadas[0].facturaId }, select: { clienteId: true } }))?.clienteId ?? null
+      : null;
     await tx.pago.update({
       where: { id: pagoId },
-      data: { estado: restante <= 0.005 ? "ASIGNADO" : totalAsignado > 0 ? "PARCIAL" : "LIBRE" },
+      data: {
+        estado: restante <= 0.005 ? "ASIGNADO" : totalAsignado > 0 ? "PARCIAL" : "LIBRE",
+        ...(clienteDeducido ? { clienteId: clienteDeducido } : {}),
+      },
     });
     return { asignadas, sobrante: Math.max(0, restante) };
   });
@@ -132,16 +140,20 @@ export async function crear(req: Request, res: Response) {
   }
 
   // Validar factura destino (si se eligió): debe ser de un cliente de este vendedor y tener saldo
+  let clienteIdPago: number | null = null;
   if (facturaDestinoId) {
     const f = await prisma.factura.findUnique({ where: { id: Number(facturaDestinoId) }, include: { cliente: { select: { vendedorId: true } } } });
     if (!f || f.cliente?.vendedorId !== vendedorId) return res.status(400).json({ error: "La factura elegida no pertenece a un cliente de este vendedor" });
     if (Number(f.saldoPendiente) <= 0) return res.status(400).json({ error: "La factura elegida ya está cobrada" });
+    // De quién es el pago: sin esto la pantalla de Pagos lo mostraba como "Libre"
+    clienteIdPago = f.clienteId;
   }
 
   const esAdmin = esAdminRol;
   const pago = await prisma.pago.create({
     data: {
       vendedorId,
+      clienteId: clienteIdPago,
       metodoPago: String(metodoPago),
       monto: Number(monto),
       moneda: metodo.moneda as any,

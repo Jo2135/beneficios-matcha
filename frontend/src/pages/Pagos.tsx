@@ -179,12 +179,22 @@ export default function Pagos() {
             <AlertCircle size={16} /> Pagos pendientes de asignar a factura
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {pendientes.map((p: any) => (
+            {pendientes.map((p: any) => {
+              // Lo que queda a favor = monto del pago − lo ya asignado a facturas.
+              // Antes se mostraba el monto completo, aunque estuviera casi todo aplicado.
+              const yaAsig = (p.asignaciones ?? []).reduce((s: number, a: any) => s + Number(a.montoAsignado), 0);
+              const disp = Number(p.monto) - yaAsig;
+              return (
               <div key={p.id} style={{ background: "#fff", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", fontSize: 13, minWidth: 180 }}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>{p.cliente?.nombre ?? "Sin cliente"}</div>
                 <div style={{ color: "#059669", fontWeight: 700, fontSize: 15 }}>
-                  {p.moneda === "BS" || p.moneda === "COP" ? Number(p.monto).toFixed(2) : usd(p.monto)} {MONEDA_LABEL[p.moneda]}
+                  {p.moneda === "BS" || p.moneda === "COP" ? disp.toFixed(2) : usd(disp)} {MONEDA_LABEL[p.moneda]}
                 </div>
+                {yaAsig > 0.005 && (
+                  <div style={{ color: "#94a3b8", fontSize: 11 }}>
+                    a favor · del pago de {usd(p.monto)}
+                  </div>
+                )}
                 <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 8 }}>
                   {p.cuenta?.nombre ?? "Sin cuenta"} · {fmtFecha(p.fecha)}
                 </div>
@@ -195,7 +205,8 @@ export default function Pagos() {
                   </button>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
