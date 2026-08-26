@@ -40,6 +40,8 @@ export default function NuevaCotizacion() {
   const { usuario, esVendedor, puedeEditar } = useAuth();
   const qc = useQueryClient();
   const [clienteId, setClienteId] = useState<number | null>(null);
+  // true = el usuario acaba de cambiar de cliente y hay que re-precificar las lineas
+  const [reprecificarPend, setReprecificarPend] = useState(false);
   const [vendedorIdSel, setVendedorIdSel] = useState<number | null>(null);
   const [notas, setNotas] = useState("");
   const [validezDias, setValidezDias] = useState(30);
@@ -115,6 +117,38 @@ export default function NuevaCotizacion() {
     const d = (catalogoCliente?.detalle ?? []).find((x: any) => x.productoId === productoId);
     return d ? Number(d.precioUnitario) : null;
   };
+
+  // Al cambiar de cliente se conservan los productos y se les pone el precio de
+  // la lista del cliente nuevo. Los que ese cliente no tenga en lista quedan en
+  // $0 y se avisan: la validacion de "precio $0" ya impide guardar asi.
+  useEffect(() => {
+    if (!reprecificarPend || !clienteId) return;
+    // Si el cliente tiene listas, se espera a que llegue su catalogo
+    if (tieneListasAsignadas && !catalogoCliente) return;
+
+    const sinPrecio: string[] = [];
+    setLineas((prev) => prev.map((l) => {
+      const raw = getPrecio(l.productoId);
+      if (raw === null) {
+        sinPrecio.push(`${l.nombre} ${l.medida}`.trim());
+        return { ...l, precioUnitario: 0 };
+      }
+      return { ...l, precioUnitario: redondearPrecio(raw, l.nombre) };
+    }));
+    setReprecificarPend(false);
+
+    if (sinPrecio.length > 0) {
+      const NL = String.fromCharCode(10);
+      const nombreCli = clienteSeleccionado?.nombre ?? "este cliente";
+      const masCortos = sinPrecio.slice(0, 8).map((n) => "· " + n).join(NL);
+      const resto = sinPrecio.length > 8 ? NL + "… y " + (sinPrecio.length - 8) + " más" : "";
+      alert(
+        "Se conservaron los productos y se les puso el precio de " + nombreCli + "." + NL + NL +
+        sinPrecio.length + " sin precio en su lista (quedaron en $0):" + NL + masCortos + resto + NL + NL +
+        "Escribe su precio en la columna Precio Unit. o quita esas líneas."
+      );
+    }
+  }, [reprecificarPend, clienteId, catalogoCliente, tieneListasAsignadas]);
 
   // ── Crear producto sobre la marcha (solo master/admin) ────────────────────
   const [modalProducto, setModalProducto] = useState(false);
@@ -273,9 +307,15 @@ export default function NuevaCotizacion() {
               style={inputStyle}
               value={clienteId ?? ""}
               onChange={(e) => {
-                setClienteId(Number(e.target.value) || null);
-                setLineas([]);
+                const nuevoCliente = Number(e.target.value) || null;
+                setClienteId(nuevoCliente);
                 setBusqueda("");
+                // Antes se borraban las lineas al cambiar de cliente (los precios
+                // dependen de su lista). Ahora se conservan y se re-precifican con
+                // la lista del cliente nuevo: duplicar y cambiar el cliente es el
+                // caso normal cuando otro pide casi lo mismo.
+                if (nuevoCliente && lineas.length > 0) setReprecificarPend(true);
+                else if (!nuevoCliente) setLineas([]);
               }}
             >
               <option value="">— Seleccionar cliente —</option>
