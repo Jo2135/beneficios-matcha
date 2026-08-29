@@ -29,6 +29,10 @@ export default function PlanificadorCarga() {
   const [columnas, setColumnas] = useState<number[]>([]);            // clienteIds (columnas)
   const [filas, setFilas] = useState<{ id: number; costo: number }[]>([]); // productos (filas)
   const [celdas, setCeldas] = useState<Record<string, number>>({});  // cantidades
+  // Precio traido de la cotizacion al importarla. Respaldo para productos que
+  // el cliente NO tiene en su lista (precios pactados a mano): sin esto la
+  // celda mostraba "sin precio" aunque la cotizacion si lo tuviera.
+  const [preciosImp, setPreciosImp] = useState<Record<string, number>>({});
   const [dirty, setDirty] = useState(false);
   const [estado, setEstado] = useState("BORRADOR");
   const [despachoId, setDespachoId] = useState<number | null>(null);
@@ -84,24 +88,25 @@ export default function PlanificadorCarga() {
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnas, catalogos.map((c) => (c.data ? 1 : 0)).join(",")]);
-  const precioCelda = (cId: number, pId: number) => precioPorCliente[cId]?.get(pId) ?? 0;
+  const precioCelda = (cId: number, pId: number) =>
+    precioPorCliente[cId]?.get(pId) ?? preciosImp[`${cId}_${pId}`] ?? 0;
 
   const abrirPlan = async (id: number) => {
     const p = await planesCargaApi.obtener(id);
     setPlanId(p.id); setNombre(p.nombre); setFecha(p.fecha ? String(p.fecha).slice(0, 10) : ""); setNotas(p.notas ?? "");
-    setColumnas(p.clientes ?? []); setFilas(p.productos ?? []); setCeldas(p.cantidades ?? {});
+    setColumnas(p.clientes ?? []); setFilas(p.productos ?? []); setCeldas(p.cantidades ?? {}); setPreciosImp(p.precios ?? {});
     setEstado(p.estado ?? "BORRADOR"); setDespachoId(p.despachoId ?? null); setGenResult(null);
     setDirty(false); setAbierto(true);
   };
   const nuevoPlan = () => {
     setPlanId(null); setNombre(`Plan ${new Date().toLocaleDateString("es-VE")}`); setFecha(""); setNotas("");
-    setColumnas([]); setFilas([]); setCeldas({}); setEstado("BORRADOR"); setDespachoId(null); setGenResult(null);
+    setColumnas([]); setFilas([]); setCeldas({}); setPreciosImp({}); setEstado("BORRADOR"); setDespachoId(null); setGenResult(null);
     setDirty(true); setAbierto(true);
   };
 
   const guardar = useMutation({
     mutationFn: () => {
-      const payload = { nombre, fecha: fecha || null, notas, clientes: columnas, productos: filas, cantidades: celdas };
+      const payload = { nombre, fecha: fecha || null, notas, clientes: columnas, productos: filas, cantidades: celdas, precios: preciosImp };
       return planId ? planesCargaApi.actualizar(planId, payload) : planesCargaApi.crear(payload);
     },
     onSuccess: (p: any) => { setPlanId(p.id); setEstado(p.estado ?? estado); qc.invalidateQueries({ queryKey: ["planes-carga"] }); setDirty(false); },
@@ -132,7 +137,7 @@ export default function PlanificadorCarga() {
       return planesCargaApi.importar(pid!, payload);
     },
     onSuccess: (p: any) => {
-      setPlanId(p.id); setColumnas(p.clientes ?? []); setFilas(p.productos ?? []); setCeldas(p.cantidades ?? {});
+      setPlanId(p.id); setColumnas(p.clientes ?? []); setFilas(p.productos ?? []); setCeldas(p.cantidades ?? {}); setPreciosImp(p.precios ?? {});
       setEstado(p.estado ?? "GENERADO"); setDirty(false);
       qc.invalidateQueries({ queryKey: ["planes-carga"] });
     },

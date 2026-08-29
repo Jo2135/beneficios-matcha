@@ -11,6 +11,7 @@ function parsePlan(p: any) {
     clientes: safe(p.clientesJson, []),     // [clienteId, ...]
     productos: safe(p.productosJson, []),    // [{ id, costo }, ...]
     cantidades: safe(p.cantidadesJson, {}),  // { "clienteId_productoId": cantidad }
+    precios: safe(p.preciosJson, {}),        // { "clienteId_productoId": precio } (traido de la cotizacion)
     cotizacionesIds: safe(p.cotizacionesIds, []), // [cotizacionId, ...]
   };
 }
@@ -48,7 +49,7 @@ export async function obtener(req: Request, res: Response) {
 }
 
 export async function crear(req: Request, res: Response) {
-  const { nombre, fecha, notas, clientes, productos, cantidades } = req.body;
+  const { nombre, fecha, notas, clientes, productos, cantidades, precios } = req.body;
   const p = await prisma.planCarga.create({
     data: {
       nombre: nombre?.trim() || "Plan sin nombre",
@@ -57,6 +58,7 @@ export async function crear(req: Request, res: Response) {
       clientesJson: JSON.stringify(clientes ?? []),
       productosJson: JSON.stringify(productos ?? []),
       cantidadesJson: JSON.stringify(cantidades ?? {}),
+      preciosJson: JSON.stringify(precios ?? {}),
     },
   });
   res.status(201).json(parsePlan(p));
@@ -64,7 +66,7 @@ export async function crear(req: Request, res: Response) {
 
 export async function actualizar(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const { nombre, fecha, notas, clientes, productos, cantidades } = req.body;
+  const { nombre, fecha, notas, clientes, productos, cantidades, precios } = req.body;
   const data: any = {};
   if (nombre !== undefined) data.nombre = String(nombre).trim() || "Plan sin nombre";
   if (fecha !== undefined) data.fecha = fecha ? new Date(fecha) : null;
@@ -72,6 +74,7 @@ export async function actualizar(req: Request, res: Response) {
   if (clientes !== undefined) data.clientesJson = JSON.stringify(clientes);
   if (productos !== undefined) data.productosJson = JSON.stringify(productos);
   if (cantidades !== undefined) data.cantidadesJson = JSON.stringify(cantidades);
+  if (precios !== undefined) data.preciosJson = JSON.stringify(precios);
   const p = await prisma.planCarga.update({ where: { id }, data });
   res.json(parsePlan(p));
 }
@@ -172,23 +175,38 @@ export async function importar(req: Request, res: Response) {
     allCotIds.push(...lineas.map((l) => l.cotizacionId as number));
   }
   allCotIds = [...new Set(allCotIds.filter(Boolean))];
-  if (allCotIds.length === 0) return res.status(400).json({ error: "No hay cotizaciones para importar" });
+  // Las que ya estan en el plan se omiten: reimportarlas sumaria otra vez sus
+  // cantidades y duplicaria la carga.
+  const yaEnPlan = new Set((plan.cotizacionesIds as number[]) ?? []);
+  const repetidas = allCotIds.filter((x) => yaEnPlan.has(x));
+  allCotIds = allCotIds.filter((x) => !yaEnPlan.has(x));
+  if (allCotIds.length === 0)
+    return res.status(400).json({
+      error: repetidas.length
+        ? "Esas cotizaciones ya estan en el plan."
+        : "No hay cotizaciones para importar",
+    });
 
   const cots = await prisma.cotizacion.findMany({
     where: { id: { in: allCotIds } },
-    include: { lineas: { select: { productoId: true, cantidad: true } } },
+    // precioFinal viene tambien: si el producto no esta en la lista del cliente
+    // (precio pactado a mano), es el unico lugar donde existe ese precio.
+    include: { lineas: { select: { productoId: true, cantidad: true, precioFinal: true, precioUnitarioAplicado: true } } },
   });
 
   // Fusionar en la matriz (clientes = columnas, productos = filas, cantidades = celdas)
   const clientes: number[] = [...(plan.clientes as number[])];
   const productos: { id: number; costo: number }[] = [...(plan.productos as any[])];
   const cantidades: Record<string, number> = { ...(plan.cantidades as any) };
+  const precios: Record<string, number> = { ...(plan.precios as any) };
   for (const c of cots) {
     if (!clientes.includes(c.clienteId)) clientes.push(c.clienteId);
     for (const l of c.lineas) {
       if (!productos.some((p) => p.id === l.productoId)) productos.push({ id: l.productoId, costo: 0 });
       const k = `${c.clienteId}_${l.productoId}`;
       cantidades[k] = (Number(cantidades[k]) || 0) + Number(l.cantidad);
+      const precio = Number(l.precioFinal ?? l.precioUnitarioAplicado ?? 0);
+      if (precio > 0) precios[k] = precio;   // respaldo si no esta en su lista
     }
   }
   const nuevosIds = [...new Set([...(plan.cotizacionesIds as number[]), ...cots.map((c) => c.id)])];
@@ -199,11 +217,12 @@ export async function importar(req: Request, res: Response) {
       clientesJson: JSON.stringify(clientes),
       productosJson: JSON.stringify(productos),
       cantidadesJson: JSON.stringify(cantidades),
+      preciosJson: JSON.stringify(precios),
       cotizacionesIds: JSON.stringify(nuevosIds),
       estado: "GENERADO", // ya hay cotizaciones reales; el paso es aprobar/consolidar
     },
   });
-  res.json({ ...parsePlan(upd), importadas: cots.length });
+  res.json({ ...parsePlan(upd), importadas: cots.length, repetidas: repetidas.length });
 }
 
 // POST /planes-carga/:id/aprobar — aprueba de golpe todas las cotizaciones del plan

@@ -681,6 +681,10 @@ model PlanCarga {
   clientesJson   String    @default("[]") @db.Text // [clienteId, ...] (orden de columnas)
   productosJson  String    @default("[]") @db.Text // [{ id, costo }, ...] (orden de filas)
   cantidadesJson String    @default("{}") @db.Text // { "clienteId_productoId": cantidad }
+  /// Precio traido de la cotizacion al importarla: { "clienteId_productoId": precio }.
+  /// Respaldo para productos que ese cliente NO tiene en su lista de precios
+  /// (precios pactados a mano): sin esto el planificador mostraba "sin precio".
+  preciosJson    String    @default("{}") @db.Text
   estado         String    @default("BORRADOR")    // BORRADOR | GENERADO | DESPACHADO
   cotizacionesIds String   @default("[]") @db.Text // IDs de cotizaciones generadas
   despachoId     Int?                              // despacho consolidado (si ya se armó)
