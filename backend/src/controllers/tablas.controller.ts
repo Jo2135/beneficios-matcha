@@ -47,7 +47,7 @@ export const DEFAULTS: Record<string, { valor: number; label: string; grupo: str
   pead_peso_tuam_3r: { valor: 2.45, label: "TUAM-3-PEAD-R (3\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
   pead_peso_tuam_4r: { valor: 1.55, label: "TUAM-4-PEAD-R (4\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
   pead_peso_tuna_4r: { valor: 2.90, label: "TUNA-4-PEAD-R (4\" Naranja Reforzada)", grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
-  pead_peso_tugr_2:  { valor: 2.20, label: "TUGR-2-PEAD (2\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tugr_2:  { valor: 0.80, label: "TUGR-2-PEAD (2\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
 };
 
 // Campo de Tablas de Ganancias ↔ código exacto del producto (para el motor)

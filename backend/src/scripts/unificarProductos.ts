@@ -180,6 +180,43 @@ async function fusionar(principalId: number, copiaId: number) {
   log("--- 4. Grupo B: copias activas (sin los codos, quedan pendientes)");
   for (const [pri, cops] of GRUPO_B) for (const c of cops) await fusionar(pri, c);
 
+  // ── 4b. Codos: "Semi Codo" es el codo de 45 grados ───────────────────────
+  // Los codigos SC-3-90 y SC-4-90 estaban mal: SC = Semi Codo, que es de 45.
+  // Esos codigos correctos (SC-3-45 / SC-4-45) los tenian dos registros sin uso,
+  // asi que primero se unen y se libera el codigo.
+  log("");
+  log("--- 4b. Codos");
+  await fusionar(129, 301);   // Semi Codo PVC 3" x 45  ->  CODO 45 3"
+  await fusionar(130, 302);   // Semi Codo PVC 4" x 45  ->  CODO 45 4"
+  for (const id of [301, 302]) {
+    const p = await prisma.producto.findUnique({ where: { id } });
+    if (p?.codigo) {
+      log("   libera el codigo " + p.codigo + " (#" + id + ")");
+      if (APLICAR) await prisma.producto.update({ where: { id }, data: { codigo: null } });
+    }
+  }
+  for (const [id, viejo, nuevo] of [[129, "SC-3-90", "SC-3-45"], [130, "SC-4-90", "SC-4-45"]] as [number, string, string][]) {
+    const p = await prisma.producto.findUnique({ where: { id } });
+    if (p?.codigo !== viejo) continue;
+    log("   #" + id + " " + p.nombre + " " + p.medida + ":  " + viejo + " -> " + nuevo + "  (el semicodo es de 45)");
+    if (APLICAR) await prisma.producto.update({ where: { id }, data: { codigo: nuevo } });
+  }
+  const CODOS: [number, number[]][] = [
+    [52, [352]],            // Codo 2"        -> CODO 90 2"
+    [54, [355, 279]],       // Codo 3", CODO PVC 3x90 -> CODO 90 3"
+    [53, [354]],            // Codo 4"        -> CODO 90 4"
+    [55, [351]],            // Semi Codo 2"   -> CODO 45 2"
+    [129, [357]],           // Semi Codo 3"   -> CODO 45 3"
+    [130, [353, 280]],      // Semi Codo 4", CODO PVC 4x45 -> CODO 45 4"
+  ];
+  for (const [pri, cops] of CODOS) for (const c of cops) await fusionar(pri, c);
+
+  // Codos rapidos metricos: "Codo Rapido 40mm" es el COR-1 "CODO 40".
+  // Los "Codo PVC 50mm" (#295, #330) NO se tocan: dicen PVC y pueden ser
+  // sanitarios, no de riego. Estan inactivos y con un solo uso.
+  await fusionar(214, 358);
+  await fusionar(215, 359);
+
   // ── 5. Borrar la fila de prueba ──────────────────────────────────────────
   log("");
   log("--- 5. Fila de prueba");

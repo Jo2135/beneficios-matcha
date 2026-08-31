@@ -136,16 +136,19 @@ export function medidas(texto: string): { diametros: string[]; presentacion: str
   t = t.replace(/\d+\s*(°|grados)/g, " "); // 90 grados / 45 grados no son medidas
 
   const presentacion: string[] = [];
+  const enMm: string[] = [];
   const reP = /(\d+(?:[.,]\d+)?)\s*(lbs?|mts?|metros?|cm|mm)\b/g;
   let m: RegExpExecArray | null;
   while ((m = reP.exec(t))) {
     const u = m[2][0] === "l" ? "lbs" : m[2][0] === "c" ? "cm" : m[2] === "mm" ? "mm" : "mts";
-    if (u === "mm") continue; // mm es diámetro, no presentación
+    // "40mm" es el diametro de la pieza, no su presentacion ("Codo Rapido 40mm"
+    // es el mismo que "CODO 40").
+    if (u === "mm") { enMm.push(m[1]); continue; }
     presentacion.push(m[1] + u);
   }
   const sinPres = t.replace(reP, " ");
 
-  const diametros: string[] = [];
+  const diametros: string[] = [...enMm];
   const reD = /(\d+\s+\d\/\d|\d\/\d|\d+(?:\.\d+)?)/g;
   while ((m = reD.exec(sinPres))) {
     const crudo = m[1].replace(/\s+/g, " ").trim();
