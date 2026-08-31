@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { buscarSimilares, puntaje, pareceBasura, ProductoLike } from "../lib/similitudProductos";
+import { fusionarProductos } from "../lib/fusionarProductos";
 
 export async function listar(req: Request, res: Response) {
   const { categoria, origen } = req.query;
@@ -296,6 +297,9 @@ export async function duplicados(_req: Request, res: Response) {
         };
       })
       .sort((a, b) => b.usos - a.usos || b.listas - a.listas);
+    // Un grupo con un solo producto activo ya esta resuelto: las copias
+    // quedaron inactivas al unificar. No se muestra.
+    if (det.filter((d) => d.activo).length < 2) continue;
     grupos.push({ motivos: par.motivos, principal: det[0].id, productos: det });
   }
   grupos.sort((a, b) => b.productos[0].usos - a.productos[0].usos);
@@ -309,4 +313,18 @@ export async function duplicados(_req: Request, res: Response) {
     }));
 
   res.json({ totalProductos: prods.length, grupos, basura });
+}
+
+// POST /productos/unificar — une dos fichas del mismo producto.
+// { principalId, copiaId, simular? }  El historico pasa al principal y la copia
+// queda inactiva. Con simular:true solo informa lo que haria.
+export async function unificar(req: Request, res: Response) {
+  const principalId = Number(req.body?.principalId);
+  const copiaId = Number(req.body?.copiaId);
+  if (!principalId || !copiaId) {
+    return res.status(400).json({ error: "Faltan los dos productos a unir." });
+  }
+  const r = await fusionarProductos(principalId, copiaId, { simular: req.body?.simular === true });
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  res.json(r);
 }

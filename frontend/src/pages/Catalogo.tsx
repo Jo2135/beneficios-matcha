@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { productosApi, categoriasApi } from "../api/endpoints";
-import { Plus, Search, Edit2, Weight, ImagePlus, Trash2, Upload, FileText, CheckCircle, AlertCircle } from "lucide-react";
+import { Plus, Search, Edit2, Weight, ImagePlus, Trash2, Upload, FileText, CheckCircle, AlertCircle, Copy, Merge } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import * as XLSX from "xlsx";
 
@@ -32,6 +32,23 @@ export default function Catalogo() {
   const { data: categorias = [] } = useQuery({
     queryKey: ["categorias"],
     queryFn: categoriasApi.listar,
+  });
+
+  // Revisión de repetidos sobre todo el catálogo (botón "Revisar repetidos")
+  const [modalDup, setModalDup] = useState(false);
+  const { data: reporteDup, isFetching: cargandoDup } = useQuery({
+    queryKey: ["productos-duplicados"],
+    queryFn: productosApi.duplicados,
+    enabled: modalDup,
+  });
+  const unificar = useMutation({
+    mutationFn: ({ principalId, copiaId }: { principalId: number; copiaId: number }) =>
+      productosApi.unificar(principalId, copiaId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["productos-duplicados"] });
+      qc.invalidateQueries({ queryKey: ["productos"] });
+    },
+    onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo unir"),
   });
 
   // Aviso de producto repetido: se consulta mientras se escribe y el backend
@@ -222,6 +239,9 @@ export default function Catalogo() {
         </div>
         {puedeEditar && (
           <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => setModalDup(true)} style={btnSecondary}>
+              <Copy size={16} /> Revisar repetidos
+            </button>
             <button onClick={() => importInputRef.current?.click()} style={btnSecondary}>
               <Upload size={16} /> Importar Excel
             </button>
@@ -610,6 +630,99 @@ export default function Catalogo() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Revisión de repetidos en todo el catálogo */}
+      {modalDup && (
+        <div style={modalOverlay} onClick={() => setModalDup(false)}>
+          <div style={{ ...modalBox, width: "min(860px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Productos repetidos</h2>
+              <button onClick={() => setModalDup(false)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 18 }}>✕</button>
+            </div>
+            <p style={{ margin: "0 0 18px", color: "#64748b", fontSize: 13 }}>
+              Compara todo el catálogo y busca el mismo producto cargado dos veces con nombres distintos.
+            </p>
+
+            {cargandoDup && <p style={{ color: "#64748b" }}>Revisando el catálogo...</p>}
+
+            {!cargandoDup && reporteDup && reporteDup.grupos.length === 0 && (
+              <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 10, padding: "16px 18px", display: "flex", gap: 10, alignItems: "center" }}>
+                <CheckCircle size={20} color="#16a34a" />
+                <div>
+                  <b style={{ color: "#166534" }}>No hay productos repetidos</b>
+                  <div style={{ fontSize: 13, color: "#15803d" }}>
+                    Se revisaron {reporteDup.totalProductos} productos del catálogo.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!cargandoDup && reporteDup?.grupos.map((g: any) => {
+              const principal = g.productos[0];
+              const copias = g.productos.slice(1).filter((c: any) => c.activo);
+              return (
+                <div key={g.principal} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>{g.motivos?.join(" · ")}</div>
+                  {g.productos.map((p: any) => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", opacity: p.activo ? 1 : 0.5 }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, borderRadius: 5, padding: "2px 7px",
+                        background: p.id === principal.id ? "#dcfce7" : "#fef3c7",
+                        color: p.id === principal.id ? "#166534" : "#92400e",
+                      }}>
+                        {p.id === principal.id ? "SE CONSERVA" : p.activo ? "COPIA" : "inactivo"}
+                      </span>
+                      <span style={{ fontFamily: "monospace", fontSize: 12, color: "#475569", minWidth: 108 }}>{p.codigo ?? "sin código"}</span>
+                      <span style={{ flex: 1, fontSize: 13 }}>{p.nombre} {p.medida}</span>
+                      <span style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
+                        {p.usos} usos · {p.listas} listas
+                      </span>
+                    </div>
+                  ))}
+                  {copias.length > 0 && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "#64748b", flex: 1 }}>
+                        Al unir, la historia de {copias.length === 1 ? "la copia" : "las copias"} pasa a{" "}
+                        <b>{principal.codigo ?? principal.nombre}</b> y {copias.length === 1 ? "queda" : "quedan"} desactivada{copias.length === 1 ? "" : "s"}.
+                      </span>
+                      {copias.map((c: any) => (
+                        <button
+                          key={c.id}
+                          disabled={unificar.isPending}
+                          onClick={() => {
+                            if (!confirm(`Unir "${c.nombre} ${c.medida}" con "${principal.nombre} ${principal.medida}"?`)) return;
+                            unificar.mutate({ principalId: principal.id, copiaId: c.id });
+                          }}
+                          style={{ ...btnPrimary, padding: "6px 12px", fontSize: 13 }}
+                        >
+                          <Merge size={14} /> Unir {copias.length > 1 ? c.nombre.slice(0, 18) : ""}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {!cargandoDup && reporteDup?.basura?.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px", color: "#475569" }}>
+                  Filas que no son productos ({reporteDup.basura.length})
+                </h3>
+                <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 8px" }}>
+                  Restos de importaciones viejas. Están desactivadas y no aparecen al cotizar; se dejan porque forman
+                  parte de facturas de años anteriores.
+                </p>
+                {reporteDup.basura.map((b: any) => (
+                  <div key={b.id} style={{ fontSize: 12, color: "#64748b", padding: "3px 0" }}>
+                    · {b.nombre} {b.medida} — <i>{b.motivo}</i>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

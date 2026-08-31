@@ -9,96 +9,24 @@
 // Correr con:  npm run productos:unificar        (muestra lo que haria)
 //              npm run productos:unificar -- --aplicar
 import { prisma } from "../lib/prisma";
+import { fusionarProductos } from "../lib/fusionarProductos";
 
 const APLICAR = process.argv.includes("--aplicar");
 const log = (s: string) => console.log(s);
 
-/** Pasa todo el historico de `copiaId` a `principalId` y desactiva la copia. */
+/** Pasa el historico de la copia al producto que se conserva. */
 async function fusionar(principalId: number, copiaId: number) {
-  const [pri, cop] = await Promise.all([
-    prisma.producto.findUnique({ where: { id: principalId } }),
-    prisma.producto.findUnique({ where: { id: copiaId } }),
-  ]);
-  if (!pri || !cop) { log("   !! no existe #" + principalId + " o #" + copiaId); return; }
-
-  const cot = await prisma.cotizacionLinea.count({ where: { productoId: copiaId } });
-  const des = await prisma.despachoLinea.count({ where: { productoId: copiaId } });
-  const fac = await prisma.facturaLinea.count({ where: { productoId: copiaId } });
-  const dev = await prisma.facturaDevolucion.count({ where: { productoId: copiaId } });
-  const com = await prisma.compraExternaLinea.count({ where: { productoId: copiaId } });
-
-  // Precios de lista: solo se mudan los de listas donde el principal aun no tiene precio
-  const precios = await prisma.listaPrecioDetalle.findMany({ where: { productoId: copiaId } });
-  const yaTiene = await prisma.listaPrecioDetalle.findMany({
-    where: { productoId: principalId, listaPrecioId: { in: precios.map((p) => p.listaPrecioId) } },
-    select: { listaPrecioId: true },
-  });
-  const ocupadas = new Set(yaTiene.map((p) => p.listaPrecioId));
-  const mudar = precios.filter((p) => !ocupadas.has(p.listaPrecioId));
-  const descartar = precios.filter((p) => ocupadas.has(p.listaPrecioId));
-
-  log("   #" + copiaId + " " + cop.nombre + " " + cop.medida +
-      "  ->  #" + principalId + " " + (pri.codigo ?? "sin cod"));
-  log("      cotiz " + cot + " | despachos " + des + " | facturas " + fac +
-      (dev ? " | devoluciones " + dev : "") + (com ? " | compras " + com : "") +
-      " | precios que se mudan " + mudar.length +
-      (descartar.length ? " (se descartan " + descartar.length + ", el principal ya tenia precio)" : ""));
-
-  // Los planes de carga guardan los ids de producto dentro de su JSON: si no se
-  // reescriben, la fila desaparece de la matriz al desactivar la copia.
-  const planes = await prisma.planCarga.findMany();
-  const planesTocados: { id: number; nombre: string }[] = [];
-  for (const pl of planes) {
-    const prods: { id: number; costo: number }[] = JSON.parse(pl.productosJson || "[]");
-    if (!prods.some((x) => x.id === copiaId)) continue;
-    planesTocados.push({ id: pl.id, nombre: pl.nombre });
-    if (!APLICAR) continue;
-
-    const nuevos = prods.filter((x) => x.id !== copiaId);
-    if (!nuevos.some((x) => x.id === principalId)) {
-      const viejo = prods.find((x) => x.id === copiaId)!;
-      nuevos.push({ id: principalId, costo: viejo.costo });
-    }
-    const remap = (json: string, sumar: boolean) => {
-      const obj: Record<string, number> = JSON.parse(json || "{}");
-      const out: Record<string, number> = {};
-      for (const [k, v] of Object.entries(obj)) {
-        const [cli, pro] = k.split("_");
-        if (Number(pro) !== copiaId) { out[k] = v; continue; }
-        const nk = cli + "_" + principalId;
-        out[nk] = sumar ? (Number(out[nk] ?? 0) + Number(v)) : (out[nk] ?? v);
-      }
-      return JSON.stringify(out);
-    };
-    await prisma.planCarga.update({
-      where: { id: pl.id },
-      data: {
-        productosJson: JSON.stringify(nuevos),
-        cantidadesJson: remap(pl.cantidadesJson, true),
-        preciosJson: remap(pl.preciosJson, false),
-      },
-    });
-  }
-  if (planesTocados.length) {
-    log("      planes de carga a corregir: " + planesTocados.map((p) => "#" + p.id).join(", "));
-  }
-
-  if (!APLICAR) return;
-  await prisma.$transaction(async (tx) => {
-    await tx.cotizacionLinea.updateMany({ where: { productoId: copiaId }, data: { productoId: principalId } });
-    await tx.despachoLinea.updateMany({ where: { productoId: copiaId }, data: { productoId: principalId } });
-    await tx.facturaLinea.updateMany({ where: { productoId: copiaId }, data: { productoId: principalId } });
-    await tx.facturaDevolucion.updateMany({ where: { productoId: copiaId }, data: { productoId: principalId } });
-    await tx.compraExternaLinea.updateMany({ where: { productoId: copiaId }, data: { productoId: principalId } });
-    for (const p of mudar) {
-      await tx.listaPrecioDetalle.update({ where: { id: p.id }, data: { productoId: principalId } });
-    }
-    for (const p of descartar) await tx.listaPrecioDetalle.delete({ where: { id: p.id } });
-    await tx.producto.update({
-      where: { id: copiaId },
-      data: { activo: false, descripcion: "Unificado con #" + principalId + " (" + (pri.codigo ?? pri.nombre) + ") el 2026-08-31" },
-    });
-  });
+  const r = await fusionarProductos(principalId, copiaId, { simular: !APLICAR });
+  if (!r.ok) { log("   !! " + r.error); return; }
+  const m = r.movidas;
+  log("   #" + copiaId + " " + r.copia!.nombre + " " + r.copia!.medida +
+      "  ->  #" + principalId + " " + (r.principal!.codigo ?? "sin cod"));
+  log("      cotiz " + m.cotizaciones + " | despachos " + m.despachos + " | facturas " + m.facturas +
+      (m.devoluciones ? " | devoluciones " + m.devoluciones : "") +
+      (m.compras ? " | compras " + m.compras : "") +
+      " | precios que se mudan " + r.preciosMudados +
+      (r.preciosDescartados ? " (se descartan " + r.preciosDescartados + ", el principal ya tenia precio)" : ""));
+  if (r.planesActualizados.length) log("      planes de carga: " + r.planesActualizados.map((x) => "#" + x).join(", "));
 }
 
 (async () => {

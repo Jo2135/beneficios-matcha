@@ -46,6 +46,8 @@ export const productosApi = {
   similares: (data: { nombre: string; medida?: string; id?: number }) =>
     api.post("/productos/similares", data).then((r) => r.data),
   duplicados: () => api.get("/productos/duplicados").then((r) => r.data),
+  unificar: (principalId: number, copiaId: number) =>
+    api.post("/productos/unificar", { principalId, copiaId }).then((r) => r.data),
 };
 
 // Categorías
