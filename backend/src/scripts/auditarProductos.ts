@@ -52,10 +52,18 @@ import { puntaje, pareceBasura, ProductoLike } from "../lib/similitudProductos";
       "usos:" + String(u).padStart(3) + "  listas:" + String(l).padStart(3);
   };
 
-  console.log("=========== GRUPOS DE PRODUCTOS REDUNDANTES: " + dup.length + " ===========");
-  dup.sort((a, b) => (uso.get(b[0]) ?? 0) - (uso.get(a[0]) ?? 0));
-  dup.forEach((g, i) => {
-    const activos = g.filter((id) => byId.get(id)!.activo).length;
+  // Un grupo con un solo producto activo ya esta resuelto: las copias quedaron
+  // desactivadas al unificar. Con --todos se ven tambien esos.
+  const TODOS = process.argv.includes("--todos");
+  const activosDe = (g: number[]) => g.filter((id) => byId.get(id)!.activo).length;
+  const pendientes = TODOS ? dup : dup.filter((g) => activosDe(g) > 1);
+  const resueltos = dup.length - pendientes.length;
+
+  console.log("=========== GRUPOS PENDIENTES DE UNIFICAR: " + pendientes.length + " ===========");
+  if (!TODOS && resueltos) console.log("(" + resueltos + " grupos ya unificados no se listan; usar --todos para verlos)");
+  pendientes.sort((a, b) => (uso.get(b[0]) ?? 0) - (uso.get(a[0]) ?? 0));
+  pendientes.forEach((g, i) => {
+    const activos = activosDe(g);
     console.log("--- Grupo " + (i + 1) + " (" + g.length + " registros, " + activos + " activos)");
     g.sort((x, y) => (uso.get(y) ?? 0) - (uso.get(x) ?? 0)).forEach((id) => console.log(linea(id)));
     const par = pares.find((p) => g.includes(p.a) && g.includes(p.b));

@@ -161,7 +161,7 @@ seedProductosRouter.post("/", async (_req, res) => {
     { codigo: "TUNA-4-PEAD-R", nombre: "Tubería Agua Negra Naranja PEAD Reforzada", medida: '4" x 3mts', origen: "INTERNO", catNombre: "Amarillo_PEAD", peso: 2.80 },
 
     // ─── TUBERÍA AGUA NEGRA GRIS PEAD (INTERNO) ─────────────────────────────
-    { codigo: "TUGR-2-PEAD", nombre: "Tubería Agua Negra Gris", medida: '4" x 3mts', origen: "INTERNO", catNombre: "Negro", peso: 2.20 },
+    { codigo: "TUGR-2-PEAD", nombre: "Tubería Agua Negra Gris PEAD", medida: '2" x 3mts', origen: "INTERNO", catNombre: "Negro_PEAD", peso: 0.8 },
 
     // ─── NIPLES AZUL (INTERNO) ───────────────────────────────────────────────
     { codigo: "NI-1/2-15",   nombre: "Niple Azul", medida: '1/2" x 15cm',  origen: "INTERNO", catNombre: "Azul", peso: null },
@@ -430,7 +430,7 @@ seedProductosRouter.post("/", async (_req, res) => {
     { codigo: "TUAM-2-PEAD", precio: 2.5530 },
     { codigo: "TUAM-3-PEAD", precio: 3.8006 },
     { codigo: "TUAM-4-PEAD", precio: 6.0697 },
-    { codigo: "TUGR-2-PEAD", precio: 5.8223 },
+    { codigo: "TUGR-2-PEAD", precio: 2.0552 },
     { codigo: "TUAM-6-PEAD", precio: 18.0336 },
     // Tubería Amarilla PEAD Reforzada
     { codigo: "TUAM-2-PEAD-R", precio: 2.8858 },

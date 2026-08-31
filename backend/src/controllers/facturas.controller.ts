@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { buscarSimilares } from "../lib/similitudProductos";
+import { buscarSimilares, pareceBasura } from "../lib/similitudProductos";
 
 // ─── TRADUCTOR DE PRODUCTOS HISTÓRICOS (PLANTILLA → CATÁLOGO) ─────────────────
 function _norm(s: string): string {
@@ -280,6 +280,7 @@ export async function importarHistorico(req: Request, res: Response) {
 
   let creadas = 0, omitidas = 0;
   const productosCreados: string[] = [];
+  const filasDescartadas: string[] = [];
   const clientesNoEncontrados: string[] = [];
   const errores: { archivo: string; mensaje: string }[] = [];
 
@@ -311,6 +312,10 @@ export async function importarHistorico(req: Request, res: Response) {
 
         const res = resolverProducto(nombre, medida);
         if (res.ignorar) continue;               // estantillo, codo amarillo, etc.
+        // Filas que no son productos ("Material gastado", "Ganancia Sr Alberto",
+        // celdas con un numero suelto): se descartan en vez de entrar al catalogo.
+        const basura = pareceBasura({ nombre, medida });
+        if (basura) { filasDescartadas.push(`${nombre} ${medida} (${basura})`); continue; }
         let pid = res.id;
         if (!pid) {
           // Crear bajo el nombre del catálogo (traducido). Hereda categoría de la familia si existe.
@@ -349,7 +354,7 @@ export async function importarHistorico(req: Request, res: Response) {
     }
   }
 
-  res.json({ creadas, omitidas, productosCreados, reutilizadosPorSimilitud, clientesNoEncontrados, errores, total: facturas.length });
+  res.json({ creadas, omitidas, productosCreados, reutilizadosPorSimilitud, filasDescartadas, clientesNoEncontrados, errores, total: facturas.length });
 }
 
 export async function actualizarNotas(req: Request, res: Response) {

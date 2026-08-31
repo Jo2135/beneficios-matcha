@@ -46,6 +46,14 @@ export async function obtener(req: Request, res: Response) {
 export async function crear(req: Request, res: Response) {
   const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, costoCompra, descripcion, activo, imagenUrl, confirmarDuplicado } = req.body;
 
+  // Filas que no son productos (un numero suelto, "Material gastado",
+  // "Ganancia Sr Alberto"): entraron por importaciones viejas y no deben
+  // volver a colarse al catalogo.
+  const basura = pareceBasura({ nombre, medida });
+  if (basura) {
+    return res.status(400).json({ error: `"${nombre}" no parece un producto: ${basura}.` });
+  }
+
   // Antes de crear, revisar si el mismo producto ya existe con otro nombre. Se
   // responde 409 con los candidatos: el frontend pregunta y reenvia con
   // confirmarDuplicado si de verdad es un producto distinto.
