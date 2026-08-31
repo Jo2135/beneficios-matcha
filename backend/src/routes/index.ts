@@ -69,6 +69,9 @@ router.delete("/clientes/:id", requireRol("MASTER"), w(clientes.eliminar));
 // ─── Productos ────────────────────────────────────────────────────────────
 router.get("/productos", w(productos.listar));
 router.get("/productos/buscar", w(productos.buscar));
+// Antes de /productos/:id para que "duplicados" no se lea como un id
+router.get("/productos/duplicados", requireRol("MASTER", "ADMIN"), w(productos.duplicados));
+router.post("/productos/similares", w(productos.similares));
 router.post("/productos/importar", requireRol("MASTER", "ADMIN"), w(productos.importar));
 router.get("/productos/:id", w(productos.obtener));
 router.post("/productos", requireRol("MASTER", "ADMIN"), w(productos.crear));

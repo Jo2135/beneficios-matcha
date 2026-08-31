@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { buscarSimilares } from "../lib/similitudProductos";
 
 // ─── TRADUCTOR DE PRODUCTOS HISTÓRICOS (PLANTILLA → CATÁLOGO) ─────────────────
 function _norm(s: string): string {
@@ -218,6 +219,8 @@ export async function importarHistorico(req: Request, res: Response) {
   const catExterno = await prisma.categoriaCosto.findFirst({ where: { nombre: "Externo" } });
   const catDefaultId = catExterno?.id ?? (await prisma.categoriaCosto.findFirst())!.id;
 
+  // Nombres que se resolvieron a un producto ya existente en vez de crear otro
+  const reutilizadosPorSimilitud: string[] = [];
   // Productos existentes agrupados por nombre CANÓNICO (para el traductor tolerante)
   const productos = await prisma.producto.findMany({ select: { id: true, nombre: true, medida: true, categoriaId: true } });
   const catByCanon = new Map<string, { id: number; medida: string; categoriaId: number }[]>();
@@ -239,6 +242,12 @@ export async function importarHistorico(req: Request, res: Response) {
       if (_subset(cs, tsig) && cs.size > bestN) { best = c; bestN = cs.size; }
     }
     if (best) return { id: best.id };
+    // El nombre no coincide palabra por palabra, pero puede ser el mismo producto
+    // escrito de otra forma ("Tubo Agua Blanca Azul" = "Tubo Azul Agua Blanca").
+    // Sin esto la importacion creaba un producto nuevo cada vez y partia el
+    // historico de costos.
+    const sim = buscarSimilares({ nombre: target, medida }, productos as any, 75, 1);
+    if (sim.length) { reutilizadosPorSimilitud.push(`${target} ${medida} -> ${sim[0].nombre} ${sim[0].medida}`); return { id: sim[0].id! }; }
     return { crearNombre: target };
   }
 
@@ -340,7 +349,7 @@ export async function importarHistorico(req: Request, res: Response) {
     }
   }
 
-  res.json({ creadas, omitidas, productosCreados, clientesNoEncontrados, errores, total: facturas.length });
+  res.json({ creadas, omitidas, productosCreados, reutilizadosPorSimilitud, clientesNoEncontrados, errores, total: facturas.length });
 }
 
 export async function actualizarNotas(req: Request, res: Response) {

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { buscarSimilares, puntaje, pareceBasura, ProductoLike } from "../lib/similitudProductos";
 
 export async function listar(req: Request, res: Response) {
   const { categoria, origen } = req.query;
@@ -43,7 +44,25 @@ export async function obtener(req: Request, res: Response) {
 }
 
 export async function crear(req: Request, res: Response) {
-  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, costoCompra, descripcion, activo, imagenUrl } = req.body;
+  const { nombre, codigo, medida, origen, categoriaId, pesoUnitarioKg, costoCompra, descripcion, activo, imagenUrl, confirmarDuplicado } = req.body;
+
+  // Antes de crear, revisar si el mismo producto ya existe con otro nombre. Se
+  // responde 409 con los candidatos: el frontend pregunta y reenvia con
+  // confirmarDuplicado si de verdad es un producto distinto.
+  if (!confirmarDuplicado) {
+    const catalogo = await prisma.producto.findMany({
+      select: { id: true, codigo: true, nombre: true, medida: true, activo: true },
+    });
+    const similares = buscarSimilares({ nombre, medida }, catalogo, 70);
+    if (similares.length) {
+      return res.status(409).json({
+        error: "Ya existe un producto muy parecido en el catalogo.",
+        codigoError: "PRODUCTO_SIMILAR",
+        similares,
+      });
+    }
+  }
+
   const producto = await prisma.producto.create({
     data: {
       nombre,
@@ -206,4 +225,80 @@ export async function importar(req: Request, res: Response) {
     errores,
     total: filas.length,
   });
+}
+
+// POST /productos/similares — chequeo en vivo mientras se escribe el formulario.
+export async function similares(req: Request, res: Response) {
+  const { nombre, medida, id } = req.body as { nombre?: string; medida?: string; id?: number };
+  if (!nombre || String(nombre).trim().length < 3) return res.json({ similares: [] });
+  const catalogo = await prisma.producto.findMany({
+    select: { id: true, codigo: true, nombre: true, medida: true, activo: true },
+  });
+  res.json({ similares: buscarSimilares({ id, nombre, medida }, catalogo, 70) });
+}
+
+// GET /productos/duplicados — auditoria del catalogo completo.
+// Agrupa por clique (todos contra todos) para no encadenar productos que solo
+// se parecen de a pares, e informa cuanto se usa cada registro para saber cual
+// conviene conservar.
+export async function duplicados(_req: Request, res: Response) {
+  const prods = await prisma.producto.findMany({
+    orderBy: { id: "asc" },
+    include: { categoria: { select: { nombre: true } } },
+  });
+
+  const uso = new Map<number, number>();
+  for (const t of ["cotizacionLinea", "despachoLinea", "facturaLinea"] as const) {
+    const g = await (prisma as any)[t].groupBy({ by: ["productoId"], _count: { _all: true } });
+    for (const r of g) uso.set(r.productoId, (uso.get(r.productoId) ?? 0) + r._count._all);
+  }
+  const pd = await prisma.listaPrecioDetalle.groupBy({ by: ["productoId"], _count: { _all: true } });
+  const enListas = new Map(pd.map((p) => [p.productoId, p._count._all]));
+
+  const pt = new Map<string, number>();
+  const pares: { a: number; b: number; pt: number; motivos: string[] }[] = [];
+  for (let i = 0; i < prods.length; i++) {
+    for (let j = i + 1; j < prods.length; j++) {
+      const r = puntaje(prods[i] as ProductoLike, prods[j] as ProductoLike);
+      if (r.puntaje >= 70) {
+        pares.push({ a: prods[i].id, b: prods[j].id, pt: r.puntaje, motivos: r.motivos });
+        pt.set(prods[i].id + "-" + prods[j].id, r.puntaje);
+        pt.set(prods[j].id + "-" + prods[i].id, r.puntaje);
+      }
+    }
+  }
+  const compat = (x: number, y: number) => (pt.get(x + "-" + y) ?? 0) >= 70;
+  const asignado = new Set<number>();
+  const grupos: any[] = [];
+  for (const par of [...pares].sort((a, b) => b.pt - a.pt)) {
+    if (asignado.has(par.a) || asignado.has(par.b)) continue;
+    const ids = [par.a, par.b];
+    for (const p of prods) {
+      if (asignado.has(p.id) || ids.includes(p.id)) continue;
+      if (ids.every((g) => compat(g, p.id))) ids.push(p.id);
+    }
+    ids.forEach((g) => asignado.add(g));
+    const det = ids
+      .map((id) => {
+        const p = prods.find((x) => x.id === id)!;
+        return {
+          id, codigo: p.codigo, nombre: p.nombre, medida: p.medida, activo: p.activo,
+          categoria: p.categoria.nombre,
+          usos: uso.get(id) ?? 0, listas: enListas.get(id) ?? 0,
+        };
+      })
+      .sort((a, b) => b.usos - a.usos || b.listas - a.listas);
+    grupos.push({ motivos: par.motivos, principal: det[0].id, productos: det });
+  }
+  grupos.sort((a, b) => b.productos[0].usos - a.productos[0].usos);
+
+  const basura = prods
+    .map((p) => ({ p, motivo: pareceBasura(p as ProductoLike) }))
+    .filter((x) => x.motivo)
+    .map((x) => ({
+      id: x.p.id, nombre: x.p.nombre, medida: x.p.medida, activo: x.p.activo,
+      usos: uso.get(x.p.id) ?? 0, motivo: x.motivo,
+    }));
+
+  res.json({ totalProductos: prods.length, grupos, basura });
 }

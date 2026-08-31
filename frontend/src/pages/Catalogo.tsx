@@ -34,6 +34,22 @@ export default function Catalogo() {
     queryFn: categoriasApi.listar,
   });
 
+  // Aviso de producto repetido: se consulta mientras se escribe y el backend
+  // vuelve a revisar al guardar (409) por si el aviso no llegó a tiempo.
+  const [similares, setSimilares] = useState<any[]>([]);
+  const [bloqueoDuplicado, setBloqueoDuplicado] = useState<any[] | null>(null);
+  const timerSimil = useRef<any>(null);
+
+  const revisarSimilares = (f: any) => {
+    clearTimeout(timerSimil.current);
+    if (!f.nombre || f.nombre.trim().length < 3) { setSimilares([]); return; }
+    timerSimil.current = setTimeout(() => {
+      productosApi.similares({ nombre: f.nombre, medida: f.medida, id: f.id })
+        .then((r) => setSimilares(r.similares ?? []))
+        .catch(() => setSimilares([]));
+    }, 400);
+  };
+
   const guardar = useMutation({
     mutationFn: (data: any) =>
       data.id ? productosApi.actualizar(data.id, data) : productosApi.crear(data),
@@ -41,6 +57,13 @@ export default function Catalogo() {
       qc.invalidateQueries({ queryKey: ["productos"] });
       setModal(false);
       setForm({});
+      setSimilares([]);
+      setBloqueoDuplicado(null);
+    },
+    onError: (e: any) => {
+      const d = e?.response?.data;
+      if (d?.codigoError === "PRODUCTO_SIMILAR") setBloqueoDuplicado(d.similares);
+      else alert(d?.error ?? "No se pudo guardar el producto");
     },
   });
 
@@ -73,6 +96,8 @@ export default function Catalogo() {
 
   const abrir = (prod?: any) => {
     setForm(prod ?? { origen: "INTERNO", activo: true });
+    setSimilares([]);
+    setBloqueoDuplicado(null);
     setModal(true);
   };
 
@@ -446,15 +471,47 @@ export default function Catalogo() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={labelStyle}>Nombre del Producto *</label>
-                <input style={inputStyle} value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                <input
+                  style={inputStyle}
+                  value={form.nombre || ""}
+                  onChange={(e) => { const f = { ...form, nombre: e.target.value }; setForm(f); revisarSimilares(f); }}
+                />
               </div>
+
+              {similares.length > 0 && (
+                <div style={{ gridColumn: "1/-1", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#92400e", fontSize: 13, marginBottom: 8 }}>
+                    <AlertCircle size={16} />
+                    Ya hay {similares.length === 1 ? "un producto parecido" : `${similares.length} productos parecidos`} en el catálogo
+                  </div>
+                  {similares.map((s: any) => (
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0", borderTop: "1px solid #fde68a" }}>
+                      <span style={{ fontFamily: "monospace", color: "#78350f", minWidth: 96 }}>{s.codigo ?? "sin código"}</span>
+                      <span style={{ flex: 1 }}>{s.nombre} {s.medida}</span>
+                      <span style={{ color: "#a16207", fontSize: 12 }}>{s.puntaje}%</span>
+                      {!form.id && (
+                        <button
+                          type="button"
+                          onClick={() => { setForm({ ...s, id: s.id }); setSimilares([]); }}
+                          style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}
+                        >
+                          Usar este
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 12, color: "#92400e", marginTop: 6 }}>
+                    Si de verdad es un producto distinto, puedes guardarlo igual.
+                  </div>
+                </div>
+              )}
               <div>
                 <label style={labelStyle}>Código</label>
                 <input style={{ ...inputStyle, fontFamily: "monospace", textTransform: "uppercase" }} value={form.codigo || ""} placeholder="Ej: TUAZ-1/2" onChange={(e) => setForm({ ...form, codigo: e.target.value.toUpperCase() || null })} />
               </div>
               <div>
                 <label style={labelStyle}>Medida *</label>
-                <input style={inputStyle} value={form.medida || ""} placeholder='Ej: 1/2" x 6mts' onChange={(e) => setForm({ ...form, medida: e.target.value })} />
+                <input style={inputStyle} value={form.medida || ""} placeholder='Ej: 1/2" x 6mts' onChange={(e) => { const f = { ...form, medida: e.target.value }; setForm(f); revisarSimilares(f); }} />
               </div>
               <div>
                 <label style={labelStyle}>Origen *</label>
@@ -552,6 +609,50 @@ export default function Catalogo() {
                   {guardar.isPending ? "Guardando..." : "Guardar"}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación cuando el backend detecta que el producto ya existe */}
+      {bloqueoDuplicado && (
+        <div style={{ ...modalOverlay, zIndex: 60 }} onClick={() => setBloqueoDuplicado(null)}>
+          <div style={{ ...modalBox, width: "min(560px, 95vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <AlertCircle size={22} color="#d97706" />
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Este producto ya existe</h2>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 14, color: "#475569" }}>
+              Estás por crear <b>{form.nombre} {form.medida}</b>, pero el catálogo ya tiene:
+            </p>
+            {bloqueoDuplicado.map((s: any) => (
+              <div key={s.id} style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <b style={{ fontSize: 14 }}>{s.nombre} {s.medida}</b>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>{s.puntaje}% parecido</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  {s.codigo ?? "sin código"} · {s.motivos?.join(" · ")}
+                </div>
+              </div>
+            ))}
+            <p style={{ fontSize: 13, color: "#92400e", background: "#fffbeb", borderRadius: 8, padding: "10px 12px" }}>
+              Si creas otro registro, el precio y el costo de este producto quedarán repartidos entre dos fichas
+              y los reportes de ganancias no lo sumarán junto.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 18 }}>
+              <button
+                onClick={() => { const s = bloqueoDuplicado[0]; setForm({ ...form, id: s.id }); setBloqueoDuplicado(null); }}
+                style={btnSecondary}
+              >
+                Editar el existente
+              </button>
+              <button
+                onClick={() => { setBloqueoDuplicado(null); guardar.mutate({ ...form, confirmarDuplicado: true }); }}
+                style={{ ...btnPrimary, background: "#d97706" }}
+              >
+                Es distinto, crearlo igual
+              </button>
             </div>
           </div>
         </div>

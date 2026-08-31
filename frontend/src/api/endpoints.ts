@@ -43,6 +43,9 @@ export const productosApi = {
     }).then((r) => r.data);
   },
   eliminarImagen: (id: number) => api.delete(`/productos/${id}/imagen`).then((r) => r.data),
+  similares: (data: { nombre: string; medida?: string; id?: number }) =>
+    api.post("/productos/similares", data).then((r) => r.data),
+  duplicados: () => api.get("/productos/duplicados").then((r) => r.data),
 };
 
 // Categorías
