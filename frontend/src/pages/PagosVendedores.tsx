@@ -1,10 +1,9 @@
 import { useState, useMemo, useRef } from "react";
+import { API_BASE } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pagosVendedorApi, authApi, tasaCambioApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
 import { Wallet, Plus, CheckCircle, XCircle, Clock, FileText, Paperclip, Trash2, Camera } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL?.replace("/api", "") ?? "http://localhost:5101";
 
 const usd = (n: any) => `$${Number(n ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fecha = (raw: any) => (raw ? new Date(raw).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" }) : "—");

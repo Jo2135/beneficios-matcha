@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { productosApi, categoriasApi } from "../api/endpoints";
+import { API_BASE } from "../api/client";
 import { Plus, Search, Edit2, Weight, ImagePlus, Trash2, Upload, FileText, CheckCircle, AlertCircle, Copy, Merge } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import * as XLSX from "xlsx";
 
 const ORIGENES = ["INTERNO", "EXTERNO"];
-const API_BASE = import.meta.env.VITE_API_URL?.replace("/api", "") ?? "http://localhost:5101";
+
 
 export default function Catalogo() {
   const qc = useQueryClient();

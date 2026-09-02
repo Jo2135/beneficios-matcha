@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { API_BASE } from "../api/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { comprasExternasApi, productosApi, cuentasApi, facturasApi } from "../api/endpoints";
 import { useAuth } from "../contexts/AuthContext";
@@ -6,8 +7,6 @@ import {
   ShoppingCart, Plus, Minus, X, Search, Trash2, Upload, Image as ImageIcon,
   FileText, Package, Banknote, Link2, AlertTriangle,
 } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL?.replace("/api", "") ?? "http://localhost:5101";
 
 const usd = (n: any) => {
   const v = Number(n ?? 0);

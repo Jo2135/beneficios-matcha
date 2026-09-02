@@ -16,7 +16,23 @@ const app = express();
 const PORT = process.env.PORT || 5101;
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: /^http:\/\/localhost(:\d+)?$/ }));
+// Se permite localhost (la PC del servidor) y las direcciones privadas de la
+// red local, para que las vendedoras entren desde sus equipos por la IP del
+// servidor. CORS_ORIGENES agrega otros origenes separados por coma el dia que
+// haya dominio.
+const ORIGENES_EXTRA = (process.env.CORS_ORIGENES ?? "")
+  .split(",").map((s) => s.trim()).filter(Boolean);
+const RED_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+app.use(cors({
+  origin: (origin, cb) => {
+    // Sin origin: apps moviles, curl o same-origin. No se bloquea.
+    if (!origin) return cb(null, true);
+    if (RED_LOCAL.test(origin) || ORIGENES_EXTRA.includes(origin)) return cb(null, true);
+    // No se autoriza, pero tampoco se lanza error: asi el navegador bloquea la
+    // llamada y el servidor no registra un 500 por cada intento.
+    cb(null, false);
+  },
+}));
 app.use(morgan("dev"));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
