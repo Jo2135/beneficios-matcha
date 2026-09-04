@@ -362,7 +362,13 @@ function ModalDetalle({ compra, productos, facturas, cuentas, esMaster, busy, ru
             <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
               <Package size={15} /> Productos y reparto
             </div>
-            <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
+            {/* El recorte redondea las esquinas, pero tapa la lista desplegable
+                del buscador cuando se asigna la ÚLTIMA línea (cae fuera del
+                recuadro). Mientras hay un buscador abierto se deja ver. */}
+            <div style={{
+              border: "1px solid #e2e8f0", borderRadius: 8, marginBottom: 8,
+              overflow: (asignarLineaId !== null || mostrarAddLinea) ? "visible" : "hidden",
+            }}>
               {(compra.lineas ?? []).map((l: any) => (
                 <div key={l.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#fafafa" }}>
