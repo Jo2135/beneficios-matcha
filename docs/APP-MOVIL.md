@@ -188,21 +188,42 @@ El backend ya sirve casi todo. La app móvil **consume la misma API** que la web
 
 ## 7. Decisiones técnicas
 
-### Con qué se hace
+### Con qué se hace — DECIDIDO: PWA
 
-**Recomendación: React Native con Expo.**
+**La decisión la fija el requisito de instalación** (ver sección 11): se instala
+por **enlace directo**, no por tienda, y tiene que andar en **Android y iPhone**.
 
-| Por qué | |
+Eso descarta la app nativa. En Android se puede repartir un archivo APK por
+enlace sin problema, pero **Apple no permite instalar una app nativa fuera de su
+tienda**: las únicas vías son TestFlight (la instalación caduca cada 90 días y
+exige cuenta de desarrollador de pago) o registrar a mano el número de serie de
+cada iPhone. Ninguna sirve para "le paso el enlace a la vendedora y lo instala".
+
+**Entonces: PWA** — una aplicación web que el teléfono instala.
+
+| Cumple | Cómo |
 |---|---|
-| Mismo lenguaje que ya usamos | El equipo web es React + TypeScript; se reaprovecha la forma de trabajar y la API |
-| Cámara y archivos nativos | La foto del comprobante y el PDF salen sin trucos |
-| Una sola app para Android y iPhone | No se programa dos veces |
-| Se instala como app de verdad | Ícono en el teléfono, sin abrir el navegador |
+| Enlace directo | Se abre una dirección y se agrega a la pantalla de inicio |
+| Android y iPhone | El mismo enlace en los dos; ninguno necesita tienda |
+| Ícono propio | Queda como una app más, sin barra de navegador |
+| Cámara | Sirve para la foto del comprobante en los dos sistemas |
+| Actualizaciones | Se publican solas; nadie tiene que reinstalar nada |
 
-**Alternativa más barata (PWA):** convertir el sistema web actual en algo
-instalable. Cuesta mucho menos, pero **la pantalla actual no sirve tal cual en un
-teléfono** (tablas anchas, menú lateral), así que igual hay que rehacer las
-pantallas. Si el objetivo es que sea *práctica*, conviene Expo.
+**Lo que hay que tener claro de la PWA:**
+
+- **En iPhone la instalación es a mano**: Compartir → "Agregar a pantalla de
+  inicio". No sale el aviso automático que sí aparece en Android. Hay que
+  enseñárselo a cada vendedora una vez (o dejar una guía con capturas).
+- **Los avisos push en iPhone** solo funcionan si la app fue agregada a la
+  pantalla de inicio. Como son fase 5 y opcionales, no condiciona nada.
+- **No se reaprovechan las pantallas web actuales.** Tablas anchas y menú
+  lateral no sirven en un teléfono: las pantallas móviles se hacen nuevas,
+  siguiendo los flujos de este documento. Lo que sí se reaprovecha es todo el
+  backend, la sesión y las reglas de negocio.
+
+**Cómo se organiza:** las pantallas móviles viven en el mismo proyecto web, en
+rutas aparte (`/m/...`), con su propio diseño. Un mismo servidor sirve las dos
+cosas: el sistema de escritorio y la app del teléfono.
 
 ### Sesión
 
@@ -259,7 +280,55 @@ peor.
 
 ## 10. Antes de empezar a programar
 
-- [ ] Resolver el paso a internet (HTTPS + `JWT_SECRET` propio + clave de base de datos)
-- [ ] Confirmar con las vendedoras el flujo 1 (que sea el que de verdad usan)
-- [ ] Decidir: Expo o PWA
-- [ ] Definir si la app la instalan desde la tienda o por enlace directo
+- [x] **Decidido:** PWA (lo obliga la forma de instalación — sección 7 y 11)
+- [x] **Decidido:** se instala por enlace directo, sin tienda (sección 11)
+- [x] **Decidido:** las claves se cambian al montar el sistema definitivo (sección 11)
+- [ ] Confirmar con las vendedoras el flujo 1 — *pendiente, prueba en la oficina*
+- [ ] Montar el paso a internet: HTTPS + `JWT_SECRET` propio + clave de base de datos
+
+---
+
+## 11. Decisiones cerradas
+
+> Contestadas por José el 3 de septiembre de 2026. Quedan como referencia para
+> cuando se monte el sistema definitivo; no hay que volver a discutirlas.
+
+### 11.1 Claves
+
+Al montar el sistema nuevo se cambian **todas** las claves. Hoy el sistema anda
+con valores de desarrollo, buenos para trabajar en la fábrica pero no para
+internet:
+
+| Qué | Estado hoy | Al montar el sistema |
+|---|---|---|
+| `JWT_SECRET` (la que firma las sesiones) | valor por defecto del código | clave larga y aleatoria, distinta |
+| Clave de la base de datos | de desarrollo | propia del servidor |
+| Contraseñas de los usuarios | las actuales | cada quien cambia la suya al primer ingreso |
+
+Al cambiar el `JWT_SECRET`, **todas las sesiones abiertas se cierran** y todos
+entran de nuevo. Es lo esperado y hay que avisarlo.
+
+### 11.2 Flujo de cotizar
+
+**Pendiente de confirmar con las vendedoras.** No se programa el flujo 1 hasta
+que una vendedora lo pruebe y diga si así trabaja de verdad.
+
+### 11.3 Herramienta
+
+Decisión delegada al criterio técnico. **Resultado: PWA** — ver sección 7. Se
+eligió porque es la única forma que cumple a la vez enlace directo, Android e
+iPhone.
+
+### 11.4 Instalación
+
+**Por enlace directo. No se publica en ninguna tienda.**
+
+Funciona en Android y iPhone. Al terminar la fase 1 hay que preparar:
+
+- Una guía de una hoja con capturas: cómo agregarla a la pantalla de inicio
+  (una versión para Android y otra para iPhone, que se instalan distinto).
+- Un enlace corto y fácil de dictar por teléfono.
+
+Ventaja de haberlo decidido así: cuando se corrige algo, la próxima vez que
+abren la app ya está corregido. Nadie tiene que reinstalar nada ni esperar que
+una tienda apruebe la actualización.
