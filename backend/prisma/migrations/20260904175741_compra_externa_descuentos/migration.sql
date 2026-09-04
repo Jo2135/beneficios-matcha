@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "CompraExterna" ADD COLUMN     "descuento1Pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "descuento2Pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "totalBruto" DECIMAL(12,2) NOT NULL DEFAULT 0;

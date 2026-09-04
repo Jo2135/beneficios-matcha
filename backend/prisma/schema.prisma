@@ -636,7 +636,14 @@ model CompraExterna {
   numero        String?
   fecha         DateTime @default(now())
   imagenUrl     String?
-  totalCosto    Decimal  @db.Decimal(12, 2) @default(0) // suma de líneas (costo)
+  // Los proveedores de conexiones facturan a precio de lista y aplican los
+  // descuentos al pie (ej. AgroIndustrias: 5% y luego 40%). Se guardan los dos
+  // por separado para que la factura del proveedor se pueda cuadrar renglón
+  // por renglón con lo que dice el papel.
+  descuento1Pct Decimal  @db.Decimal(5, 2) @default(0)
+  descuento2Pct Decimal  @db.Decimal(5, 2) @default(0)
+  totalBruto    Decimal  @db.Decimal(12, 2) @default(0) // suma de líneas, sin descuentos
+  totalCosto    Decimal  @db.Decimal(12, 2) @default(0) // lo que realmente se paga (ya con descuentos)
   notas         String?
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt

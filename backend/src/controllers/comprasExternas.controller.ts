@@ -60,18 +60,35 @@ function conTotales(c: any) {
   });
   const totalPagado = (c.pagos ?? []).reduce((s: number, p: any) => s + Number(p.monto), 0);
   const totalCosto = Number(c.totalCosto);
+  const totalBruto = Number(c.totalBruto ?? 0);
   return {
     ...c,
     lineas,
     totalPagado,
+    ahorroDescuentos: Math.round((totalBruto - totalCosto) * 100) / 100,
     saldoProveedor: Math.max(0, totalCosto - totalPagado),
   };
 }
 
+/** Aplica los dos descuentos en cadena, como los factura el proveedor:
+ *  primero uno sobre el bruto, y el segundo sobre lo que quedó. */
+export function aplicarDescuentos(bruto: number, d1: number, d2: number): number {
+  const n = bruto * (1 - (Number(d1) || 0) / 100) * (1 - (Number(d2) || 0) / 100);
+  return Math.round(n * 100) / 100;
+}
+
 async function recomputarTotal(compraId: number) {
+  const compra = await prisma.compraExterna.findUnique({ where: { id: compraId } });
+  if (!compra) return;
   const lineas = await prisma.compraExternaLinea.findMany({ where: { compraExternaId: compraId } });
-  const total = lineas.reduce((s, l) => s + Number(l.cantidad) * Number(l.costoUnitario), 0);
-  await prisma.compraExterna.update({ where: { id: compraId }, data: { totalCosto: total } });
+  const bruto = lineas.reduce((s, l) => s + Number(l.cantidad) * Number(l.costoUnitario), 0);
+  await prisma.compraExterna.update({
+    where: { id: compraId },
+    data: {
+      totalBruto: bruto,
+      totalCosto: aplicarDescuentos(bruto, Number(compra.descuento1Pct), Number(compra.descuento2Pct)),
+    },
+  });
 }
 
 function parseFecha(v: any): Date {
@@ -107,7 +124,7 @@ export async function obtener(req: Request, res: Response) {
 
 // ─── Crear / editar ───────────────────────────────────────────────────────
 export async function crear(req: Request, res: Response) {
-  const { proveedor, numero, fecha, notas, lineas } = req.body;
+  const { proveedor, numero, fecha, notas, lineas, descuento1Pct, descuento2Pct } = req.body;
   if (!proveedor?.trim()) return res.status(400).json({ error: "El proveedor es obligatorio" });
 
   const lineasData = (lineas ?? [])
@@ -119,7 +136,10 @@ export async function crear(req: Request, res: Response) {
       notas: l.notas?.trim() || null,
     }));
 
-  const totalCosto = lineasData.reduce((s: number, l: any) => s + l.cantidad * l.costoUnitario, 0);
+  const d1 = Number(descuento1Pct) || 0;
+  const d2 = Number(descuento2Pct) || 0;
+  const totalBruto = lineasData.reduce((s: number, l: any) => s + l.cantidad * l.costoUnitario, 0);
+  const totalCosto = aplicarDescuentos(totalBruto, d1, d2);
 
   const compra = await prisma.compraExterna.create({
     data: {
@@ -127,6 +147,9 @@ export async function crear(req: Request, res: Response) {
       numero: numero?.trim() || null,
       fecha: parseFecha(fecha),
       notas: notas?.trim() || null,
+      descuento1Pct: d1,
+      descuento2Pct: d2,
+      totalBruto,
       totalCosto,
       lineas: { create: lineasData },
     },
@@ -137,14 +160,18 @@ export async function crear(req: Request, res: Response) {
 
 export async function actualizar(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const { proveedor, numero, fecha, notas } = req.body;
+  const { proveedor, numero, fecha, notas, descuento1Pct, descuento2Pct } = req.body;
   const data: any = {};
   if (proveedor !== undefined) data.proveedor = String(proveedor).trim();
   if (numero !== undefined) data.numero = numero?.trim() || null;
   if (fecha !== undefined) data.fecha = parseFecha(fecha);
   if (notas !== undefined) data.notas = notas?.trim() || null;
+  if (descuento1Pct !== undefined) data.descuento1Pct = Number(descuento1Pct) || 0;
+  if (descuento2Pct !== undefined) data.descuento2Pct = Number(descuento2Pct) || 0;
 
   await prisma.compraExterna.update({ where: { id }, data });
+  // Cambiar un descuento cambia lo que se le debe al proveedor.
+  if (descuento1Pct !== undefined || descuento2Pct !== undefined) await recomputarTotal(id);
   const compra = await prisma.compraExterna.findUnique({ where: { id }, include: includeFull });
   res.json(conTotales(compra));
 }

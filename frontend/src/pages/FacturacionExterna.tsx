@@ -156,7 +156,7 @@ export default function FacturacionExterna() {
 
 /* ─────────────────────────── Modal: Nueva compra ─────────────────────────── */
 function ModalNueva({ productos, onClose, onCreada }: any) {
-  const [form, setForm] = useState<any>({ proveedor: "", numero: "", fecha: hoyISO(), notas: "" });
+  const [form, setForm] = useState<any>({ proveedor: "", numero: "", fecha: hoyISO(), notas: "", descuento1Pct: "", descuento2Pct: "" });
   const [lineas, setLineas] = useState<any[]>([{ producto: null, cantidad: "", costoUnitario: "" }]);
   const [saving, setSaving] = useState(false);
 
@@ -165,13 +165,20 @@ function ModalNueva({ productos, onClose, onCreada }: any) {
   const delLinea = (i: number) => setLineas((ls) => ls.filter((_, j) => j !== i));
 
   const lineasValidas = lineas.filter((l) => l.producto && Number(l.cantidad) > 0);
-  const total = lineasValidas.reduce((s, l) => s + Number(l.cantidad) * (Number(l.costoUnitario) || 0), 0);
+  const bruto = lineasValidas.reduce((s, l) => s + Number(l.cantidad) * (Number(l.costoUnitario) || 0), 0);
+  // Los descuentos se aplican en cadena, igual que los factura el proveedor.
+  const d1 = Number(form.descuento1Pct) || 0;
+  const d2 = Number(form.descuento2Pct) || 0;
+  const tras1 = bruto * (1 - d1 / 100);
+  const total = tras1 * (1 - d2 / 100);
 
   const guardar = async () => {
     setSaving(true);
     try {
       const nueva = await comprasExternasApi.crear({
         ...form,
+        descuento1Pct: d1,
+        descuento2Pct: d2,
         lineas: lineasValidas.map((l) => ({ productoId: l.producto.id, cantidad: Number(l.cantidad), costoUnitario: Number(l.costoUnitario) || 0 })),
       });
       onCreada(nueva);
@@ -222,11 +229,47 @@ function ModalNueva({ productos, onClose, onCreada }: any) {
           </button>
         </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div><label style={lbSt}>Descuento 1 (%)</label>
+            <input type="number" min="0" max="100" step="0.01" style={inSt} placeholder="0"
+              value={form.descuento1Pct} onChange={(e) => setForm({ ...form, descuento1Pct: e.target.value })} /></div>
+          <div><label style={lbSt}>Descuento 2 (%)</label>
+            <input type="number" min="0" max="100" step="0.01" style={inSt} placeholder="0"
+              value={form.descuento2Pct} onChange={(e) => setForm({ ...form, descuento2Pct: e.target.value })} /></div>
+        </div>
+        <p style={{ fontSize: 11.5, color: "#94a3b8", margin: "6px 0 0" }}>
+          Se aplican uno detrás del otro, como los cobra el proveedor: primero el 1 sobre el total, y el 2 sobre lo que queda.
+        </p>
+
         <div><label style={lbSt}>Notas</label>
           <textarea rows={2} style={{ ...inSt, resize: "vertical", height: 52, fontFamily: "inherit" }} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></div>
 
+        {(d1 > 0 || d2 > 0) && (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 14px", fontSize: 13.5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", padding: "2px 0" }}>
+              <span>Precio de lista del proveedor</span><span>{usd(bruto)}</span>
+            </div>
+            {d1 > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", padding: "2px 0" }}>
+                <span>Descuento 1 — {d1}%</span><span>− {usd(bruto - tras1)}</span>
+              </div>
+            )}
+            {d2 > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", padding: "2px 0" }}>
+                <span>Descuento 2 — {d2}% (sobre {usd(tras1)})</span><span>− {usd(tras1 - total)}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#1e293b", borderTop: "1px solid #e2e8f0", marginTop: 6, paddingTop: 8, fontSize: 15 }}>
+              <span>A pagar al proveedor</span><span>{usd(total)}</span>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
-          <div style={{ fontSize: 14, color: "#64748b" }}>Costo total: <strong style={{ color: "#1e293b" }}>{usd(total)}</strong></div>
+          <div style={{ fontSize: 14, color: "#64748b" }}>
+            {d1 > 0 || d2 > 0 ? "A pagar: " : "Costo total: "}
+            <strong style={{ color: "#1e293b" }}>{usd(total)}</strong>
+          </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={{ ...btnAction, background: "#f1f5f9", color: "#64748b" }}>Cancelar</button>
             <button onClick={guardar} disabled={!form.proveedor.trim() || lineasValidas.length === 0 || saving}
@@ -392,8 +435,25 @@ function ModalDetalle({ compra, productos, facturas, cuentas, esMaster, busy, ru
               <Banknote size={15} /> Pagos al proveedor
             </div>
             <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
+              {Number(compra.ahorroDescuentos) > 0.005 && (
+                <div style={{ padding: "8px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 12.5, color: "#64748b" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
+                    <span>Precio de lista</span><span>{usd(compra.totalBruto)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
+                    <span>
+                      Descuentos
+                      {Number(compra.descuento1Pct) > 0 ? ` ${Number(compra.descuento1Pct)}%` : ""}
+                      {Number(compra.descuento2Pct) > 0 ? ` + ${Number(compra.descuento2Pct)}%` : ""}
+                    </span>
+                    <span style={{ color: "#16a34a", fontWeight: 600 }}>− {usd(compra.ahorroDescuentos)}</span>
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#FDB913" }}>
-                <span style={{ fontWeight: 700, color: "#713f12", fontSize: 13 }}>Costo total de la compra</span>
+                <span style={{ fontWeight: 700, color: "#713f12", fontSize: 13 }}>
+                  {Number(compra.ahorroDescuentos) > 0.005 ? "A pagar al proveedor" : "Costo total de la compra"}
+                </span>
                 <span style={{ fontWeight: 800, color: "#713f12", fontSize: 14 }}>{usd(compra.totalCosto)}</span>
               </div>
               {(compra.pagos ?? []).length === 0 && (
