@@ -206,10 +206,30 @@ export default function GananciasDespacho() {
                 {(d.curvas.detalle as any[]).map((c: any) => (
                   <FilaCosto key={c.clave} label={`${c.clave} × ${c.cantidad}`} valor={usd(c.subtotal)} detalle={`$${c.costoUnit}/u`} />
                 ))}
-                <div style={{ borderTop: "1px solid #f1f5f9" }}>
-                  <PagoLinea label="Pago Fábrica" monto={d.curvas.pagoFabrica} color="#dc2626" />
-                  <PagoLinea label="Pago Muchachas" monto={d.curvas.pagoMuchachas} color="#d97706" />
-                  <PagoLinea label="Ganancia Sr. Alberto (Curvas)" monto={d.curvas.gananciaAlberto} color="#16a34a" />
+
+                {/* La venta se parte en DOS: muchachas y fábrica. La ganancia
+                    del Sr. Alberto sale de dentro del pago a la fábrica, no
+                    encima — mostrarla al mismo nivel hacía parecer que la suma
+                    se pasaba de la venta. */}
+                <div style={{ borderTop: "2px solid #e2e8f0", background: "#f8fafc", padding: "9px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#334155" }}>Venta de curvas · se reparte así</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#1e293b" }}>{usd(d.curvas.totalVenta)}</span>
+                </div>
+
+                <PagoLinea label="Pago Muchachas" monto={d.curvas.pagoMuchachas} color="#d97706" />
+                <PagoLinea label="Pago Fábrica" monto={d.curvas.pagoFabrica} color="#dc2626" />
+
+                <div style={{ paddingLeft: 22, borderLeft: "3px solid #fecaca", marginLeft: 16 }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", padding: "6px 0 2px" }}>
+                    Dentro del pago a la fábrica:
+                  </div>
+                  <FilaCosto label="Material (resina)" valor={usd(d.curvas.costoMaterial)} />
+                  <FilaCosto label="Ganancia Sr. Alberto" valor={usd(d.curvas.gananciaAlberto)} />
+                </div>
+
+                <div style={{ padding: "8px 16px", fontSize: 11.5, color: "#64748b", background: "#f8fafc", borderTop: "1px solid #f1f5f9" }}>
+                  {usd(d.curvas.pagoMuchachas)} + {usd(d.curvas.pagoFabrica)} = {usd(d.curvas.totalVenta)}.
+                  La ganancia del Sr. Alberto ya está incluida en el pago a la fábrica.
                 </div>
               </>
             )}
@@ -648,9 +668,12 @@ function ResumenTotal({ data: d }: { data: any }) {
     { label: "Yolanda",                     monto: d.ganancias2.yolanda },
     { label: "Sandra",                      monto: d.ganancias2.sandra },
     { label: "Comisiones",                   monto: d.ganancias2.comisionesConCinco ?? d.ganancias2.comisiones },
-    ...(d.curvas.pagoFabrica > 0 ? [
-      { label: "Pago Fábrica (Curvas)",     monto: d.curvas.pagoFabrica },
+    // El pago a la fábrica NO se lista aparte: es la suma del material más la
+    // ganancia del Sr. Alberto, y sumarlo aquí contaría ese dinero dos veces.
+    // Así, Muchachas + Material + Alberto da exacto la venta de curvas.
+    ...(d.curvas.totalVenta > 0 ? [
       { label: "Pago Muchachas (Curvas)",   monto: d.curvas.pagoMuchachas },
+      { label: "Material (Curvas)",         monto: d.curvas.costoMaterial },
       { label: "Ganancia Alberto (Curvas)", monto: d.curvas.gananciaAlberto },
     ] : []),
     ...((d.fletesCliente?.detalle ?? []) as any[]).map((f: any) => ({

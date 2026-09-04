@@ -532,6 +532,7 @@ function BalanceConsolidado({ despachoId }: { despachoId: number }) {
     ["Costo Tubo Amarillo (proveedor)", d.amarilloPVC?.costoTubo],
     ["Materiales de Niples", d.niples?.materiales],
     ["Costo Manguera Verde", d.mangueraVerde?.costo],
+    ["Material de Curvas (resina)", d.curvas?.costoMaterial],
   ].filter(([, m]) => nz(m));
   const ganancias = [
     ["Sr. Alberto (General 60%)", d.gananciaGeneral?.srAlbertoGral],
@@ -552,7 +553,6 @@ function BalanceConsolidado({ despachoId }: { despachoId: number }) {
     ["Ganancia Tubo Amarillo", d.amarilloPVC?.ganancia],
     ["Ganancia Fábrica Tubo Amarillo", d.amarilloPVC?.gananciaFabrica],
     ["Ganancia Niples (sub-empresa)", d.niples?.ganancia],
-    ["Curvas – Pago Fábrica", d.curvas?.pagoFabrica],
     ["Curvas – Muchachas", d.curvas?.pagoMuchachas],
     ["Curvas – Sr. Alberto", d.curvas?.gananciaAlberto],
   ].filter(([, m]) => nz(m));
