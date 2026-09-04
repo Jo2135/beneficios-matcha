@@ -33,6 +33,9 @@ export default function FacturacionExterna() {
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ["compras-externas"] });
+    // La lista de facturas se vuelve a pedir: si se cayó al cargar (por ejemplo
+    // por un reinicio del servidor) el buscador quedaría vacío para siempre.
+    qc.invalidateQueries({ queryKey: ["facturas-balance"] });
     if (detalleId) qc.invalidateQueries({ queryKey: ["compra-externa", detalleId] });
   };
   const run = async (fn: () => Promise<any>) => {
@@ -642,6 +645,23 @@ function BuscadorFactura({ facturas, value, onChange }: { facturas: any[]; value
               <strong>{f.cliente?.nombre}</strong> <span style={{ color: "#94a3b8" }}>· {f.numero}</span>
             </div>
           ))}
+        </div>
+      )}
+      {/* Sin esto el buscador se queda mudo y no se sabe si es que no existe la
+          factura o si la lista no llegó a cargar. */}
+      {open && q.trim().length > 0 && matches.length === 0 && (
+        <div style={{ ...dropdown, padding: "10px 12px", fontSize: 12.5, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d" }}>
+          {facturas.length === 0 ? (
+            <>
+              <b>No se pudieron cargar las facturas.</b>
+              <div style={{ marginTop: 3 }}>Recarga la página (Ctrl+F5) y vuelve a intentar.</div>
+            </>
+          ) : (
+            <>
+              <b>Ninguna factura coincide con “{q.trim()}”.</b>
+              <div style={{ marginTop: 3 }}>Se buscó en {facturas.length} facturas, por nombre del cliente y por número.</div>
+            </>
+          )}
         </div>
       )}
     </div>
