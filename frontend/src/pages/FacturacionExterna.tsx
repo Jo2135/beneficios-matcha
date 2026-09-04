@@ -291,6 +291,19 @@ function ModalDetalle({ compra, productos, facturas, cuentas, esMaster, busy, ru
   const [pagoForm, setPagoForm] = useState<any>({ monto: "", fecha: hoyISO(), cuentaId: "", origenFondos: "", notas: "" });
   const [addLinea, setAddLinea] = useState<any>({ producto: null, cantidad: "", costoUnitario: "" });
   const [mostrarAddLinea, setMostrarAddLinea] = useState(false);
+  const [desc, setDesc] = useState({
+    d1: String(Number(compra.descuento1Pct) || ""),
+    d2: String(Number(compra.descuento2Pct) || ""),
+  });
+
+  const guardarDescuentos = () =>
+    run(() => comprasExternasApi.actualizar(compra.id, {
+      descuento1Pct: Number(desc.d1) || 0,
+      descuento2Pct: Number(desc.d2) || 0,
+    }));
+  const descCambiados =
+    (Number(desc.d1) || 0) !== (Number(compra.descuento1Pct) || 0) ||
+    (Number(desc.d2) || 0) !== (Number(compra.descuento2Pct) || 0);
 
   const subirImg = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; e.target.value = "";
@@ -435,21 +448,39 @@ function ModalDetalle({ compra, productos, facturas, cuentas, esMaster, busy, ru
               <Banknote size={15} /> Pagos al proveedor
             </div>
             <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
-              {Number(compra.ahorroDescuentos) > 0.005 && (
-                <div style={{ padding: "8px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 12.5, color: "#64748b" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
-                    <span>Precio de lista</span><span>{usd(compra.totalBruto)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
-                    <span>
-                      Descuentos
-                      {Number(compra.descuento1Pct) > 0 ? ` ${Number(compra.descuento1Pct)}%` : ""}
-                      {Number(compra.descuento2Pct) > 0 ? ` + ${Number(compra.descuento2Pct)}%` : ""}
-                    </span>
-                    <span style={{ color: "#16a34a", fontWeight: 600 }}>− {usd(compra.ahorroDescuentos)}</span>
-                  </div>
+              {/* Descuentos del proveedor — editables aquí, porque una factura
+                  puede cargarse antes de saber qué descuento aplicó. */}
+              <div style={{ padding: "9px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 12.5, color: "#64748b" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0", marginBottom: 6 }}>
+                  <span>Precio de lista del proveedor</span>
+                  <span style={{ fontWeight: 600 }}>{usd(compra.totalBruto ?? compra.totalCosto)}</span>
                 </div>
-              )}
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                  <span>Descuentos:</span>
+                  <input type="number" min="0" max="100" step="0.01" placeholder="0" value={desc.d1}
+                    onChange={(e) => setDesc({ ...desc, d1: e.target.value })}
+                    style={{ width: 56, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12.5, textAlign: "right" }} />
+                  <span>% +</span>
+                  <input type="number" min="0" max="100" step="0.01" placeholder="0" value={desc.d2}
+                    onChange={(e) => setDesc({ ...desc, d2: e.target.value })}
+                    style={{ width: 56, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12.5, textAlign: "right" }} />
+                  <span>%</span>
+                  {descCambiados && (
+                    <button onClick={guardarDescuentos} disabled={busy}
+                      style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                      Aplicar
+                    </button>
+                  )}
+                  {!descCambiados && Number(compra.ahorroDescuentos) > 0.005 && (
+                    <span style={{ color: "#16a34a", fontWeight: 600, marginLeft: "auto" }}>− {usd(compra.ahorroDescuentos)}</span>
+                  )}
+                </div>
+                {descCambiados && (
+                  <div style={{ marginTop: 5, fontSize: 11.5, color: "#a16207" }}>
+                    Se aplican uno detrás del otro. Toca Aplicar para recalcular el saldo.
+                  </div>
+                )}
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#FDB913" }}>
                 <span style={{ fontWeight: 700, color: "#713f12", fontSize: 13 }}>
                   {Number(compra.ahorroDescuentos) > 0.005 ? "A pagar al proveedor" : "Costo total de la compra"}
