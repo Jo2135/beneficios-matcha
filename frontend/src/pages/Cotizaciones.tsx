@@ -54,9 +54,30 @@ export default function Cotizaciones() {
   });
 
   const eliminarCot = useMutation({
-    mutationFn: (id: number) => cotizacionesApi.eliminar(id),
+    mutationFn: ({ id, confirmar }: { id: number; confirmar?: boolean }) =>
+      cotizacionesApi.eliminar(id, confirmar ?? false),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cotizaciones"] }); setDetalle(null); },
-    onError: (e: any) => alert(e.response?.data?.error ?? "Error al eliminar"),
+    onError: (e: any, vars) => {
+      const d = e.response?.data;
+      // Borrarla dejaría el despacho sin cliente: se explica y se pide confirmar.
+      if (d?.codigoError === "COTIZACION_EN_DESPACHO") {
+        const lista = (d.despachos as any[])
+          .map((x) => `   • ${x.numero} (${x.estado}) — ${x.lineas} ${x.lineas === 1 ? "producto" : "productos"}`)
+          .join(String.fromCharCode(10));
+        const msg = [
+          d.error,
+          "",
+          "Si la borras, ese despacho se queda SIN CLIENTE y no se sabrá de quién es:",
+          lista,
+          "",
+          "El despacho y su factura NO se borran, pero quedan huérfanos.",
+          "¿Borrar la cotización de todas formas?",
+        ].join(String.fromCharCode(10));
+        if (window.confirm(msg)) eliminarCot.mutate({ id: vars.id, confirmar: true });
+        return;
+      }
+      alert(d?.error ?? "Error al eliminar");
+    },
   });
 
   const generarFactura = useMutation({
@@ -244,7 +265,7 @@ export default function Cotizaciones() {
                               ? `⚠️ ${c.numero} está ${ESTADOS[c.estado]?.label ?? c.estado}. Se desvincula del despacho/factura (que NO se borran). ¿Eliminar?`
                               : `¿Eliminar ${c.numero}? Esta acción no se puede deshacer.`;
                             if (!window.confirm(msg)) return;
-                            eliminarCot.mutate(c.id);
+                            eliminarCot.mutate({ id: c.id });
                           }}
                           style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", color: "#dc2626", display: "flex", alignItems: "center" }}
                           title="Eliminar cotización"
@@ -633,7 +654,7 @@ export default function Cotizaciones() {
                       ? `⚠️ ${detalle.numero} está en estado ${detalle.estado}. Al eliminarla se desvincula del despacho/factura (el despacho y la factura NO se borran). ¿Continuar?`
                       : `¿Eliminar ${detalle.numero} permanentemente?`;
                     if (!window.confirm(msg)) return;
-                    eliminarCot.mutate(detalle.id);
+                    eliminarCot.mutate({ id: detalle.id });
                   }}
                   style={{ display: "flex", alignItems: "center", gap: 6, background: "#fee2e2", color: "#991b1b", border: "none", padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
                 >

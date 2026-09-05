@@ -477,7 +477,31 @@ export async function eliminar(req: Request, res: Response) {
   const cot = await prisma.cotizacion.findUnique({ where: { id }, select: { estado: true, numero: true } });
   if (!cot) return res.status(404).json({ error: "Cotización no encontrada" });
   // La ruta es solo-MASTER: puede eliminar en cualquier estado (incl. EN_DESPACHO/COMPLETADA).
-  // Se desvinculan las líneas de despacho que apunten a esta cotización (el despacho/factura NO se borran).
+  //
+  // Si la cotización ya está en un despacho, al borrarla ese despacho pierde
+  // a su cliente: los clientes del despacho salen justamente de las cotizaciones
+  // de sus líneas. Antes se hacía en silencio y quedaban despachos mudos, sin
+  // forma de saber de quién eran (paso con DES-0020). Ahora se avisa primero.
+  const enDespachos = await prisma.despachoLinea.findMany({
+    where: { cotizacionId: id },
+    select: { ordenDespacho: { select: { id: true, numero: true, estado: true } } },
+  });
+  if (enDespachos.length > 0 && req.body?.confirmar !== true) {
+    const porDespacho = new Map<number, { numero: string; estado: string; lineas: number }>();
+    for (const l of enDespachos) {
+      const d = l.ordenDespacho;
+      const p = porDespacho.get(d.id) ?? { numero: d.numero, estado: d.estado, lineas: 0 };
+      p.lineas++;
+      porDespacho.set(d.id, p);
+    }
+    const despachos = [...porDespacho.values()];
+    return res.status(409).json({
+      error: `La cotización ${cot.numero} ya está en ${despachos.length === 1 ? "un despacho" : despachos.length + " despachos"}.`,
+      codigoError: "COTIZACION_EN_DESPACHO",
+      despachos,
+    });
+  }
+
   await prisma.despachoLinea.updateMany({ where: { cotizacionId: id }, data: { cotizacionId: null } });
   await prisma.cotizacionLinea.deleteMany({ where: { cotizacionId: id } });
   await prisma.cotizacion.delete({ where: { id } });

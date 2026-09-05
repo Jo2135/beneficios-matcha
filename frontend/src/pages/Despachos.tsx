@@ -679,9 +679,15 @@ export default function Despachos() {
               </div>
             )}
 
-            {/* Acciones */}
+            {/* Acciones — pegadas al fondo: en un despacho de 45 líneas el botón
+                de finalizar quedaba tan abajo que parecía que no existía. */}
             {!yaFinalizado && (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid #f1f5f9" }}>
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginTop: 20, paddingTop: 16, paddingBottom: 8, borderTop: "1px solid #e2e8f0",
+                position: "sticky", bottom: 0, background: "#fff", zIndex: 5,
+                boxShadow: "0 -8px 16px -8px rgba(15,23,42,0.12)",
+              }}>
                 <div style={{ fontSize: 13, color: "#94a3b8" }}>
                   {hayEdits ? "Hay cambios sin guardar" : "Modifica las cantidades despachadas por producto"}
                 </div>
