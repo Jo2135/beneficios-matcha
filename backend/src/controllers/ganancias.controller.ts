@@ -91,8 +91,12 @@ const CURVA_TUBO_COSTO: Record<string, number> = {
   "CVBL-1/2": 0.57*0.92, "CVBL-3/4": 0.73*0.92, "CVBL-1": 1.18*0.92,
   "CVNG-1/2": 0.36*0.92, "CVNG-3/4": 0.45*0.92, "CVNG-1": 0.78*0.92,
 };
+// kg = peso del tubo del que salen las curvas; cKg = costo de la resina.
+// Pesos de las blancas corregidos por José el 2026-09-08 (1/2": 0.28 -> 0.29,
+// 3/4": 0.30 -> 0.36). Al pesar más el tubo se gasta más resina, así que sube
+// el material y baja la ganancia del Sr. Alberto.
 const CURVA_MAT_FACTOR: Record<string, { kg: number; cKg: number }> = {
-  "CVBL-1/2": { kg: 0.28, cKg: 1.583 }, "CVBL-3/4": { kg: 0.30, cKg: 1.583 }, "CVBL-1": { kg: 0.50, cKg: 1.583 },
+  "CVBL-1/2": { kg: 0.29, cKg: 1.583 }, "CVBL-3/4": { kg: 0.36, cKg: 1.583 }, "CVBL-1": { kg: 0.50, cKg: 1.583 },
   "CVNG-1/2": { kg: 0.24, cKg: 1.283 }, "CVNG-3/4": { kg: 0.28, cKg: 1.283 }, "CVNG-1": { kg: 0.40, cKg: 1.283 },
 };
 
