@@ -192,6 +192,33 @@ export async function agregarCotizacion(req: Request, res: Response) {
 export async function finalizar(req: Request, res: Response) {
   const despachoId = Number(req.params.id);
 
+  // Un despacho se factura UNA vez. Finalizarlo dos veces creaba un segundo
+  // juego de facturas y todo salía duplicado: ventas, conexiones, SBUG,
+  // Yolanda, Sandra y Comisiones (pasó con DES-0019, que quedó con seis
+  // facturas para tres clientes y un balance del doble de lo real).
+  const yaFacturado = await prisma.factura.findMany({
+    where: { ordenDespachoId: despachoId },
+    select: {
+      numero: true, totalNeto: true, fechaEmision: true,
+      cliente: { select: { nombre: true } },
+      _count: { select: { pagos: true } },
+    },
+    orderBy: { id: "asc" },
+  });
+  if (yaFacturado.length > 0) {
+    return res.status(409).json({
+      error: `Este despacho ya se facturó: tiene ${yaFacturado.length} ${yaFacturado.length === 1 ? "factura" : "facturas"}.`,
+      codigoError: "DESPACHO_YA_FACTURADO",
+      facturas: yaFacturado.map((f) => ({
+        numero: f.numero,
+        cliente: f.cliente.nombre,
+        total: Number(f.totalNeto),
+        fecha: f.fechaEmision,
+        pagos: f._count.pagos,
+      })),
+    });
+  }
+
   // Atomically save quantities if provided in body before finalizing
   const lineasBody: { id: number; cantidadDespachada: number }[] | undefined =
     Array.isArray(req.body?.lineas) && req.body.lineas.length > 0 ? req.body.lineas : undefined;

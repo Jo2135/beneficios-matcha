@@ -135,7 +135,25 @@ export default function Despachos() {
       alert(`Despacho finalizado como ${est}.\nFactura(s) generada(s): ${numeros}`);
       cerrar();
     },
-    onError: (e: any) => alert(e.response?.data?.error ?? "Error al finalizar"),
+    onError: (e: any) => {
+      const d = e.response?.data;
+      if (d?.codigoError === "DESPACHO_YA_FACTURADO") {
+        const lista = (d.facturas as any[])
+          .map((f) => `   • ${f.numero} — ${f.cliente} — $${Number(f.total).toFixed(2)}` +
+            (f.pagos > 0 ? ` (con ${f.pagos} pago${f.pagos === 1 ? "" : "s"})` : ""))
+          .join(String.fromCharCode(10));
+        alert([
+          d.error,
+          "",
+          lista,
+          "",
+          "No se vuelve a facturar para no duplicar las ventas.",
+          "Si hay que corregir cantidades, primero elimina esas facturas.",
+        ].join(String.fromCharCode(10)));
+        return;
+      }
+      alert(d?.error ?? "Error al finalizar");
+    },
   });
 
   const eliminarDesp = useMutation({
