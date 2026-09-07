@@ -302,7 +302,10 @@ function esTuboGrisPVC(codigo: string | null, nombre: string): boolean {
  *  detecta por "amarill" + "pvc". El "Amarillo PEAD" (sin pvc) es fabricado interno. */
 function esTuboAmarilloPVC(codigo: string | null, nombre: string): boolean {
   const n = norm(nombre);
-  return n.includes("amarill") && n.includes("pvc");
+  // El naranja va en este mismo bloque (decisión de José, 2026-09-09): es la
+  // misma tubería de aguas negras comprada hecha, solo cambia el color. Sin
+  // esto el naranja no entraba al cálculo y se trataba como tubería normal.
+  return (n.includes("amarill") || n.includes("naranja")) && n.includes("pvc");
 }
 
 // ─── Niples (sub-empresa: compra tubo azul con 8% desc, lo pica y rosca) ─────
