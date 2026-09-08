@@ -185,6 +185,26 @@ export default function GananciasDespacho() {
               </div>
             )}
             <FilaCostoTotal label="Total Materia Prima" valor={usd(d.costoMateria.total ?? 0)} />
+
+            {/* Abierto por cliente, para poder cuadrarlo contra las cuentas a mano */}
+            {(d.costoMateria.porCliente ?? []).length > 1 && (
+              <div style={{ borderTop: "2px solid #e2e8f0", background: "#f8fafc", padding: "10px 16px 12px" }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 8 }}>
+                  Cuánto le toca a cada cliente
+                </div>
+                {(d.costoMateria.porCliente as any[]).map((c) => (
+                  <div key={c.cliente} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{c.cliente}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: "#b91c1c", whiteSpace: "nowrap" }}>{usd(c.total)}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
+                      {c.kg.toFixed(1)} kg · {c.detalle.map((x: any) => `${CAT_LABELS[x.categoria] || x.categoria} ${x.kg.toFixed(1)}kg`).join(" · ")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
 
           {/* Gastos generales */}

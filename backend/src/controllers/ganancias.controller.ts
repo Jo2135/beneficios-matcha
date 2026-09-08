@@ -472,6 +472,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
   const grisSugerido = new Map<number, { costo: number; proveedor: string | null }>();
   for (const g of grisPrevios) if (!grisSugerido.has(g.productoId)) grisSugerido.set(g.productoId, { costo: Number(g.costoGrisUnit), proveedor: g.proveedorGris ?? null });
 
+  // Mismo acumulado de material, pero separado por cliente: sirve para cuadrar
+  // contra las cuentas a mano sin tener que abrir línea por línea.
+  const kgMatCliente = new Map<string, Record<string, number>>();
   const kgMat: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, negro: 0, gris: 0, blanco: 0, amarillo: 0 };
   const kgGan: Record<string, number> = { manguera34: 0, manguera13: 0, azul: 0, gris: 0, negro_elec: 0, blanco_elec: 0 };
   let gananciaPEAD = 0;
@@ -492,7 +495,13 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
 
     if (!esExterno) {
       // Acumular material
-      if (det.catMat) kgMat[det.catMat] = (kgMat[det.catMat] ?? 0) + totalKg;
+      if (det.catMat) {
+        kgMat[det.catMat] = (kgMat[det.catMat] ?? 0) + totalKg;
+        const cli = (linea as any).cotizacion?.cliente?.nombre ?? "Sin cliente";
+        const acum = kgMatCliente.get(cli) ?? {};
+        acum[det.catMat] = (acum[det.catMat] ?? 0) + totalKg;
+        kgMatCliente.set(cli, acum);
+      }
 
       // Acumular ganancia general
       if (det.catGan) {
@@ -539,6 +548,25 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     costoMateria[cat] = { kg, rate, costo };
     totalCostoMateria += costo;
   }
+
+  // El mismo costo, abierto por cliente
+  const materiaPorCliente = [...kgMatCliente.entries()]
+    .map(([cliente, cats]) => {
+      const detalle = Object.entries(cats)
+        .filter(([, kg]) => kg > 0.0001)
+        .map(([cat, kg]) => {
+          const rate = CM[cat] ?? COSTO_MAT_KG[cat] ?? 0;
+          return { categoria: cat, kg, rate, costo: kg * rate };
+        })
+        .sort((a, b) => b.costo - a.costo);
+      return {
+        cliente,
+        detalle,
+        kg: detalle.reduce((s, d) => s + d.kg, 0),
+        total: detalle.reduce((s, d) => s + d.costo, 0),
+      };
+    })
+    .sort((a, b) => b.total - a.total);
 
   // ── Curvas ────────────────────────────────────────────────────────────────
   let curvaTotalVenta = 0, curvaFabrica = 0, curvaMaterial = 0;
@@ -990,7 +1018,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       totalGasto: totalConceptosExtra - totalConceptosCobrados,
       total: totalConceptosExtra,
     },
-    costoMateria: { ...costoMateria, total: totalCostoMateria },
+    costoMateria: { ...costoMateria, total: totalCostoMateria, porCliente: materiaPorCliente },
     gastos: {
       ...gastos,
       total: gastos.obreros + gastos.pigmento + gastos.electricidad,
