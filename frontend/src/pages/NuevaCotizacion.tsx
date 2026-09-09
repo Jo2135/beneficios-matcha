@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { clientesApi, productosApi, listasApi, cotizacionesApi, authApi, categoriasApi } from "../api/endpoints";
@@ -177,6 +177,21 @@ export default function NuevaCotizacion() {
     },
     onError: (e: any) => alert(e?.response?.data?.error ?? "No se pudo crear el producto"),
   });
+
+  // Cargar cantidades es lo que mas se repite al armar una cotizacion: se
+  // agregan todos los productos y despues se baja escribiendo cantidad tras
+  // cantidad. Con el TAB normal el cursor pasaba por Desc %, la nota y el boton
+  // de borrar antes de llegar a la siguiente cantidad. Estas referencias
+  // permiten que TAB (y Enter) salten derecho de una cantidad a la de abajo.
+  const cantidadRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const saltarACantidad = (destino: number) => {
+    const el = cantidadRefs.current[destino];
+    if (!el || !el.isConnected) return false;
+    el.focus();
+    el.select();
+    return true;
+  };
 
   const agregarProducto = (p: any, precioForzado?: number) => {
     const rawPrecio = precioForzado ?? getPrecio(p.id);
@@ -512,7 +527,14 @@ export default function NuevaCotizacion() {
                   <th style={thStyle}>#</th>
                   <th style={thStyle}>Producto</th>
                   <th style={thStyle}>Precio Unit.</th>
-                  <th style={{ ...thStyle, width: 90 }}>Cantidad</th>
+                  <th style={{ ...thStyle, width: 90 }}>
+                    Cantidad
+                    {lineas.length > 1 && (
+                      <div style={{ fontSize: 10, fontWeight: 400, color: "#94a3b8", marginTop: 1 }}>
+                        TAB baja a la siguiente
+                      </div>
+                    )}
+                  </th>
                   <th style={{ ...thStyle, width: 80 }}>Desc %</th>
                   <th style={thStyle}>Nota de cantidad</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
@@ -559,8 +581,24 @@ export default function NuevaCotizacion() {
                         <input
                           type="number"
                           min={1}
+                          ref={(el) => { cantidadRefs.current[idx] = el; }}
                           value={l.cantidad === 0 ? "" : l.cantidad}
                           onFocus={(e) => e.target.select()}
+                          onKeyDown={(e) => {
+                            // TAB baja a la cantidad siguiente, Shift+TAB sube a
+                            // la anterior, Enter hace lo mismo que TAB. En la
+                            // ultima linea se deja pasar el TAB normal para
+                            // poder salir de la tabla.
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (!saltarACantidad(idx + 1)) e.currentTarget.blur();
+                              return;
+                            }
+                            if (e.key !== "Tab") return;
+                            const destino = e.shiftKey ? idx - 1 : idx + 1;
+                            if (destino < 0) return;
+                            if (saltarACantidad(destino)) e.preventDefault();
+                          }}
                           onChange={(e) => {
                             const v = e.target.value;
                             // Permite borrar y escribir libremente; vacío = 0 temporal
