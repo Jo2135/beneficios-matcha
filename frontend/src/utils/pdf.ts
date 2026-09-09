@@ -1820,6 +1820,42 @@ export function pdfBalancePago(data: BalancePDFData) {
   );
   doc.setTextColor(0, 0, 0);
 
+  // Anexo: notas de los pagos. En la tabla de arriba solo cabe el monto, asi
+  // que la explicacion de cada pago (de donde salio el dinero, a quien se le
+  // pago, que queda por reponer) va aqui abajo.
+  const pagosConNota = items
+    .flatMap((it) => it.cuotas.filter((c) => c.notas).map((c) => ({ ...c, concepto: it.nombre })))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  if (pagosConNota.length > 0) {
+    let ny = by + 42;
+    if (ny > (orientation === "landscape" ? 165 : 245)) { doc.addPage(); ny = 20; }
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Notas de los pagos", M, ny);
+
+    autoTable(doc, {
+      startY: ny + 3,
+      head: [["Fecha", "Concepto", "Monto", "Nota"]],
+      body: pagosConNota.map((p) => [
+        new Date(p.fecha.slice(0, 10) + "T12:00:00").toLocaleDateString("es-VE", { day: "2-digit", month: "short" }),
+        p.concepto,
+        fmtUsdPdf(p.monto),
+        p.notas ?? "",
+      ]),
+      headStyles: { fillColor: [r, g, b], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: [2.5, 3] },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 48, fontStyle: "bold" },
+        2: { halign: "right", cellWidth: 24, textColor: [22, 163, 74] },
+        3: { cellWidth: "auto" },
+      },
+      margin: { left: M, right: M },
+    });
+  }
+
   addFooters(doc);
   doc.save(`balance-despacho-${despachoId}.pdf`);
 }

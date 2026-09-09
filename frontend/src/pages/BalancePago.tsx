@@ -275,6 +275,11 @@ export default function BalancePago() {
   const [notaTexto, setNotaTexto] = useState("");
   const [nuevaCuota, setNuevaCuota] = useState<{ itemId: number; fecha: string; monto: string; notas: string } | null>(null);
   const [tooltipItem, setTooltipItem] = useState<number | null>(null);
+  // Notas de cada PAGO. Se guardaban desde el modal "Agregar Pago" pero no se
+  // veian en ninguna parte: quedaban enterradas en la base de datos. Ahora
+  // salen en la celda del pago y en el panel "Notas de los pagos" al pie.
+  const [tooltipCuota, setTooltipCuota] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [notaCuota, setNotaCuota] = useState<{ id: number; concepto: string; fecha: string; monto: number; texto: string } | null>(null);
 
   // ── Queries ─────────────────────────────────────────────────────────────
   const { data: balance, isLoading, isError } = useQuery<Balance>({
@@ -318,6 +323,12 @@ export default function BalancePago() {
   const eliminarCuota = useMutation({
     mutationFn: (cuotaId: number) => apiClient.delete(`/balance/cuotas/${cuotaId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["balance", despachoId] }),
+  });
+
+  const actualizarCuota = useMutation({
+    mutationFn: ({ cuotaId, notas }: { cuotaId: number; notas: string }) =>
+      apiClient.patch(`/balance/cuotas/${cuotaId}`, { notas }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["balance", despachoId] }); setNotaCuota(null); },
   });
 
   // ── Render helpers ──────────────────────────────────────────────────────
@@ -541,10 +552,33 @@ export default function BalancePago() {
                   {fechas.map((f) => {
                     const cuota = item.cuotas.find((c) => c.fecha.slice(0, 10) === f);
                     return (
-                      <td key={f} style={{ ...tdStyle, textAlign: "center" }}>
+                      <td key={f}
+                        style={{ ...tdStyle, textAlign: "center", position: "relative" }}
+                        onMouseEnter={(e) => {
+                          if (!cuota?.notas) return;
+                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setTooltipCuota({ id: cuota.id, x: r.left + r.width / 2, y: r.bottom + 6 });
+                        }}
+                        onMouseLeave={() => setTooltipCuota(null)}
+                      >
                         {cuota ? (
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                            <span style={{ color: "#16a34a", fontWeight: 600 }}>{fmt(Number(cuota.monto))}</span>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                            <span
+                              onClick={() => isMaster && setNotaCuota({
+                                id: cuota.id, concepto: item.nombre,
+                                fecha: cuota.fecha.slice(0, 10), monto: Number(cuota.monto),
+                                texto: cuota.notas ?? "",
+                              })}
+                              title={cuota.notas ? cuota.notas : isMaster ? "Clic para escribir una nota" : ""}
+                              style={{
+                                color: "#16a34a", fontWeight: 600,
+                                cursor: isMaster ? "pointer" : "default",
+                                borderBottom: cuota.notas ? "1px dotted #16a34a" : "none",
+                              }}
+                            >
+                              {fmt(Number(cuota.monto))}
+                            </span>
+                            {cuota.notas && <span style={{ fontSize: 10 }} title={cuota.notas}>&#128221;</span>}
                             {isMaster && (
                               <button onClick={() => eliminarCuota.mutate(cuota.id)}
                                 style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }} title="Eliminar pago">
@@ -624,6 +658,61 @@ export default function BalancePago() {
         </table>
       </div>
 
+      {/* Notas de los pagos.
+          Cada pago lleva una nota que dice de donde salio el dinero o a que se
+          destino. El tooltip de la celda solo se ve al pasar el mouse; aqui
+          queda todo escrito de corrido, en orden de fecha, para leerlo de una. */}
+      {(() => {
+        const pagos = items
+          .flatMap((it) => it.cuotas.map((c) => ({ ...c, concepto: it.nombre })))
+          .sort((a, b) => a.fecha.localeCompare(b.fecha));
+        if (pagos.length === 0) return null;
+        const conNota = pagos.filter((p) => p.notas).length;
+        return (
+          <div style={{ marginTop: 24, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+              <FileText size={15} color="#16a34a" />
+              <span style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>Notas de los pagos</span>
+              <span style={{ fontSize: 12, color: "#64748b" }}>
+                {conNota} de {pagos.length} pagos tienen nota
+              </span>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <tbody>
+                {pagos.map((p) => (
+                  <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "8px 16px", color: "#64748b", whiteSpace: "nowrap", width: 80, verticalAlign: "top" }}>
+                      {new Date(p.fecha.slice(0, 10) + "T12:00:00").toLocaleDateString("es-VE", { day: "2-digit", month: "short" })}
+                    </td>
+                    <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", verticalAlign: "top" }}>
+                      {p.concepto}
+                    </td>
+                    <td style={{ padding: "8px 10px", textAlign: "right", color: "#16a34a", fontWeight: 700, whiteSpace: "nowrap", width: 90, verticalAlign: "top" }}>
+                      ${fmt(Number(p.monto))}
+                    </td>
+                    <td style={{ padding: "8px 16px", color: p.notas ? "#334155" : "#cbd5e1", lineHeight: 1.5 }}>
+                      {p.notas || "sin nota"}
+                      {isMaster && (
+                        <button
+                          onClick={() => setNotaCuota({
+                            id: p.id, concepto: p.concepto, fecha: p.fecha.slice(0, 10),
+                            monto: Number(p.monto), texto: p.notas ?? "",
+                          })}
+                          title={p.notas ? "Editar nota" : "Escribir nota"}
+                          style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#2563eb", padding: 0, verticalAlign: "middle" }}
+                        >
+                          <Edit3 size={12} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
       {/* Modal agregar pago */}
       {nuevaCuota && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
@@ -683,6 +772,57 @@ export default function BalancePago() {
                 disabled={actualizarItem.isPending}
                 style={{ flex: 1, padding: "9px 0", border: "none", borderRadius: 8, background: "#16a34a", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
                 {actualizarItem.isPending ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Globo con la nota del pago. Va aqui, fijo sobre la pantalla, y no
+          dentro de la celda: la tabla tiene scroll horizontal y recorta todo
+          lo que se dibuje dentro de ella. */}
+      {tooltipCuota && (() => {
+        const c = items.flatMap((i) => i.cuotas).find((cu) => cu.id === tooltipCuota.id);
+        if (!c?.notas) return null;
+        const x = Math.min(Math.max(tooltipCuota.x, 130), window.innerWidth - 130);
+        return (
+          <div style={{
+            position: "fixed", left: x, top: tooltipCuota.y, transform: "translateX(-50%)",
+            zIndex: 900, background: "#166534", color: "#ecfdf5", borderRadius: 8,
+            padding: "8px 12px", fontSize: 12, width: 240, whiteSpace: "pre-wrap",
+            lineHeight: 1.5, textAlign: "left", boxShadow: "0 6px 20px rgba(0,0,0,.3)",
+            pointerEvents: "none",
+          }}>
+            {c.notas}
+          </div>
+        );
+      })()}
+
+      {/* Modal nota de un pago */}
+      {notaCuota && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 28, width: 380, boxShadow: "0 8px 32px rgba(0,0,0,.18)" }}>
+            <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>Nota del pago</h3>
+            <p style={{ margin: "0 0 14px", fontSize: 13, color: "#64748b" }}>
+              {notaCuota.concepto} &middot;{" "}
+              {new Date(notaCuota.fecha + "T12:00:00").toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" })} &middot;{" "}
+              <strong style={{ color: "#16a34a" }}>${fmt(notaCuota.monto)}</strong>
+            </p>
+            <textarea value={notaCuota.texto} rows={4}
+              onChange={(e) => setNotaCuota({ ...notaCuota, texto: e.target.value })}
+              placeholder="De donde salio el dinero, a quien se le pago, que queda por reponer..."
+              style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", fontSize: 14, resize: "vertical", boxSizing: "border-box" }}
+              autoFocus />
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={() => setNotaCuota(null)}
+                style={{ flex: 1, padding: "9px 0", border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 14 }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => actualizarCuota.mutate({ cuotaId: notaCuota.id, notas: notaCuota.texto })}
+                disabled={actualizarCuota.isPending}
+                style={{ flex: 1, padding: "9px 0", border: "none", borderRadius: 8, background: "#16a34a", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+                {actualizarCuota.isPending ? "Guardando..." : "Guardar"}
               </button>
             </div>
           </div>
