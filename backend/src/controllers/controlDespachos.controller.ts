@@ -16,9 +16,18 @@ import { esConexion } from "./ganancias.controller";
  *  - Comisión vendedor, Danny amarillo, muchachas curvas: del snapshot que el
  *    balance guarda al generarse (calculosJson), para no recalcular el motor
  *    completo por cada despacho.
+ *  - Total de Danny: Danny cobra por tres vias distintas en un mismo despacho
+ *    (comision como vendedor, Comision 2, y su 33% del amarillo). Antes solo se
+ *    veia el amarillo y habia que entrar al balance para armar el resto a mano.
  */
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Quita tildes, mayusculas y espacios: "Comisión 2" -> "comision2". */
+const clave = (s: string) =>
+  (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "");
+
+const esDanny = (nombre?: string | null) => clave(nombre ?? "").includes("danny");
 
 export async function listar(req: Request, res: Response) {
   const { desde, hasta } = req.query as { desde?: string; hasta?: string };
@@ -45,6 +54,7 @@ export async function listar(req: Request, res: Response) {
           },
         },
       },
+      conceptosExtra: { select: { nombre: true, monto: true } },
       balance: {
         select: {
           id: true, calculosJson: true,
@@ -82,14 +92,33 @@ export async function listar(req: Request, res: Response) {
 
     // ── Ganancias del snapshot del balance ──────────────────────────────────
     let comisionVendedor: number | null = null, dannyAmarillo: number | null = null, muchachasCurvas: number | null = null;
+    let dannyComision = 0;
     if (d.balance?.calculosJson) {
       try {
         const g = JSON.parse(d.balance.calculosJson);
         comisionVendedor = Number(g?.comisionesVendedores?.total ?? 0);
         dannyAmarillo = Number(g?.gananciaAguasNegras?.dannyAmarillo ?? 0);
         muchachasCurvas = Number(g?.curvas?.pagoMuchachas ?? 0);
+        // De la comision de vendedores, solo la parte que le toca a Danny: un
+        // despacho puede llevar clientes de varios vendedores.
+        for (const det of (g?.comisionesVendedores?.detalle ?? []) as any[]) {
+          if (esDanny(det?.vendedorNombre)) dannyComision += Number(det?.monto) || 0;
+        }
       } catch { /* snapshot ilegible: se deja en null */ }
     }
+
+    // ── Todo lo que suma Danny en este despacho ─────────────────────────────
+    // La Comision 2 se le cuenta solo cuando Danny es vendedor de alguna de las
+    // facturas del despacho: asi nunca se le acredita la de un despacho ajeno.
+    const dannyEsVendedor = d.facturas.some((f) => esDanny(f.cliente?.vendedor?.nombre));
+    const dannyComision2 = dannyEsVendedor
+      ? d.conceptosExtra
+          .filter((c) => clave(c.nombre).includes("comision2"))
+          .reduce((s, c) => s + (Number(c.monto) || 0), 0)
+      : 0;
+    const dannyTotal = d.balance
+      ? r2(dannyComision + dannyComision2 + (dannyAmarillo ?? 0))
+      : null;
 
     const clientes = [...new Set(d.facturas.map((f) => f.cliente?.nombre).filter(Boolean))];
     const vendedores = [...new Set(d.facturas.map((f) => f.cliente?.vendedor?.nombre).filter(Boolean))];
@@ -105,6 +134,9 @@ export async function listar(req: Request, res: Response) {
       materialItemId: itemMat?.id ?? null,   // para registrar el abono desde la pantalla
       tieneBalance: !!d.balance,
       dannyAmarillo, muchachasCurvas,
+      dannyComision: d.balance ? r2(dannyComision) : null,
+      dannyComision2: d.balance ? r2(dannyComision2) : null,
+      dannyTotal,
     };
   });
 
@@ -119,6 +151,7 @@ export async function listar(req: Request, res: Response) {
       totalFactura: suma("totalFactura"), abonoFactura: suma("abonoFactura"), pendienteFactura: suma("pendienteFactura"),
       costoMaterial: suma("costoMaterial"), abonoMaterial: suma("abonoMaterial"), deudaMaterial: suma("deudaMaterial"),
       dannyAmarillo: suma("dannyAmarillo"), muchachasCurvas: suma("muchachasCurvas"),
+      dannyComision: suma("dannyComision"), dannyComision2: suma("dannyComision2"), dannyTotal: suma("dannyTotal"),
       despachosSinBalance: filas.filter((f) => !f.tieneBalance).length,
     },
   });

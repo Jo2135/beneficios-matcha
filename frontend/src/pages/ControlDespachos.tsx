@@ -99,7 +99,7 @@ export default function ControlDespachos() {
           <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: "100%", whiteSpace: "nowrap" }}>
             <thead>
               <tr style={{ background: "#1e293b" }}>
-                {["Fecha", "Cliente", "Chofer", "Tuberías", "Conexiones", "Comisión vend.", "Total factura", "Abonado", "Pendiente", "Material", "Abonado mat.", "Deuda mat.", "Danny amarillo", "Muchachas curvas", ""]
+                {["Fecha", "Cliente", "Chofer", "Tuberías", "Conexiones", "Comisión vend.", "Total factura", "Abonado", "Pendiente", "Material", "Abonado mat.", "Deuda mat.", "Total Danny", "Muchachas curvas", ""]
                   .map((h, i) => (
                     <th key={i} style={{ padding: "9px 10px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: i >= 3 && i <= 13 ? "right" : "left" }}>{h}</th>
                   ))}
@@ -130,7 +130,24 @@ export default function ControlDespachos() {
                   <td style={{ ...tdR, fontWeight: 700, color: Number(f.deudaMaterial) > 0.005 ? "#ea580c" : "#16a34a" }}>
                     {f.deudaMaterial == null ? "—" : Number(f.deudaMaterial) > 0.005 ? usd(f.deudaMaterial) : "✓"}
                   </td>
-                  <td style={tdR}>{f.dannyAmarillo == null ? "—" : usd(f.dannyAmarillo)}</td>
+                  {/* Danny cobra por tres vias en un mismo despacho: comision como
+                      vendedor, Comision 2 y su parte del amarillo. Se muestra el
+                      total con el desglose debajo, para no tener que entrar al
+                      balance a armarlo a mano. */}
+                  <td style={tdR}>
+                    {f.dannyTotal == null ? "—" : (
+                      <>
+                        <div style={{ fontWeight: 700, color: "#1e293b" }}>{usd(f.dannyTotal)}</div>
+                        <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>
+                          {[
+                            Number(f.dannyComision) > 0.005 ? `com ${usd(f.dannyComision).replace("$", "")}` : null,
+                            Number(f.dannyComision2) > 0.005 ? `C2 ${usd(f.dannyComision2).replace("$", "")}` : null,
+                            Number(f.dannyAmarillo) > 0.005 ? `am ${usd(f.dannyAmarillo).replace("$", "")}` : null,
+                          ].filter(Boolean).join(" + ") || "—"}
+                        </div>
+                      </>
+                    )}
+                  </td>
                   <td style={tdR}>{f.muchachasCurvas == null ? "—" : usd(f.muchachasCurvas)}</td>
                   <td style={{ ...td, textAlign: "right" }}>
                     <div style={{ display: "flex", gap: 5, justifyContent: "flex-end" }}>
@@ -168,7 +185,12 @@ export default function ControlDespachos() {
                   <td style={tdR}>{usd(t.costoMaterial)}</td>
                   <td style={{ ...tdR, color: "#16a34a" }}>{usd(t.abonoMaterial)}</td>
                   <td style={{ ...tdR, color: "#ea580c", fontSize: 13 }}>{usd(t.deudaMaterial)}</td>
-                  <td style={tdR}>{usd(t.dannyAmarillo)}</td>
+                  <td style={tdR}>
+                    <div>{usd(t.dannyTotal)}</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>
+                      com {usd(t.dannyComision).replace("$", "")} + C2 {usd(t.dannyComision2).replace("$", "")} + am {usd(t.dannyAmarillo).replace("$", "")}
+                    </div>
+                  </td>
                   <td style={tdR}>{usd(t.muchachasCurvas)}</td>
                   <td style={td} />
                 </tr>
