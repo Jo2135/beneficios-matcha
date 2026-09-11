@@ -7,6 +7,7 @@ import morgan from "morgan";
 import path from "path";
 import { router } from "./routes/index";
 import { errorHandler } from "./middleware/errorHandler";
+import { iniciarProgramadorCobranza } from "./jobs/reporteCobranza";
 
 try {
   execSync("npx prisma migrate deploy", { stdio: "inherit" });
@@ -48,6 +49,8 @@ app.listen(PORT, () => {
   console.log(`Ecoplast API corriendo en http://localhost:${PORT}`);
   console.log(`  Health: http://localhost:${PORT}/health`);
   console.log(`  API:    http://localhost:${PORT}/api`);
+  // Reporte semanal de cobranza: revisa cada 5 min si ya es sabado 6 pm
+  iniciarProgramadorCobranza();
 });
 
 export default app;

@@ -269,6 +269,16 @@ export const controlDespachosApi = {
     api.post(`/balance/items/${itemId}/cuotas`, data).then((r) => r.data),
 };
 
+// Reporte semanal de cobranza (sabados 6 pm): configuracion, prueba y descargas
+export const reporteCobranzaApi = {
+  config: () => api.get("/reporte-cobranza/config").then((r) => r.data),
+  guardar: (data: { activo: boolean; correos: string[] }) =>
+    api.put("/reporte-cobranza/config", data).then((r) => r.data),
+  enviar: () => api.post("/reporte-cobranza/enviar").then((r) => r.data),
+  vistaPrevia: () => api.get("/reporte-cobranza/vista-previa").then((r) => r.data as { html: string }),
+  excel: () => api.get("/reporte-cobranza/excel", { responseType: "blob" }).then((r) => r.data as Blob),
+};
+
 // Conceptos adicionales de un despacho (Comisión 2, Viáticos, Carga Externa, Ayudante)
 export const conceptosApi = {
   listar: (despachoId: number) => api.get(`/despachos/${despachoId}/conceptos`).then((r) => r.data),

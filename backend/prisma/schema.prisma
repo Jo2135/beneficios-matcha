@@ -623,6 +623,15 @@ model ConfigGanancias {
 model ConfiguracionSistema {
   id           Int     @id @default(1) // siempre 1, singleton
   pinTablaHash String? // bcrypt hash del PIN de Tablas de Distribución
+
+  // Reporte semanal de cobranza: sábados 6:00 pm (hora de Venezuela), respaldo
+  // en Excel de las facturas pendientes + envío por correo. La cuenta que envía
+  // va en backend/.env (SMTP_USER / SMTP_PASS), no aquí: es una clave.
+  cobranzaActivo      Boolean   @default(false)
+  cobranzaCorreos     String?   // destinatarios, separados por coma
+  cobranzaActivadoEn  DateTime? // el primer envío es el primer sábado DESPUÉS de activarlo
+  cobranzaUltimoEnvio DateTime?
+  cobranzaUltimoError String?
 }
 
 // ─── FACTURACIÓN EXTERNA (compras a proveedores) ────────────────────────────

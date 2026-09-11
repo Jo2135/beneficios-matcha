@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { empresasApi, tasaCambioApi } from "../api/endpoints";
 import { Building2, Plus, Edit2, ToggleLeft, ToggleRight, TrendingUp } from "lucide-react";
+import ReporteCobranzaConfig from "../components/ReporteCobranzaConfig";
 
 interface Empresa { id: number; nombre: string; rif: string; activa: boolean }
 
@@ -206,6 +207,8 @@ export default function Configuracion() {
           )}
         </div>
       </div>
+
+      <ReporteCobranzaConfig />
 
       {/* Modal crear / editar */}
       {modal && (

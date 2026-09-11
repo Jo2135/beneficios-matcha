@@ -22,6 +22,7 @@ import * as comprasExternas from "../controllers/comprasExternas.controller";
 import * as planCarga from "../controllers/planCarga.controller";
 import * as pedidos from "../controllers/pedidos.controller";
 import * as conceptosExtra from "../controllers/conceptosExtra.controller";
+import * as reporteCobranza from "../controllers/reporteCobranza.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -173,6 +174,12 @@ router.patch("/despachos/lineas/:lineaId/gris", requireRol("MASTER", "ADMIN"), w
 router.post("/despachos/:id/balance/generar", requireRol("MASTER"), w(balance.generarBalance));
 // Control de Despachos + Deudas (por cobrar y deuda de materia prima) — solo MASTER
 router.get("/control-despachos", requireRol("MASTER"), w(controlDespachos.listar));
+// Reporte semanal de cobranza (sabados 6 pm, respaldo en Excel + correo)
+router.get("/reporte-cobranza/config", requireRol("MASTER"), w(reporteCobranza.getConfig));
+router.put("/reporte-cobranza/config", requireRol("MASTER"), w(reporteCobranza.guardarConfig));
+router.post("/reporte-cobranza/enviar", requireRol("MASTER"), w(reporteCobranza.enviarAhora));
+router.get("/reporte-cobranza/vista-previa", requireRol("MASTER"), w(reporteCobranza.vistaPrevia));
+router.get("/reporte-cobranza/excel", requireRol("MASTER"), w(reporteCobranza.descargarExcel));
 
 router.get("/despachos/:id/balance", requireRol("MASTER"), w(balance.getBalance));
 router.get("/despachos/:id/balance/snapshot", requireRol("MASTER"), w(balance.getSnapshot));

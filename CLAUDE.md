@@ -122,6 +122,17 @@ JWT_SECRET=tu_secreto_jwt
 PORT=5101
 ```
 
+Opcional: la cuenta que envía el **reporte semanal de cobranza** (ver Sección 14, punto 7):
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=cuenta@gmail.com
+SMTP_PASS=clave_de_aplicacion_de_16_letras   # Gmail: clave de aplicación, NO la clave normal
+SMTP_FROM=                                   # opcional; vacío = SMTP_USER
+RESPALDOS_DIR=                               # opcional; por defecto C:\Ecoplast\respaldos\cobranza
+```
+Los destinatarios y el encendido NO van en `.env`: se configuran en la pantalla Configuración y se guardan en `ConfiguracionSistema`. Claude no escribe claves en `.env`: las pone José.
+
 ---
 
 ## 6. Roles de Usuario
@@ -356,6 +367,8 @@ Usa **Recharts**. Gráficas implementadas:
 5. **Orden de rutas en Express**: La ruta `GET /despachos/:id/ganancias` debe declararse **ANTES** que `GET /despachos/:id` en `routes/index.ts` para evitar que Express interprete "ganancias" como un ID.
 
 6. **`SeguimientoCotizacion` con catch P2021**: El controlador de seguimiento devuelve `[]` si la tabla no existe todavía (código de error Prisma `P2021`), en lugar de fallar con 500.
+
+7. **Reporte semanal de cobranza** (`backend/src/lib/reporteCobranza.ts` + `jobs/reporteCobranza.ts`): todos los sábados a las 6:00 pm (hora de Venezuela) guarda un Excel con las facturas pendientes en `RESPALDOS_DIR` y lo manda por correo. No usa cron: un `setInterval` dentro del backend revisa cada 5 min si desde el último envío ya pasó un sábado 6 pm. Así, si el equipo estaba apagado, sale al encender (con aviso de atraso). La hora se calcula con UTC-4 fijo (Venezuela no tiene horario de verano), para que funcione igual en un servidor en UTC. El respaldo se guarda ANTES de enviar: si falla el correo, el Excel queda. Tras un fallo reintenta cada hora; el último error se ve en Configuración.
 
 ---
 
