@@ -28,6 +28,7 @@ import PlanificadorCarga from "./pages/PlanificadorCarga";
 import PedidosProduccion from "./pages/PedidosProduccion";
 import ControlDespachos from "./pages/ControlDespachos";
 import PagosVendedores from "./pages/PagosVendedores";
+import GastosOperativos from "./pages/GastosOperativos";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -105,6 +106,8 @@ function AppRoutes() {
 
         {/* Pagos de Vendedores — para todos (el vendedor solo ve los suyos) */}
         <Route path="/pagos-vendedores" element={<PagosVendedores />} />
+        {/* Gastos operativos: se cargan y luego se reparten en los balances */}
+        {puedeEditar && <Route path="/gastos-operativos" element={<GastosOperativos />} />}
 
         {/* Cotizaciones para todos */}
         <Route path="/cotizaciones" element={<Cotizaciones />} />

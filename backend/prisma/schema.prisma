@@ -217,6 +217,7 @@ model OrdenDespacho {
   facturas Factura[]
   balance  BalancePago?
   conceptosExtra DespachoConceptoExtra[]
+  gastosAsignados GastoOperativoAsignacion[]
 }
 
 enum EstadoDespacho {
@@ -569,6 +570,49 @@ model Usuario {
   pagosCreados   Pago[] @relation("PagoCreadoPor")
   pagosAprobados Pago[] @relation("PagoAprobadoPor")
   devolucionesCreadas FacturaDevolucion[]
+  gastosOperativos GastoOperativo[] @relation("GastoOperativoCreadoPor")
+}
+
+// ─── GASTOS OPERATIVOS ─────────────────────────────────────────────────────
+// Almuerzos, agua mineral, soldadura, insumos. Se cargan primero como pago y
+// después se reparten entre los renglones del balance de uno o varios
+// despachos: un mismo gasto puede ir partido ("$30 al 40% Capital de
+// Ferremarket y el resto al Extra Material de Gandica").
+
+model GastoOperativo {
+  id          Int      @id @default(autoincrement())
+  fecha       DateTime @db.Date
+  descripcion String
+  monto       Decimal  @db.Decimal(12, 2)
+  /// EFECTIVO | TRUEQUE | BINANCE | BANESCO_PANAMA | DEPOSITO_USD | ...
+  medioPago   String
+  notas       String?
+  creadoEn    DateTime @default(now())
+  creadoPorId Int?
+  creadoPor   Usuario? @relation("GastoOperativoCreadoPor", fields: [creadoPorId], references: [id])
+
+  asignaciones GastoOperativoAsignacion[]
+
+  @@index([fecha])
+}
+
+/// Parte de un gasto aplicada a un renglón del balance de un despacho. Baja el
+/// saldo de ese renglón igual que un abono.
+///
+/// Se guarda el NOMBRE del renglón y no su id a propósito: regenerar un balance
+/// borra los renglones y los vuelve a crear con otros ids; con el nombre, la
+/// asignación sobrevive a un "Regenerar".
+model GastoOperativoAsignacion {
+  id              Int            @id @default(autoincrement())
+  gastoId         Int
+  gasto           GastoOperativo @relation(fields: [gastoId], references: [id], onDelete: Cascade)
+  ordenDespachoId Int
+  ordenDespacho   OrdenDespacho  @relation(fields: [ordenDespachoId], references: [id], onDelete: Cascade)
+  renglon         String
+  monto           Decimal        @db.Decimal(12, 2)
+  creadoEn        DateTime       @default(now())
+
+  @@index([ordenDespachoId, renglon])
 }
 
 // ─── TASA DE CAMBIO ────────────────────────────────────────────────────────

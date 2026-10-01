@@ -173,8 +173,31 @@ export async function getBalance(req: Request, res: Response) {
     },
   });
   if (!balance) return res.status(404).json({ error: "Balance no generado aún" });
+
+  // Gastos operativos repartidos a este despacho: se muestran dentro de su
+  // renglón como un abono más. Se buscan por NOMBRE del renglón, así siguen
+  // apareciendo aunque el balance se haya regenerado (regenerar borra y vuelve
+  // a crear los renglones con otros ids).
+  const asignados = await prisma.gastoOperativoAsignacion.findMany({
+    where: { ordenDespachoId: id },
+    include: { gasto: { select: { fecha: true, descripcion: true, medioPago: true } } },
+    orderBy: { id: "asc" },
+  });
+  const porRenglon = new Map<string, any[]>();
+  for (const a of asignados) {
+    const lista = porRenglon.get(a.renglon) ?? [];
+    lista.push({
+      id: a.id, monto: Number(a.monto), fecha: a.gasto.fecha,
+      descripcion: a.gasto.descripcion, medioPago: a.gasto.medioPago,
+    });
+    porRenglon.set(a.renglon, lista);
+  }
+
   const { calculosJson, tasasJson, ...rest } = balance as any;
-  return res.json(rest);
+  return res.json({
+    ...rest,
+    items: (rest.items ?? []).map((i: any) => ({ ...i, gastos: porRenglon.get(i.nombre) ?? [] })),
+  });
 }
 
 /** Obtiene el snapshot completo de cálculos (para auditoría) */

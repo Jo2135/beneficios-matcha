@@ -279,6 +279,22 @@ export const reporteCobranzaApi = {
   excel: () => api.get("/reporte-cobranza/excel", { responseType: "blob" }).then((r) => r.data as Blob),
 };
 
+// Gastos operativos (almuerzos, agua, soldadura, insumos) y su reparto en el balance
+export const gastosOperativosApi = {
+  listar: (params?: { desde?: string; hasta?: string }) =>
+    api.get("/gastos-operativos", { params }).then((r) => r.data),
+  crear: (data: { fecha: string; descripcion: string; monto: number; medioPago: string; notas?: string }) =>
+    api.post("/gastos-operativos", data).then((r) => r.data),
+  actualizar: (id: number, data: any) => api.patch(`/gastos-operativos/${id}`, data).then((r) => r.data),
+  eliminar: (id: number, confirmar?: boolean) =>
+    api.delete(`/gastos-operativos/${id}`, { data: { confirmar } }).then((r) => r.data),
+  destinos: () => api.get("/gastos-operativos/destinos").then((r) => r.data),
+  asignar: (id: number, data: { ordenDespachoId: number; renglon: string; monto: number }) =>
+    api.post(`/gastos-operativos/${id}/asignaciones`, data).then((r) => r.data),
+  desasignar: (asignacionId: number) =>
+    api.delete(`/gastos-operativos/asignaciones/${asignacionId}`).then((r) => r.data),
+};
+
 // Conceptos adicionales de un despacho (Comisión 2, Viáticos, Carga Externa, Ayudante)
 export const conceptosApi = {
   listar: (despachoId: number) => api.get(`/despachos/${despachoId}/conceptos`).then((r) => r.data),

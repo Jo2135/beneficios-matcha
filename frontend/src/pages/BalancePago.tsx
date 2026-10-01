@@ -11,9 +11,12 @@ import { pdfBalancePago } from "../utils/pdf";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Cuota { id: number; fecha: string; monto: number; notas?: string }
+/// Parte de un gasto operativo repartida a este renglón (Gastos Operativos).
+/// Cuenta como un abono más, pero no se edita ni se borra desde aquí.
+interface GastoAsignado { id: number; fecha: string; monto: number; descripcion: string; medioPago: string }
 interface Item {
   id: number; nombre: string; montoTotal: number; esEditable: boolean;
-  orden: number; notas?: string; cuotas: Cuota[];
+  orden: number; notas?: string; cuotas: Cuota[]; gastos?: GastoAsignado[];
 }
 interface Balance {
   id: number; nombre?: string; items: Item[];
@@ -33,8 +36,22 @@ const fmtFecha = (iso?: string) => {
 const fmt = (n: number) =>
   n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/// Lo que entró a un renglón: los abonos cargados a mano más los gastos
+/// operativos que se le repartieron. Para el saldo valen lo mismo.
+interface PagoFila { clave: string; id: number; fecha: string; monto: number; notas?: string; esGasto: boolean }
+
+function pagosDe(item: Item): PagoFila[] {
+  const cuotas: PagoFila[] = item.cuotas.map((c) => ({
+    clave: `c${c.id}`, id: c.id, fecha: c.fecha, monto: Number(c.monto), notas: c.notas, esGasto: false,
+  }));
+  const gastos: PagoFila[] = (item.gastos ?? []).map((g) => ({
+    clave: `g${g.id}`, id: g.id, fecha: g.fecha, monto: Number(g.monto), notas: g.descripcion, esGasto: true,
+  }));
+  return [...cuotas, ...gastos].sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
 function pagado(item: Item) {
-  return item.cuotas.reduce((s, c) => s + Number(c.monto), 0);
+  return pagosDe(item).reduce((s, p) => s + p.monto, 0);
 }
 function saldo(item: Item) {
   return Number(item.montoTotal) - pagado(item);
@@ -43,7 +60,7 @@ function saldo(item: Item) {
 // Recoge todas las fechas únicas del balance, ordenadas
 function fechasUnicas(items: Item[]): string[] {
   const set = new Set<string>();
-  items.forEach((i) => i.cuotas.forEach((c) => set.add(c.fecha.slice(0, 10))));
+  items.forEach((i) => pagosDe(i).forEach((p) => set.add(p.fecha.slice(0, 10))));
   return [...set].sort();
 }
 
@@ -278,7 +295,7 @@ export default function BalancePago() {
   // Notas de cada PAGO. Se guardaban desde el modal "Agregar Pago" pero no se
   // veian en ninguna parte: quedaban enterradas en la base de datos. Ahora
   // salen en la celda del pago y en el panel "Notas de los pagos" al pie.
-  const [tooltipCuota, setTooltipCuota] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [tooltipCuota, setTooltipCuota] = useState<{ clave: string; x: number; y: number } | null>(null);
   const [notaCuota, setNotaCuota] = useState<{ id: number; concepto: string; fecha: string; monto: number; texto: string } | null>(null);
 
   // ── Queries ─────────────────────────────────────────────────────────────
@@ -400,7 +417,7 @@ export default function BalancePago() {
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button
-            onClick={() => pdfBalancePago({ despachoId, calculadoEn: balance?.calculadoEn, items: balance?.items ?? [], gananciaVendedor: balance?.gananciaVendedor })}
+            onClick={() => pdfBalancePago({ despachoId, calculadoEn: balance?.calculadoEn, items: (balance?.items ?? []).map((i) => ({ ...i, cuotas: pagosDe(i) })), gananciaVendedor: balance?.gananciaVendedor })}
             title="Exportar balance como PDF"
             style={{ display: "flex", alignItems: "center", gap: 6,
               background: "#fef9c3", border: "1px solid #fde047", borderRadius: 8,
@@ -550,43 +567,50 @@ export default function BalancePago() {
 
                   {/* Celda por cada fecha */}
                   {fechas.map((f) => {
-                    const cuota = item.cuotas.find((c) => c.fecha.slice(0, 10) === f);
+                    const delDia = pagosDe(item).filter((p) => p.fecha.slice(0, 10) === f);
                     return (
-                      <td key={f}
-                        style={{ ...tdStyle, textAlign: "center", position: "relative" }}
-                        onMouseEnter={(e) => {
-                          if (!cuota?.notas) return;
-                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                          setTooltipCuota({ id: cuota.id, x: r.left + r.width / 2, y: r.bottom + 6 });
-                        }}
-                        onMouseLeave={() => setTooltipCuota(null)}
-                      >
-                        {cuota ? (
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                      <td key={f} style={{ ...tdStyle, textAlign: "center" }}>
+                        {delDia.map((p) => (
+                          <div
+                            key={p.clave}
+                            onMouseEnter={(e) => {
+                              if (!p.notas) return;
+                              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setTooltipCuota({ clave: p.clave, x: r.left + r.width / 2, y: r.bottom + 6 });
+                            }}
+                            onMouseLeave={() => setTooltipCuota(null)}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}
+                          >
                             <span
-                              onClick={() => isMaster && setNotaCuota({
-                                id: cuota.id, concepto: item.nombre,
-                                fecha: cuota.fecha.slice(0, 10), monto: Number(cuota.monto),
-                                texto: cuota.notas ?? "",
-                              })}
-                              title={cuota.notas ? cuota.notas : isMaster ? "Clic para escribir una nota" : ""}
+                              onClick={() => {
+                                if (!isMaster || p.esGasto) return;
+                                setNotaCuota({
+                                  id: p.id, concepto: item.nombre, fecha: p.fecha.slice(0, 10),
+                                  monto: p.monto, texto: p.notas ?? "",
+                                });
+                              }}
+                              title={p.esGasto
+                                ? `Gasto operativo: ${p.notas ?? ""} — se quita desde la pantalla Gastos Operativos`
+                                : p.notas ? p.notas : isMaster ? "Clic para escribir una nota" : ""}
                               style={{
-                                color: "#16a34a", fontWeight: 600,
-                                cursor: isMaster ? "pointer" : "default",
-                                borderBottom: cuota.notas ? "1px dotted #16a34a" : "none",
+                                color: p.esGasto ? "#0e7490" : "#16a34a", fontWeight: 600,
+                                cursor: isMaster && !p.esGasto ? "pointer" : "default",
+                                borderBottom: p.notas ? `1px dotted ${p.esGasto ? "#0e7490" : "#16a34a"}` : "none",
                               }}
                             >
-                              {fmt(Number(cuota.monto))}
+                              {fmt(p.monto)}
                             </span>
-                            {cuota.notas && <span style={{ fontSize: 10 }} title={cuota.notas}>&#128221;</span>}
-                            {isMaster && (
-                              <button onClick={() => eliminarCuota.mutate(cuota.id)}
+                            {p.esGasto
+                              ? <span style={{ fontSize: 10 }} title="Gasto operativo repartido">&#129534;</span>
+                              : p.notas ? <span style={{ fontSize: 10 }} title={p.notas}>&#128221;</span> : null}
+                            {isMaster && !p.esGasto && (
+                              <button onClick={() => eliminarCuota.mutate(p.id)}
                                 style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }} title="Eliminar pago">
                                 <Trash2 size={11} color="#ef4444" />
                               </button>
                             )}
                           </div>
-                        ) : null}
+                        ))}
                       </td>
                     );
                   })}
@@ -664,7 +688,7 @@ export default function BalancePago() {
           queda todo escrito de corrido, en orden de fecha, para leerlo de una. */}
       {(() => {
         const pagos = items
-          .flatMap((it) => it.cuotas.map((c) => ({ ...c, concepto: it.nombre })))
+          .flatMap((it) => pagosDe(it).map((p) => ({ ...p, concepto: it.nombre })))
           .sort((a, b) => a.fecha.localeCompare(b.fecha));
         if (pagos.length === 0) return null;
         const conNota = pagos.filter((p) => p.notas).length;
@@ -680,19 +704,24 @@ export default function BalancePago() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <tbody>
                 {pagos.map((p) => (
-                  <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <tr key={p.clave} style={{ borderBottom: "1px solid #f1f5f9" }}>
                     <td style={{ padding: "8px 16px", color: "#64748b", whiteSpace: "nowrap", width: 80, verticalAlign: "top" }}>
                       {new Date(p.fecha.slice(0, 10) + "T12:00:00").toLocaleDateString("es-VE", { day: "2-digit", month: "short" })}
                     </td>
                     <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", verticalAlign: "top" }}>
                       {p.concepto}
                     </td>
-                    <td style={{ padding: "8px 10px", textAlign: "right", color: "#16a34a", fontWeight: 700, whiteSpace: "nowrap", width: 90, verticalAlign: "top" }}>
+                    <td style={{ padding: "8px 10px", textAlign: "right", color: p.esGasto ? "#0e7490" : "#16a34a", fontWeight: 700, whiteSpace: "nowrap", width: 90, verticalAlign: "top" }}>
                       ${fmt(Number(p.monto))}
                     </td>
                     <td style={{ padding: "8px 16px", color: p.notas ? "#334155" : "#cbd5e1", lineHeight: 1.5 }}>
+                      {p.esGasto && (
+                        <span style={{ marginRight: 6, fontSize: 10, color: "#0e7490", background: "#ecfeff", border: "1px solid #a5f3fc", borderRadius: 20, padding: "1px 7px" }}>
+                          gasto operativo
+                        </span>
+                      )}
                       {p.notas || "sin nota"}
-                      {isMaster && (
+                      {isMaster && !p.esGasto && (
                         <button
                           onClick={() => setNotaCuota({
                             id: p.id, concepto: p.concepto, fecha: p.fecha.slice(0, 10),
@@ -782,18 +811,18 @@ export default function BalancePago() {
           dentro de la celda: la tabla tiene scroll horizontal y recorta todo
           lo que se dibuje dentro de ella. */}
       {tooltipCuota && (() => {
-        const c = items.flatMap((i) => i.cuotas).find((cu) => cu.id === tooltipCuota.id);
+        const c = items.flatMap((i) => pagosDe(i)).find((p) => p.clave === tooltipCuota.clave);
         if (!c?.notas) return null;
         const x = Math.min(Math.max(tooltipCuota.x, 130), window.innerWidth - 130);
         return (
           <div style={{
             position: "fixed", left: x, top: tooltipCuota.y, transform: "translateX(-50%)",
-            zIndex: 900, background: "#166534", color: "#ecfdf5", borderRadius: 8,
+            zIndex: 900, background: c.esGasto ? "#155e75" : "#166534", color: "#ecfdf5", borderRadius: 8,
             padding: "8px 12px", fontSize: 12, width: 240, whiteSpace: "pre-wrap",
             lineHeight: 1.5, textAlign: "left", boxShadow: "0 6px 20px rgba(0,0,0,.3)",
             pointerEvents: "none",
           }}>
-            {c.notas}
+            {c.esGasto ? `Gasto operativo: ${c.notas}` : c.notas}
           </div>
         );
       })()}

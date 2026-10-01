@@ -23,6 +23,7 @@ import * as planCarga from "../controllers/planCarga.controller";
 import * as pedidos from "../controllers/pedidos.controller";
 import * as conceptosExtra from "../controllers/conceptosExtra.controller";
 import * as reporteCobranza from "../controllers/reporteCobranza.controller";
+import * as gastosOperativos from "../controllers/gastosOperativos.controller";
 import { uploadMiddleware, subirImagen, eliminarImagen } from "../controllers/imagenes.controller";
 import { requireAuth, requireRol } from "../middleware/auth";
 import { seedRouter } from "./seed.routes";
@@ -152,6 +153,16 @@ router.post("/pagos-vendedor/:id/rechazar", requireRol("MASTER", "ADMIN"), w(pag
 // Comprobante: lo anexa el vendedor dueño o un admin (el controlador valida); borra solo admin/master
 router.post("/pagos-vendedor/:id/comprobante", pagosVendedor.uploadComprobanteMiddleware, w(pagosVendedor.subirComprobante));
 router.delete("/pagos-vendedor/:id/comprobante", requireRol("MASTER", "ADMIN"), w(pagosVendedor.eliminarComprobante));
+
+// Gastos operativos (almuerzos, agua, soldadura, insumos) y su reparto en el balance.
+// Las rutas de "asignaciones" van primero para que no las capture "/:id".
+router.get("/gastos-operativos/destinos", requireRol("MASTER"), w(gastosOperativos.destinos));
+router.post("/gastos-operativos/:id/asignaciones", requireRol("MASTER"), w(gastosOperativos.asignar));
+router.delete("/gastos-operativos/asignaciones/:asignacionId", requireRol("MASTER"), w(gastosOperativos.desasignar));
+router.get("/gastos-operativos", requireRol("MASTER", "ADMIN"), w(gastosOperativos.listar));
+router.post("/gastos-operativos", requireRol("MASTER", "ADMIN"), w(gastosOperativos.crear));
+router.patch("/gastos-operativos/:id", requireRol("MASTER", "ADMIN"), w(gastosOperativos.actualizar));
+router.delete("/gastos-operativos/:id", requireRol("MASTER", "ADMIN"), w(gastosOperativos.eliminar));
 
 // ─── Pagos ────────────────────────────────────────────────────────────────
 router.get("/pagos", requireRol("MASTER", "ADMIN"), w(pagos.listar));

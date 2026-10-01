@@ -370,6 +370,10 @@ Usa **Recharts**. Gráficas implementadas:
 
 7. **Reporte semanal de cobranza** (`backend/src/lib/reporteCobranza.ts` + `jobs/reporteCobranza.ts`): todos los sábados a las 6:00 pm (hora de Venezuela) guarda un Excel con las facturas pendientes en `RESPALDOS_DIR` y lo manda por correo. No usa cron: un `setInterval` dentro del backend revisa cada 5 min si desde el último envío ya pasó un sábado 6 pm. Así, si el equipo estaba apagado, sale al encender (con aviso de atraso). La hora se calcula con UTC-4 fijo (Venezuela no tiene horario de verano), para que funcione igual en un servidor en UTC. El respaldo se guarda ANTES de enviar: si falla el correo, el Excel queda. Tras un fallo reintenta cada hora; el último error se ve en Configuración.
 
+8. **Gastos operativos** (`gastosOperativos.controller.ts` + pantalla `GastosOperativos.tsx`): almuerzos, agua, soldadura, insumos. Flujo de dos pasos pedido por José: primero se carga el pago (fecha, descripción, monto, medio) y después se reparte entre los renglones del balance de uno o varios despachos — un mismo gasto puede ir partido. Cada parte baja el saldo de ese renglón igual que un abono. La asignación guarda el **nombre** del renglón, no su id, para sobrevivir a un "Regenerar" del balance (regenerar borra y recrea los renglones). `getBalance` devuelve esos gastos dentro de cada item (`items[].gastos`) y el frontend los suma a lo pagado, junto con las cuotas.
+
+9. **Capital disponible** (tarjeta en Control y Deudas): `40% Capital` generado menos lo usado (abonos + gastos operativos repartidos a ese renglón). Para los despachos que todavía no tienen balance se calcula al vuelo con `calcularGananciasDespacho`, porque es un gasto fijo que nace al cerrar el despacho y no debe esperar al balance.
+
 ---
 
 ## 15. Metodología de Trabajo (cómo trabajamos en este proyecto)

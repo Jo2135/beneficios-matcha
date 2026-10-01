@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { controlDespachosApi } from "../api/endpoints";
-import { ClipboardList, Wallet, Package, Plus, X, BarChart2, AlertTriangle } from "lucide-react";
+import { ClipboardList, Wallet, Package, PiggyBank, Plus, X, BarChart2, AlertTriangle } from "lucide-react";
 
 const usd = (n: any) =>
   n == null ? "—" : `$${Number(n).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -70,6 +70,17 @@ export default function ControlDespachos() {
             de {usd(t?.costoMaterial)} en material · abonado {usd(t?.abonoMaterial)}
           </div>
         </div>
+        {/* Capital: el 40% de la ganancia general. Se calcula aunque el balance
+            no esté generado, porque nace al cerrar el despacho. */}
+        <div style={{ background: "#fff", border: "1px solid #a5f3fc", borderLeft: "4px solid #0891b2", borderRadius: 12, padding: "16px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, color: "#155e75", textTransform: "uppercase", letterSpacing: 0.4 }}>
+            <PiggyBank size={14} /> Capital disponible
+          </div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: "#0891b2", marginTop: 6 }}>{usd(t?.capitalDisponible)}</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+            de {usd(t?.capitalGenerado)} generado · usado {usd(t?.capitalUsado)}
+          </div>
+        </div>
       </div>
 
       {(t?.despachosSinBalance ?? 0) > 0 && (
@@ -99,15 +110,15 @@ export default function ControlDespachos() {
           <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: "100%", whiteSpace: "nowrap" }}>
             <thead>
               <tr style={{ background: "#1e293b" }}>
-                {["Fecha", "Cliente", "Chofer", "Tuberías", "Conexiones", "Comisión vend.", "Total factura", "Abonado", "Pendiente", "Material", "Abonado mat.", "Deuda mat.", "Total Danny", "Muchachas curvas", ""]
+                {["Fecha", "Cliente", "Chofer", "Tuberías", "Conexiones", "Comisión vend.", "Total factura", "Abonado", "Pendiente", "Material", "Abonado mat.", "Deuda mat.", "Capital", "Total Danny", "Muchachas curvas", ""]
                   .map((h, i) => (
-                    <th key={i} style={{ padding: "9px 10px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: i >= 3 && i <= 13 ? "right" : "left" }}>{h}</th>
+                    <th key={i} style={{ padding: "9px 10px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: i >= 3 && i <= 14 ? "right" : "left" }}>{h}</th>
                   ))}
               </tr>
             </thead>
             <tbody>
               {filas.length === 0 && (
-                <tr><td colSpan={15} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>No hay despachos facturados en este rango</td></tr>
+                <tr><td colSpan={16} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>No hay despachos facturados en este rango</td></tr>
               )}
               {filas.map((f) => (
                 <tr key={f.despachoId} style={{ borderTop: "1px solid #f1f5f9" }}>
@@ -129,6 +140,18 @@ export default function ControlDespachos() {
                   <td style={{ ...tdR, color: "#16a34a" }}>{f.abonoMaterial == null ? "—" : usd(f.abonoMaterial)}</td>
                   <td style={{ ...tdR, fontWeight: 700, color: Number(f.deudaMaterial) > 0.005 ? "#ea580c" : "#16a34a" }}>
                     {f.deudaMaterial == null ? "—" : Number(f.deudaMaterial) > 0.005 ? usd(f.deudaMaterial) : "✓"}
+                  </td>
+                  {/* Capital del despacho: disponible arriba, y debajo cuánto se
+                      generó y cuánto ya se usó. */}
+                  <td style={tdR}>
+                    <div style={{ fontWeight: 700, color: Number(f.capitalDisponible) > 0.005 ? "#0891b2" : "#94a3b8" }}>
+                      {usd(f.capitalDisponible)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>
+                      {Number(f.capitalUsado) > 0.005
+                        ? `de ${usd(f.capitalGenerado).replace("$", "")} · usado ${usd(f.capitalUsado).replace("$", "")}`
+                        : f.capitalSinBalance ? "sin balance" : ""}
+                    </div>
                   </td>
                   {/* Danny cobra por tres vias en un mismo despacho: comision como
                       vendedor, Comision 2 y su parte del amarillo. Se muestra el
@@ -185,6 +208,12 @@ export default function ControlDespachos() {
                   <td style={tdR}>{usd(t.costoMaterial)}</td>
                   <td style={{ ...tdR, color: "#16a34a" }}>{usd(t.abonoMaterial)}</td>
                   <td style={{ ...tdR, color: "#ea580c", fontSize: 13 }}>{usd(t.deudaMaterial)}</td>
+                  <td style={tdR}>
+                    <div style={{ color: "#0891b2" }}>{usd(t.capitalDisponible)}</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>
+                      de {usd(t.capitalGenerado).replace("$", "")} · usado {usd(t.capitalUsado).replace("$", "")}
+                    </div>
+                  </td>
                   <td style={tdR}>
                     <div>{usd(t.dannyTotal)}</div>
                     <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { esConexion } from "./ganancias.controller";
+import { esConexion, calcularGananciasDespacho } from "./ganancias.controller";
 
 /**
  * Control de Despachos + Deudas — una fila por despacho facturado, con las dos
@@ -22,6 +22,11 @@ import { esConexion } from "./ganancias.controller";
  */
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// Nombres de los renglones del balance que esta pantalla lee. Tienen que
+// coincidir con los que escribe balance.controller al generar el balance.
+const RENGLON_MATERIAL = "Material";
+const RENGLON_CAPITAL = "40% Capital";
 
 /** Quita tildes, mayusculas y espacios: "Comisión 2" -> "comision2". */
 const clave = (s: string) =>
@@ -59,14 +64,35 @@ export async function listar(req: Request, res: Response) {
         select: {
           id: true, calculosJson: true,
           items: {
-            where: { nombre: "Material" },
-            select: { id: true, montoTotal: true, cuotas: { select: { monto: true } } },
+            where: { nombre: { in: [RENGLON_MATERIAL, RENGLON_CAPITAL] } },
+            select: { id: true, nombre: true, montoTotal: true, cuotas: { select: { monto: true } } },
           },
         },
       },
     },
     orderBy: { fechaSalida: "desc" },
   });
+
+  // Gastos operativos ya repartidos: cuentan como abono del renglón, igual que
+  // una cuota (ver gastosOperativos.controller.ts).
+  const asignados = await prisma.gastoOperativoAsignacion.groupBy({
+    by: ["ordenDespachoId", "renglon"],
+    _sum: { monto: true },
+  });
+  const gastoDe = (despachoId: number, renglon: string) =>
+    Number(asignados.find((a) => a.ordenDespachoId === despachoId && a.renglon === renglon)?._sum.monto ?? 0);
+
+  // El Capital (40% de la ganancia general) es un gasto fijo que nace al cerrar
+  // el despacho: no hace falta esperar a que se genere el balance. Para los
+  // despachos que todavía no lo tienen, se calcula al vuelo con el motor.
+  const capitalSinBalance = new Map<number, number>();
+  for (const d of despachos) {
+    if (d.balance) continue;
+    try {
+      const g: any = await calcularGananciasDespacho(d.id);
+      if (g) capitalSinBalance.set(d.id, Number(g.gananciaGeneral?.capital ?? 0));
+    } catch { /* si el motor no puede con ese despacho, queda en 0 */ }
+  }
 
   const filas = despachos.map((d) => {
     // ── Cobros (en vivo) ────────────────────────────────────────────────────
@@ -85,10 +111,23 @@ export async function listar(req: Request, res: Response) {
     }
 
     // ── Material (en vivo, de la fila del balance) ──────────────────────────
-    const itemMat = d.balance?.items[0];
+    const itemMat = d.balance?.items.find((i) => i.nombre === RENGLON_MATERIAL);
     const costoMaterial = itemMat ? Number(itemMat.montoTotal) : null;
-    const abonoMaterial = itemMat ? itemMat.cuotas.reduce((s, c) => s + Number(c.monto), 0) : null;
+    const abonoMaterial = itemMat
+      ? r2(itemMat.cuotas.reduce((s, c) => s + Number(c.monto), 0) + gastoDe(d.id, RENGLON_MATERIAL))
+      : null;
     const deudaMaterial = costoMaterial != null && abonoMaterial != null ? r2(costoMaterial - abonoMaterial) : null;
+
+    // ── Capital disponible ─────────────────────────────────────────────────
+    // Generado = el 40% Capital del balance; si no hay balance, el calculado al
+    // vuelo. Usado = lo que ya se abonó de ese renglón más los gastos
+    // operativos que se le repartieron.
+    const itemCap = d.balance?.items.find((i) => i.nombre === RENGLON_CAPITAL);
+    const capitalGenerado = r2(itemCap ? Number(itemCap.montoTotal) : (capitalSinBalance.get(d.id) ?? 0));
+    const capitalUsado = r2(
+      (itemCap ? itemCap.cuotas.reduce((s, c) => s + Number(c.monto), 0) : 0) + gastoDe(d.id, RENGLON_CAPITAL),
+    );
+    const capitalDisponible = r2(capitalGenerado - capitalUsado);
 
     // ── Ganancias del snapshot del balance ──────────────────────────────────
     let comisionVendedor: number | null = null, dannyAmarillo: number | null = null, muchachasCurvas: number | null = null;
@@ -132,6 +171,8 @@ export async function listar(req: Request, res: Response) {
       comisionVendedor, totalFactura: r2(totalFactura), abonoFactura: r2(abonoFactura), pendienteFactura: r2(pendienteFactura),
       costoMaterial, abonoMaterial, deudaMaterial,
       materialItemId: itemMat?.id ?? null,   // para registrar el abono desde la pantalla
+      capitalGenerado, capitalUsado, capitalDisponible,
+      capitalSinBalance: !d.balance,         // se calculó al vuelo, no viene del balance
       tieneBalance: !!d.balance,
       dannyAmarillo, muchachasCurvas,
       dannyComision: d.balance ? r2(dannyComision) : null,
@@ -150,6 +191,7 @@ export async function listar(req: Request, res: Response) {
       comisionVendedor: suma("comisionVendedor"),
       totalFactura: suma("totalFactura"), abonoFactura: suma("abonoFactura"), pendienteFactura: suma("pendienteFactura"),
       costoMaterial: suma("costoMaterial"), abonoMaterial: suma("abonoMaterial"), deudaMaterial: suma("deudaMaterial"),
+      capitalGenerado: suma("capitalGenerado"), capitalUsado: suma("capitalUsado"), capitalDisponible: suma("capitalDisponible"),
       dannyAmarillo: suma("dannyAmarillo"), muchachasCurvas: suma("muchachasCurvas"),
       dannyComision: suma("dannyComision"), dannyComision2: suma("dannyComision2"), dannyTotal: suma("dannyTotal"),
       despachosSinBalance: filas.filter((f) => !f.tieneBalance).length,
