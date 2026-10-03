@@ -122,6 +122,12 @@ JWT_SECRET=tu_secreto_jwt
 PORT=5101
 ```
 
+> ⚠️ **`JWT_SECRET` no es opcional.** Si falta, `backend/src/middleware/auth.ts` cae en un valor por
+> defecto escrito en el código, y quien lo conozca puede fabricarse una sesión de MASTER sin saber
+> ninguna contraseña. En el equipo de José ya quedó definido (3-oct-2026, 64 caracteres al azar).
+> **El día que el sistema se mude a un servidor hay que definirlo allá también**, o vuelve a usar el
+> valor por defecto. Cambiarlo obliga a todos a iniciar sesión de nuevo.
+
 Opcional: la cuenta que envía el **reporte semanal de cobranza** (ver Sección 14, punto 7):
 ```
 SMTP_HOST=smtp.gmail.com
