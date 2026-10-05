@@ -422,7 +422,11 @@ export async function agregarLinea(req: Request, res: Response) {
 
   const cotizacion = await prisma.cotizacion.findUnique({
     where: { id: Number(cotizacionId) },
-    select: { id: true, clienteId: true, numero: true, lineas: { select: { orden: true, totalLinea: true } } },
+    select: {
+      id: true, clienteId: true, numero: true,
+      // precioUnitarioAplicado y cantidad hacen falta para recalcular el bruto
+      lineas: { select: { orden: true, totalLinea: true, precioUnitarioAplicado: true, cantidad: true } },
+    },
   });
   if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
 
@@ -463,11 +467,22 @@ export async function agregarLinea(req: Request, res: Response) {
         notaCantidad: "Agregado en el despacho",
       },
     });
-    // Totales de la cotizacion (el pedido crecio)
-    const suma = cotizacion.lineas.reduce((s, l) => s + Number(l.totalLinea), 0) + totalLinea;
+    // Totales de la cotizacion (el pedido crecio). Se usa la MISMA formula que
+    // al crear o editar una cotizacion (cotizaciones.controller): el bruto sale
+    // del precio de lista, el neto de lo que se cobra, y el descuento es la
+    // diferencia -- o sea, la suma de los descuentos de cada linea.
+    //
+    // Antes aqui se escribia totalBruto = totalNeto = suma, y eso dejaba el
+    // descuento huerfano: la cotizacion quedaba diciendo que hubo un descuento
+    // que ya no se reflejaba en ningun lado, y el recuadro de totales del PDF
+    // (cotizacion y factura) salia descuadrado. Lo detecto la auditoria externa.
+    const neto = cotizacion.lineas.reduce((s, l) => s + Number(l.totalLinea), 0) + totalLinea;
+    const bruto = cotizacion.lineas.reduce(
+      (s, l) => s + Number(l.precioUnitarioAplicado) * Number(l.cantidad), 0,
+    ) + precio * cant;
     await tx.cotizacion.update({
       where: { id: cotizacion.id },
-      data: { totalBruto: suma, totalNeto: suma },
+      data: { totalBruto: bruto, totalNeto: neto, descuentoTotal: bruto - neto },
     });
     // Linea del despacho, ya marcada como despachada (se agrega porque salio)
     await tx.despachoLinea.create({
