@@ -434,10 +434,19 @@ export async function eliminar(req: Request, res: Response) {
   if (!factura) return res.status(404).json({ error: "Factura no encontrada" });
   // La ruta es solo-MASTER. Se permite eliminar aunque figure como cobrada.
   // Se quitan las referencias (asignaciones de pago, gastos y distribuciones) primero.
-  await prisma.pagoAsignacion.deleteMany({ where: { facturaId: id } });
-  await prisma.despachoGasto.deleteMany({ where: { facturaId: id } });
-  await prisma.distribucionGanancia.deleteMany({ where: { facturaId: id } });
-  await prisma.facturaLinea.deleteMany({ where: { facturaId: id } });
-  await prisma.factura.delete({ where: { id } });
-  res.json({ ok: true });
+  // Faltaba soltar compraExternaAsignacion: si a la factura se le habia
+  // asignado mercancia comprada a un proveedor, el borrado fallaba con error
+  // 500 y no habia manera de anularla (lo detecto la auditoria externa). Al
+  // soltarla, esa mercancia vuelve a quedar disponible para otra factura.
+  // Las lineas y las devoluciones se borran solas (cascada en el esquema).
+  const comprasExternasLiberadas = await prisma.compraExternaAsignacion.count({ where: { facturaId: id } });
+  await prisma.$transaction([
+    prisma.compraExternaAsignacion.deleteMany({ where: { facturaId: id } }),
+    prisma.pagoAsignacion.deleteMany({ where: { facturaId: id } }),
+    prisma.despachoGasto.deleteMany({ where: { facturaId: id } }),
+    prisma.distribucionGanancia.deleteMany({ where: { facturaId: id } }),
+    prisma.facturaLinea.deleteMany({ where: { facturaId: id } }),
+    prisma.factura.delete({ where: { id } }),
+  ]);
+  res.json({ ok: true, comprasExternasLiberadas });
 }

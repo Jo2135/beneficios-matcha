@@ -97,8 +97,24 @@ export async function asignarAFactura(req: Request, res: Response) {
     });
   }
 
-  // Ninguna asignación puede superar el saldo de su factura (dejaría el saldo negativo)
+  // Dos entradas de la MISMA factura en un mismo envio se revisaban por separado
+  // y las dos pasaban el control, dejando el saldo negativo. Se juntan antes de
+  // revisar nada (lo detecto la auditoria externa).
+  const porFactura = new Map<number, { facturaId: number; montoAsignado: number; notas?: string }>();
   for (const asig of asignaciones) {
+    const fid = Number(asig.facturaId);
+    const prev = porFactura.get(fid);
+    if (prev) {
+      prev.montoAsignado += Number(asig.montoAsignado);
+      prev.notas = [prev.notas, asig.notas].filter(Boolean).join(" · ") || undefined;
+    } else {
+      porFactura.set(fid, { facturaId: fid, montoAsignado: Number(asig.montoAsignado), notas: asig.notas });
+    }
+  }
+  const aAsignar = [...porFactura.values()];
+
+  // Ninguna asignación puede superar el saldo de su factura (dejaría el saldo negativo)
+  for (const asig of aAsignar) {
     const f = await prisma.factura.findUnique({
       where: { id: asig.facturaId },
       select: { numero: true, saldoPendiente: true },
@@ -111,43 +127,53 @@ export async function asignarAFactura(req: Request, res: Response) {
     }
   }
 
-  const ops = [];
-
-  for (const asig of asignaciones) {
-    ops.push(
-      prisma.pagoAsignacion.create({
-        data: {
-          pagoId,
-          facturaId: asig.facturaId,
-          montoAsignado: asig.montoAsignado,
-          notas: asig.notas,
-        },
-      })
-    );
-
-    // Actualizar saldo de factura
-    ops.push(
-      prisma.factura.update({
-        where: { id: asig.facturaId },
-        data: {
-          totalPagado: { increment: asig.montoAsignado },
-          saldoPendiente: { decrement: asig.montoAsignado },
-        },
-      })
-    );
-  }
-
   // Actualizar estado del pago
   const totalFinal = yaAsignado + nuevoTotal;
   const estadoPago =
     totalFinal >= Number(pago.monto) ? "ASIGNADO" : totalFinal > 0 ? "PARCIAL" : "LIBRE";
 
-  ops.push(prisma.pago.update({ where: { id: pagoId }, data: { estado: estadoPago } }));
-
-  await prisma.$transaction(ops);
+  // El descuento del saldo va condicionado a que la factura todavia tenga con
+  // que (WHERE saldoPendiente >= monto). Si entre la revision de arriba y este
+  // momento alguien mas abono la misma factura, no encuentra la fila y se
+  // deshace todo, en vez de dejar la factura en negativo.
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const asig of aAsignar) {
+        await tx.pagoAsignacion.create({
+          data: {
+            pagoId,
+            facturaId: asig.facturaId,
+            montoAsignado: asig.montoAsignado,
+            notas: asig.notas,
+          },
+        });
+        const tocada = await tx.factura.updateMany({
+          where: { id: asig.facturaId, saldoPendiente: { gte: asig.montoAsignado - 0.005 } },
+          data: {
+            totalPagado: { increment: asig.montoAsignado },
+            saldoPendiente: { decrement: asig.montoAsignado },
+          },
+        });
+        if (tocada.count === 0) throw new Error(`SALDO_INSUFICIENTE:${asig.facturaId}`);
+      }
+      await tx.pago.update({ where: { id: pagoId }, data: { estado: estadoPago } });
+    }, { timeout: 20000 });
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    if (msg.startsWith("SALDO_INSUFICIENTE:")) {
+      const f = await prisma.factura.findUnique({
+        where: { id: Number(msg.split(":")[1]) },
+        select: { numero: true, saldoPendiente: true },
+      });
+      return res.status(409).json({
+        error: `${f?.numero ?? "Esa factura"} ya no tiene saldo suficiente: quedan $${Number(f?.saldoPendiente ?? 0).toFixed(2)}. Puede que alguien haya abonado al mismo tiempo. No se asignó nada.`,
+      });
+    }
+    throw e;
+  }
 
   // Actualizar estado de facturas
-  for (const asig of asignaciones) {
+  for (const asig of aAsignar) {
     const factura = await prisma.factura.findUnique({ where: { id: asig.facturaId } });
     if (factura) {
       let estadoFactura = factura.estado;
