@@ -88,6 +88,19 @@ export default function Cotizaciones() {
       setDetalle(null);
       alert(`Factura ${factura.numero} generada exitosamente`);
     },
+    // Sin esto, cuando el servidor rechazaba la segunda factura no pasaba nada
+    // en pantalla y daba la impresión de que había que volver a hacer clic.
+    onError: (e: any) => {
+      const d = e?.response?.data;
+      qc.invalidateQueries({ queryKey: ["cotizaciones"] });
+      qc.invalidateQueries({ queryKey: ["facturas"] });
+      if (d?.codigoError === "COTIZACION_YA_FACTURADA") {
+        setDetalle(null);
+        alert(`${d.error}\n\nNo se generó una factura nueva.`);
+        return;
+      }
+      alert(d?.error ?? "No se pudo generar la factura");
+    },
   });
 
   const crearDespacho = useMutation({

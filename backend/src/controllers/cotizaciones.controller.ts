@@ -414,6 +414,22 @@ export async function ordenProduccion(req: Request, res: Response) {
   res.json(cotizaciones);
 }
 
+/**
+ * Busca la factura que probablemente nació de esta cotización: mismo cliente y
+ * mismo monto, la más reciente. Factura no guarda la cotización de origen, así
+ * que esto es lo más preciso que se puede decir para orientar a quien recibe el
+ * aviso de "ya está facturada".
+ */
+async function facturaProbableDe(cot: { clienteId: number; totalNeto: any }) {
+  const candidatas = await prisma.factura.findMany({
+    where: { clienteId: cot.clienteId, estado: { not: "ANULADA" } },
+    select: { numero: true, fechaEmision: true, totalNeto: true },
+    orderBy: { id: "desc" },
+    take: 25,
+  });
+  return candidatas.find((f) => Math.abs(Number(f.totalNeto) - Number(cot.totalNeto)) < 0.02) ?? null;
+}
+
 export async function generarFactura(req: Request, res: Response) {
   const cotizacionId = Number(req.params.id);
 
@@ -426,48 +442,84 @@ export async function generarFactura(req: Request, res: Response) {
   });
 
   if (!cotizacion) return res.status(404).json({ error: "Cotización no encontrada" });
+
+  // Si ya no está facturable, casi siempre es porque alguien ya la facturó.
   if (cotizacion.estado !== "APROBADA" && cotizacion.estado !== "EN_DESPACHO") {
-    return res.status(400).json({ error: "Solo se pueden facturar cotizaciones aprobadas" });
+    const ya = await facturaProbableDe(cotizacion);
+    return res.status(409).json({
+      error: ya
+        ? `La cotización ${cotizacion.numero} ya fue facturada: ${ya.numero}, del ${ya.fechaEmision.toLocaleDateString("es-VE")}, por $${Number(ya.totalNeto).toFixed(2)}.`
+        : `La cotización ${cotizacion.numero} está en estado ${cotizacion.estado} y no se puede facturar.`,
+      codigoError: "COTIZACION_YA_FACTURADA",
+      factura: ya,
+    });
   }
 
-  const numero = await siguienteNumero("FAC");
   const fechaVencimiento = cotizacion.cliente.diasCredito
     ? new Date(Date.now() + cotizacion.cliente.diasCredito * 86400000)
     : null;
 
-  const factura = await prisma.factura.create({
-    data: {
-      numero,
-      clienteId: cotizacion.clienteId,
-      empresaId: cotizacion.empresaId,
-      fechaVencimiento,
-      totalBruto: cotizacion.totalBruto,
-      descuentoTotal: cotizacion.descuentoTotal,
-      totalNeto: cotizacion.totalNeto,
-      saldoPendiente: cotizacion.totalNeto,
-      lineas: {
-        create: cotizacion.lineas.map((l, idx) => ({
-          productoId: l.productoId,
-          cantidad: l.cantidad,
-          precioUnitario: l.precioFinal,
-          descuentoPct: l.descuentoPct,
-          totalLinea: l.totalLinea,
-          origen: l.producto.origen,
-          pesoTotalKg: l.pesoTotalKg,
-          orden: idx,
-        })),
-      },
-    },
-    include: {
-      cliente: true,
-      lineas: { include: { producto: { include: { categoria: true } } } },
-    },
-  });
+  // ── Cerrojo contra la factura doble ────────────────────────────────────────
+  // El cambio de estado va PRIMERO y es un único UPDATE condicional: si entran
+  // dos peticiones a la vez (doble clic, un reintento del navegador, dos
+  // pestañas abiertas), solo una se lleva la cotización; la otra sale sin crear
+  // nada. Antes las dos leían "APROBADA" y las dos facturaban: así fue como
+  // DES-0019 terminó con seis facturas para tres clientes y un balance del
+  // doble de lo real.
+  //
+  // Va dentro de una transacción con la creación de la factura, así que si algo
+  // falla a mitad de camino, la cotización no queda marcada como facturada sin
+  // tener factura.
+  let factura: any;
+  try {
+    factura = await prisma.$transaction(async (tx) => {
+      const tomada = await tx.cotizacion.updateMany({
+        where: { id: cotizacionId, estado: { in: ["APROBADA", "EN_DESPACHO"] } },
+        data: { estado: "COMPLETADA" },
+      });
+      if (tomada.count === 0) throw new Error("COTIZACION_YA_TOMADA");
 
-  await prisma.cotizacion.update({
-    where: { id: cotizacionId },
-    data: { estado: "COMPLETADA" },
-  });
+      const numero = await siguienteNumero("FAC");
+      return tx.factura.create({
+        data: {
+          numero,
+          clienteId: cotizacion.clienteId,
+          empresaId: cotizacion.empresaId,
+          fechaVencimiento,
+          totalBruto: cotizacion.totalBruto,
+          descuentoTotal: cotizacion.descuentoTotal,
+          totalNeto: cotizacion.totalNeto,
+          saldoPendiente: cotizacion.totalNeto,
+          lineas: {
+            create: cotizacion.lineas.map((l, idx) => ({
+              productoId: l.productoId,
+              cantidad: l.cantidad,
+              precioUnitario: l.precioFinal,
+              descuentoPct: l.descuentoPct,
+              totalLinea: l.totalLinea,
+              origen: l.producto.origen,
+              pesoTotalKg: l.pesoTotalKg,
+              orden: idx,
+            })),
+          },
+        },
+        include: {
+          cliente: true,
+          lineas: { include: { producto: { include: { categoria: true } } } },
+        },
+      });
+    }, { timeout: 20000 });
+  } catch (e: any) {
+    if (e?.message === "COTIZACION_YA_TOMADA") {
+      const ya = await facturaProbableDe(cotizacion);
+      return res.status(409).json({
+        error: `La cotización ${cotizacion.numero} se acaba de facturar${ya ? `: ${ya.numero}` : ""}. No se generó una segunda factura.`,
+        codigoError: "COTIZACION_YA_FACTURADA",
+        factura: ya,
+      });
+    }
+    throw e;
+  }
 
   res.status(201).json(factura);
 }
