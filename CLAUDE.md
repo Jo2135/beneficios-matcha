@@ -213,19 +213,42 @@ La ganancia por PEAD se calcula: `cantidad × pesoGanancia × 0.49`
 
 **Pesos de ganancia PEAD (son MENORES que los pesos en DB — intencional para ahorrar materia prima):**
 
-| Código        | Kg ganancia |
-|---------------|-------------|
-| TUAM-2-PEAD   | 0.85        |
-| TUAM-3-PEAD   | 1.20        |
-| TUAM-4-PEAD   | 2.25        |
-| TUAM-6-PEAD   | 5.50        |
-| TUAM-2-PEAD-R | 1.00        |
-| TUAM-4-PEAD-R | 1.55        |
-| TUAM-3-PEAD-R | 2.45        |
-| TUNA-4-PEAD-R | 2.90        |
-| TUGR-2-PEAD   | 0.80        |   <!-- corregido por José el 9-sep-2026; antes decía 2.20 -->
+> **Estos valores son los de fábrica.** Viven como `DEFAULTS` editables en
+> `tablas.controller.ts` (grupo "Pesos de Ganancia PEAD (kg)") y José los cambia
+> desde la pantalla **Tablas de Ganancias**; lo que edita se guarda en
+> `ConfigGanancias` y manda sobre lo de abajo. Hoy tiene puestos 1.30 para
+> TUAM-3-PEAD y 2.30 para TUAM-4-PEAD.
 
-Cuando el código no está disponible, se infiere el peso por nombre/medida (`pesoGananciaPeadFromNombre`).
+| Código        | Kg ganancia | Peso inventario | Nota |
+|---------------|-------------|-----------------|------|
+| TUAM-2-PEAD   | 0.85        | 0.90            | |
+| TUAM-3-PEAD   | 1.20        | 1.30            | José la tiene en 1.30 |
+| TUAM-4-PEAD   | 2.25        | 2.30            | José la tiene en 2.30 |
+| TUAM-6-PEAD   | 5.50        | 7.00            | |
+| TUAM-2-PEAD-R | 1.00        | 1.20            | |
+| TUAM-3-PEAD-R | 1.55        | 1.80            | corregido 5-oct-2026; antes 2.45 |
+| TUAM-4-PEAD-R | 2.45        | 2.80            | corregido 5-oct-2026; antes 1.55 |
+| TUNA-4-PEAD-R | 2.90        | 2.80            | |
+| TUGR-2-PEAD   | 0.85        | 0.80            | igualada a la amarilla 5-oct-2026; antes 0.80 |
+| TUGR-3-PEAD   | 1.30        | 1.20            | renglón nuevo 5-oct-2026 |
+| TUGR-4-PEAD   | 2.10        | 2.10            | renglón nuevo 5-oct-2026; **excepción**: va igual al inventario |
+
+**Regla de la familia gris (José, 5-oct-2026):** la tubería gris de aguas negras
+sigue la misma norma que la amarilla del mismo tamaño y su ganancia va a los
+mismos beneficiarios (Alberto 42% / Danny 33% / Darwin 25%). La única excepción
+es la de 4", cuyo peso de ganancia es igual a su peso de inventario.
+
+**Las reforzadas de 3" y 4" estaban invertidas.** La de 4" pesa más en
+inventario (2.80 contra 1.80) pero cobraba el peso menor. Se despacharon 1.653
+unidades de 4" y 560 de 3" con los números volteados.
+
+Cuando el producto no tiene código —o su código no está en la tabla de arriba—
+se infiere desde el nombre/medida con `pesoGananciaPeadFromNombre`, que **consulta
+esa misma tabla**: deduce familia (TUAM / TUNA / TUGR), medida y si es reforzada,
+arma el código y lo busca. Si esa familia no tiene peso propio para esa medida,
+toma el de la **amarilla del mismo tamaño**. Antes esa función era una segunda
+copia de los pesos escrita a mano, y por eso se le había olvidado el 6": una
+tubería de 6" sin código tomaba 0.80 kg (el peso de una de 2").
 
 **Distribución H47:**
 - Sr. Alberto Amarillo = total × 42%
@@ -387,6 +410,15 @@ abonos en riesgo). Ahora los abonos y las notas se rescatan por **nombre de reng
 igual que los gastos operativos, y todo se hace dentro de una transacción. Un renglón que desaparece del
 cálculo pero tiene abonos **se conserva** con su monto anterior: nunca se hace desaparecer plata
 registrada. Los montos editados a mano sí vuelven al valor calculado: ese es el propósito de regenerar.
+
+11. **Un solo juego de pesos PEAD** (5-oct-2026): había dos — la tabla editable de
+`tablas.controller.ts` y una copia escrita a mano dentro de
+`pesoGananciaPeadFromNombre`. Se desfasaron: a la copia le faltaba el 6" y
+decidía la familia buscando "negr" en el nombre, con lo cual la amarilla (que se
+llama "Tubería Agua **Negra** Amarilla") caía en la rama de la gris. Ahora la
+copia no existe: el fallback por nombre arma el código y consulta la tabla
+editable. **Al agregar un producto PEAD nuevo, lo correcto es darle su código y
+su renglón en Tablas de Ganancias**; el fallback es solo una red de seguridad.
 
 ---
 

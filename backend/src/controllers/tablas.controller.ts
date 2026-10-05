@@ -44,10 +44,19 @@ export const DEFAULTS: Record<string, { valor: number; label: string; grupo: str
   pead_peso_tuam_4:  { valor: 2.25, label: "TUAM-4-PEAD (4\")",            grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
   pead_peso_tuam_6:  { valor: 5.50, label: "TUAM-6-PEAD (6\")",            grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
   pead_peso_tuam_2r: { valor: 1.00, label: "TUAM-2-PEAD-R (2\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
-  pead_peso_tuam_3r: { valor: 2.45, label: "TUAM-3-PEAD-R (3\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
-  pead_peso_tuam_4r: { valor: 1.55, label: "TUAM-4-PEAD-R (4\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  // 3" y 4" reforzadas estaban invertidas: la de 4" pesa mas en inventario
+  // (2,80 contra 1,80) pero cobraba el peso menor. Corregido por Jose el
+  // 5-oct-2026.
+  pead_peso_tuam_3r: { valor: 1.55, label: "TUAM-3-PEAD-R (3\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tuam_4r: { valor: 2.45, label: "TUAM-4-PEAD-R (4\" Reforzada)",grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
   pead_peso_tuna_4r: { valor: 2.90, label: "TUNA-4-PEAD-R (4\" Naranja Reforzada)", grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
-  pead_peso_tugr_2:  { valor: 0.80, label: "TUGR-2-PEAD (2\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  // Familia gris: misma norma que la amarilla del mismo tamano (regla de Jose,
+  // 5-oct-2026), salvo la de 4", que va igual a su peso de inventario (2,10).
+  // Antes la gris de 3" y 4" no tenian renglon aqui y tomaban por accidente los
+  // numeros de la amarilla desde la deteccion por nombre.
+  pead_peso_tugr_2:  { valor: 0.85, label: "TUGR-2-PEAD (2\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tugr_3:  { valor: 1.30, label: "TUGR-3-PEAD (3\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
+  pead_peso_tugr_4:  { valor: 2.10, label: "TUGR-4-PEAD (4\" Gris)",       grupo: "Pesos de Ganancia PEAD (kg)", unidad: "kg" },
 };
 
 // Campo de Tablas de Ganancias ↔ código exacto del producto (para el motor)
@@ -56,7 +65,8 @@ export const PEAD_CAMPO_POR_CODIGO: Record<string, string> = {
   "TUAM-4-PEAD": "pead_peso_tuam_4", "TUAM-6-PEAD": "pead_peso_tuam_6",
   "TUAM-2-PEAD-R": "pead_peso_tuam_2r", "TUAM-3-PEAD-R": "pead_peso_tuam_3r",
   "TUAM-4-PEAD-R": "pead_peso_tuam_4r", "TUNA-4-PEAD-R": "pead_peso_tuna_4r",
-  "TUGR-2-PEAD": "pead_peso_tugr_2",
+  "TUGR-2-PEAD": "pead_peso_tugr_2", "TUGR-3-PEAD": "pead_peso_tugr_3",
+  "TUGR-4-PEAD": "pead_peso_tugr_4",
 };
 
 // ─── GET /api/tablas?despachoId=N ─────────────────────────────────────────────

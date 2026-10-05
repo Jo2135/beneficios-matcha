@@ -126,7 +126,7 @@ function catMatByCode(c: string): keyof typeof COSTO_MAT_KG | null {
   if (/^TUGR-1/.test(c))                 return "gris";   // Tubo Gris Agua Blanca (fabricado)
   if (/^TUNG/.test(c))                   return "negro";
   if (/^TUBL/.test(c))                   return "blanco";
-  if (/^(TUAM|TUNA|TUGR-2)/.test(c))    return "amarillo";
+  if (/^(TUAM|TUNA|TUGR-(2|3|4|6)-)/.test(c)) return "amarillo";
   return null;
 }
 
@@ -162,24 +162,60 @@ function curvaKeyFromNombre(nombre: string, medida: string): string {
   return              is34 ? "CVNG-3/4" : is1 ? "CVNG-1" : "CVNG-1/2";
 }
 
-/** Peso de ganancia para PEAD inferido desde nombre/medida */
-function pesoGananciaPeadFromNombre(nombre: string, medida: string, pesoUnitDB: number): number {
-  // Primero devuelve el DB weight;
-  // en versión futura se puede afinar con lookup de código
-  const full = norm(nombre + " " + medida);
-  const reforzado = full.includes("pesado") || full.includes("reforzad");
-  const negra     = (full.includes("gris") || (full.includes("negr") && !full.includes("naranja")));
-  const s6 = /6\s*["x]/.test(nombre + medida);
-  const s4 = /4\s*["x]/.test(nombre + medida);
-  const s3 = /3\s*["x]/.test(nombre + medida);
-  // const s2 = /2\s*["x]/.test(nombre + medida);
-  if (negra) { return s4 ? 2.2 : s3 ? 1.2 : 0.8; }
-  if (reforzado) { return s4 ? 2.45 : s3 ? 1.55 : 1.0; }
-  // Economico
-  if (s6) return 5.5;
-  if (s4) return 2.25;
-  if (s3) return 1.2;
-  return pesoUnitDB > 0 ? pesoUnitDB * 0.89 : 0.85; // aprox 89% del peso DB cuando no hay talla
+/**
+ * Peso de ganancia PEAD cuando el producto NO tiene código, o su código no está
+ * en la tabla editable de Tablas de Ganancias.
+ *
+ * Antes aquí vivía una segunda copia de los pesos, escrita a mano, y por eso se
+ * le olvidó el 6": una tubería de 6" que llegara sin código tomaba 0,80 kg — el
+ * peso de una de 2" — en vez de 5,50, un 85% menos de ganancia para Alberto,
+ * Danny y Darwin. Esa copia además decidía la familia buscando "negr" en el
+ * nombre, y como TODAS se llaman "Tubería Agua Negra ...", la amarilla caía en
+ * la rama de la gris.
+ *
+ * Ahora se infiere el código desde el nombre y se consulta LA MISMA tabla que
+ * usa el resto del sistema: un solo juego de números, imposible de desfasar, y
+ * editable por José sin tocar código.
+ *
+ * Si esa familia no tiene peso propio para esa medida, toma el de la tubería
+ * AMARILLA del mismo tamaño — la regla que fijó José el 5-oct-2026.
+ */
+function pesoGananciaPeadFromNombre(
+  nombre: string,
+  medida: string,
+  pesoUnitDB: number,
+  peadPeso: Record<string, number>,
+): number {
+  const txt  = nombre + " " + medida;
+  const full = norm(txt);
+
+  // El color manda: "Agua Negra" sale en el nombre de todas, así que no sirve
+  // para distinguirlas. Sin color explícito, la estándar es la amarilla.
+  const familia = full.includes("amarill") ? "TUAM"
+                : full.includes("naranja") ? "TUNA"
+                : full.includes("gris")    ? "TUGR"
+                : "TUAM";
+  const ref = (full.includes("pesado") || full.includes("reforzad")) ? "-R" : "";
+
+  // El lookbehind evita leer el 2 de 1/2" como una medida de 2".
+  const pulgadas = /(?<![/\d])6\s*["x]/.test(txt) ? 6
+                 : /(?<![/\d])4\s*["x]/.test(txt) ? 4
+                 : /(?<![/\d])3\s*["x]/.test(txt) ? 3
+                 : /(?<![/\d])2\s*["x]/.test(txt) ? 2
+                 : 0;
+
+  const aprox = () => pesoUnitDB > 0 ? pesoUnitDB * 0.89 : (peadPeso["TUAM-2-PEAD"] ?? 0.85);
+  if (pulgadas === 0) return aprox();
+
+  for (const codigo of [
+    `${familia}-${pulgadas}-PEAD${ref}`,  // su propio peso
+    `${familia}-${pulgadas}-PEAD`,        // su familia, sin reforzar
+    `TUAM-${pulgadas}-PEAD${ref}`,        // la amarilla del mismo tamaño, reforzada
+    `TUAM-${pulgadas}-PEAD`,              // la amarilla del mismo tamaño
+  ]) {
+    if (peadPeso[codigo] != null) return peadPeso[codigo];
+  }
+  return aprox();
 }
 
 function detectarPorNombre(nombre: string, medida: string, categoriaNombre: string): Deteccion {
@@ -253,7 +289,10 @@ function detectar(codigo: string | null, nombre: string, medida: string, catNomb
       return { catMat: null, catGan: null, esPead: false, curvaKey: ck, label: `curva:${ck}` };
     }
     // PEAD por código
-    if (/^(TUAM|TUNA|TUGR-2)/.test(c)) {
+    // La gris de 2", 3", 4" y 6" es PEAD igual que la amarilla: misma ganancia y
+    // mismos beneficiarios (Alberto / Danny / Darwin). El guion tras la medida
+    // deja fuera a TUGR-1 y TUGR-1/2, que son Tubo Gris Agua Blanca.
+    if (/^(TUAM|TUNA|TUGR-(2|3|4|6)-)/.test(c)) {
       return { catMat: "amarillo", catGan: null, esPead: true, curvaKey: null, label: "pead" };
     }
     // TUGR-1: si el nombre contiene "pvc" es compra externa (Tubo Gris PVC),
@@ -511,7 +550,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
         // tablas.peadPeso ya trae el override aplicado si José lo cambió en
         // Tablas de Ganancias; si no hay override, cae en el mismo default.
         const pesoGan = (c && tablas.peadPeso[c] != null) ? tablas.peadPeso[c]
-                      : pesoGananciaPeadFromNombre(nombre, medida, pesoUnit);
+                      : pesoGananciaPeadFromNombre(nombre, medida, pesoUnit, tablas.peadPeso);
         gananciaPEAD += cantidad * pesoGan * PEAD_GANANCIA_RATE;
       }
 
