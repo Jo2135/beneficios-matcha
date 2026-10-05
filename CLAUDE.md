@@ -223,7 +223,7 @@ La ganancia por PEAD se calcula: `cantidad × pesoGanancia × 0.49`
 | TUAM-4-PEAD-R | 1.55        |
 | TUAM-3-PEAD-R | 2.45        |
 | TUNA-4-PEAD-R | 2.90        |
-| TUGR-2-PEAD   | 2.20        |
+| TUGR-2-PEAD   | 0.80        |   <!-- corregido por José el 9-sep-2026; antes decía 2.20 -->
 
 Cuando el código no está disponible, se infiere el peso por nombre/medida (`pesoGananciaPeadFromNombre`).
 
@@ -379,6 +379,14 @@ Usa **Recharts**. Gráficas implementadas:
 8. **Gastos operativos** (`gastosOperativos.controller.ts` + pantalla `GastosOperativos.tsx`): almuerzos, agua, soldadura, insumos. Flujo de dos pasos pedido por José: primero se carga el pago (fecha, descripción, monto, medio) y después se reparte entre los renglones del balance de uno o varios despachos — un mismo gasto puede ir partido. Cada parte baja el saldo de ese renglón igual que un abono. La asignación guarda el **nombre** del renglón, no su id, para sobrevivir a un "Regenerar" del balance (regenerar borra y recrea los renglones). `getBalance` devuelve esos gastos dentro de cada item (`items[].gastos`) y el frontend los suma a lo pagado, junto con las cuotas.
 
 9. **Capital disponible** (tarjeta en Control y Deudas): `40% Capital` generado menos lo usado (abonos + gastos operativos repartidos a ese renglón). Para los despachos que todavía no tienen balance se calcula al vuelo con `calcularGananciasDespacho`, porque es un gasto fijo que nace al cerrar el despacho y no debe esperar al balance.
+
+10. **Regenerar un balance NO borra los abonos** (`generarBalance`): antes sí lo hacía — borraba los
+renglones y la cascada de la base de datos se llevaba sus `BalancePagoCuota`, con el agravante de que el
+aviso en pantalla prometía lo contrario (lo detectó una auditoría externa en oct-2026, con $24.184 en
+abonos en riesgo). Ahora los abonos y las notas se rescatan por **nombre de renglón** antes de rehacerlo,
+igual que los gastos operativos, y todo se hace dentro de una transacción. Un renglón que desaparece del
+cálculo pero tiene abonos **se conserva** con su monto anterior: nunca se hace desaparecer plata
+registrada. Los montos editados a mano sí vuelven al valor calculado: ese es el propósito de regenerar.
 
 ---
 

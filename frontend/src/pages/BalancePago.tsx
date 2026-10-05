@@ -292,6 +292,7 @@ export default function BalancePago() {
   const [notaTexto, setNotaTexto] = useState("");
   const [nuevaCuota, setNuevaCuota] = useState<{ itemId: number; fecha: string; monto: string; notas: string } | null>(null);
   const [tooltipItem, setTooltipItem] = useState<number | null>(null);
+  const [avisoRegenerar, setAvisoRegenerar] = useState<string | null>(null);
   // Notas de cada PAGO. Se guardaban desde el modal "Agregar Pago" pero no se
   // veian en ninguna parte: quedaban enterradas en la base de datos. Ahora
   // salen en la celda del pago y en el panel "Notas de los pagos" al pie.
@@ -308,7 +309,18 @@ export default function BalancePago() {
   // ── Mutations ───────────────────────────────────────────────────────────
   const generar = useMutation({
     mutationFn: (ayudante: number) => apiClient.post(`/despachos/${despachoId}/balance/generar`, { ayudante }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["balance", despachoId] }),
+    onSuccess: (r: any) => {
+      qc.invalidateQueries({ queryKey: ["balance", despachoId] });
+      const d = r?.data ?? {};
+      const partes: string[] = [];
+      if (d.abonosConservados > 0) {
+        partes.push(`Se conservaron ${d.abonosConservados} abono${d.abonosConservados !== 1 ? "s" : ""} por $${fmt(Number(d.montoConservado ?? 0))}.`);
+      }
+      if ((d.renglonesRescatados ?? []).length > 0) {
+        partes.push(`Se mantuvieron renglones que ya no salen del cálculo porque tenían pagos: ${d.renglonesRescatados.join(", ")}.`);
+      }
+      setAvisoRegenerar(partes.length ? partes.join(" ") : null);
+    },
   });
 
   // El Ayudante ya no se pregunta aquí: ahora es un "concepto adicional"
@@ -319,7 +331,7 @@ export default function BalancePago() {
     const hayPagos = balance?.items.some(i => i.cuotas.length > 0);
     const hayAjustes = balance?.items.some(i => i.esEditable && i.notas);
     if (hayPagos || hayAjustes) {
-      const msg = "⚠️ ATENCIÓN\n\nRegenerar recalculará todos los montos con las tasas actuales.\n\nLos pagos ya registrados se conservan, pero cualquier monto editado manualmente volverá al valor calculado.\n\n¿Deseas continuar?";
+      const msg = "⚠️ ATENCIÓN\n\nRegenerar recalcula todos los montos con las tasas actuales.\n\nLos abonos registrados y las notas SE CONSERVAN: se vuelven a colgar de su renglón.\n\nLo que sí vuelve al valor calculado es cualquier monto que hayas editado a mano.\n\n¿Deseas continuar?";
       if (!window.confirm(msg)) return;
     }
     preguntarAyudanteYGenerar();
@@ -372,8 +384,9 @@ export default function BalancePago() {
   }
 
   // Rearma el balance tras cambiar gastos o conceptos. Devuelve false (y no toca
-  // nada) si ya hay pagos o montos editados a mano: regenerar borra las cuotas,
-  // así que en ese caso decide el usuario con el botón "Regenerar", que avisa.
+  // nada) si ya hay pagos o montos editados a mano: los abonos ahora sobreviven,
+  // pero los montos editados a mano no, así que en ese caso decide el usuario
+  // con el botón "Regenerar", que avisa.
   const recalcularBalance = async (): Promise<boolean> => {
     const hayPagos = balance.items.some((i) => i.cuotas.length > 0);
     const hayEdits = balance.items.some((i) => i.esEditable && i.notas);
@@ -490,6 +503,19 @@ export default function BalancePago() {
       })()}
 
       {/* Tabla */}
+      {avisoRegenerar && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 9, background: "#f0fdf4", border: "1px solid #bbf7d0",
+          color: "#166534", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, lineHeight: 1.5,
+        }}>
+          <Check size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ flex: 1 }}>{avisoRegenerar}</div>
+          <button onClick={() => setAvisoRegenerar(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#166534", padding: 0 }}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,.06)" }}>
         <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
           <thead>

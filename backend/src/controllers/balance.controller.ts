@@ -148,12 +148,62 @@ export async function generarBalance(req: Request, res: Response) {
       },
     });
 
-    await prisma.balancePagoItem.deleteMany({ where: { balancePagoId: balance.id } });
-    await prisma.balancePagoItem.createMany({
-      data: items.map((i) => ({ ...i, balancePagoId: balance.id })),
+    // ── Rescatar lo que el usuario escribió a mano ────────────────────────────
+    // Regenerar borra los renglones, y la base de datos se lleva por delante sus
+    // abonos: BalancePagoCuota cuelga de BalancePagoItem con borrado en cascada.
+    // Asi se perdian pagos ya registrados (lo detecto una auditoria externa en
+    // oct-2026: habia $24.184 en abonos en riesgo). Ahora los abonos y las notas
+    // se rescatan por NOMBRE de renglon y se vuelven a colgar del renglon nuevo,
+    // el mismo criterio que usan los gastos operativos.
+    // Los montos editados a mano SI vuelven al valor calculado: eso es el
+    // proposito de regenerar.
+    const anteriores = await prisma.balancePagoItem.findMany({
+      where: { balancePagoId: balance.id },
+      include: { cuotas: { orderBy: { fecha: "asc" } } },
     });
+    const cuotasPrevias = new Map<string, { fecha: Date; monto: any; notas: string | null }[]>();
+    const notasPrevias = new Map<string, string>();
+    for (const it of anteriores) {
+      if (it.cuotas.length > 0) {
+        cuotasPrevias.set(it.nombre, it.cuotas.map((c) => ({ fecha: c.fecha, monto: c.monto, notas: c.notas })));
+      }
+      if (it.notas) notasPrevias.set(it.nombre, it.notas);
+    }
 
-    return res.json({ ok: true, balanceId: balance.id, items: items.length, gananciaVendedor, calculadoEn: ahora });
+    // Un renglon que desaparece del calculo pero tiene abonos NO se borra: se
+    // conserva con su monto anterior. Nunca se hace desaparecer plata registrada.
+    const nombresNuevos = new Set(items.map((i) => i.nombre));
+    const rescatados: string[] = [];
+    for (const it of anteriores) {
+      if (it.cuotas.length > 0 && !nombresNuevos.has(it.nombre)) {
+        items.push({ nombre: it.nombre, montoTotal: Number(it.montoTotal), esEditable: true, orden: ord++ });
+        rescatados.push(it.nombre);
+      }
+    }
+
+    let abonosConservados = 0;
+    let montoConservado = 0;
+    await prisma.$transaction(async (tx) => {
+      await tx.balancePagoItem.deleteMany({ where: { balancePagoId: balance.id } });
+      for (const i of items) {
+        const creado = await tx.balancePagoItem.create({
+          data: { ...i, balancePagoId: balance.id, notas: notasPrevias.get(i.nombre) ?? null },
+        });
+        const cuotas = cuotasPrevias.get(i.nombre);
+        if (cuotas && cuotas.length > 0) {
+          await tx.balancePagoCuota.createMany({
+            data: cuotas.map((c) => ({ balancePagoItemId: creado.id, fecha: c.fecha, monto: c.monto, notas: c.notas })),
+          });
+          abonosConservados += cuotas.length;
+          montoConservado += cuotas.reduce((s, c) => s + Number(c.monto), 0);
+        }
+      }
+    }, { timeout: 30000 });
+
+    return res.json({
+      ok: true, balanceId: balance.id, items: items.length, gananciaVendedor, calculadoEn: ahora,
+      abonosConservados, montoConservado: r2(montoConservado), renglonesRescatados: rescatados,
+    });
   } catch (e: any) {
     console.error("[generarBalance]", e);
     return res.status(500).json({ error: e.message });
