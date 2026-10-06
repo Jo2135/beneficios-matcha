@@ -439,7 +439,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
                                   // CLIENTE, asi que si la cotizacion quedo sin vendedor
                                   // el dueno de esa plata es el vendedor del cliente.
                                   vendedor: { select: { nombre: true } } } },
-            lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } } },
+            // productoId + precioFinal: con eso se valora lo DESPACHADO al precio
+            // que se le cotizo al cliente. totalLinea se queda para el pedido.
+            lineas:   { select: { totalLinea: true, productoId: true, precioFinal: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } } },
           },
         },
         },
@@ -464,9 +466,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
               producto: { select: { codigo: true, nombre: true, medida: true, costoCompra: true, categoria: { select: { nombre: true } } } },
             },
           },
-          devoluciones: {
-            select: { montoDevuelto: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } },
-          },
+          // Las devoluciones ya NO se leen aqui: registrar una devolucion
+          // descuenta cantidadDespachada y baja el totalNeto de la factura, asi
+          // que las dos bases (despacho y factura) ya vienen netas.
         },
       },
     },
@@ -682,23 +684,51 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     .filter((l) => l.esServicioExterno)
     .map((l) => ({ lineaId: l.id, nombre: `${l.nombre} ${l.medida}`.trim(), costo: l.costoServicioExterno }));
 
-  // ── Devoluciones ya registradas en facturas de este despacho ──────────────
-  // Comisión del vendedor, flete y redirección a socio equivalente se calculan
-  // sobre cot.lineas (el PEDIDO original, fijo desde que se cotizó) — no sobre
-  // despacho.facturas, así que una devolución no les llegaba sola. Se resta
-  // aquí, una vez, separado por tubería/conexión y por cliente (vía factura).
-  // OJO: esto es solo para devoluciones registradas — el "faltante" normal
-  // (cantidadDespachada < cantidadPedida sin devolución) sigue sin tocarse,
-  // porque son conceptos distintos.
-  const devueltoPorCliente = new Map<number, { tuberia: number; conexion: number }>();
-  for (const factura of despacho.facturas as any[]) {
-    for (const d of (factura.devoluciones ?? [])) {
-      const acc = devueltoPorCliente.get(factura.clienteId) ?? { tuberia: 0, conexion: 0 };
-      if (esConexion(d.producto?.codigo ?? null, d.producto?.nombre ?? "", d.producto?.categoria?.nombre)) acc.conexion += Number(d.montoDevuelto);
-      else acc.tuberia += Number(d.montoDevuelto);
-      devueltoPorCliente.set(factura.clienteId, acc);
+  // ── Lo DESPACHADO por cotización ──────────────────────────────────────────
+  //
+  // Base de la comisión del vendedor, del flete y de la redirección al socio
+  // equivalente. Las tres se calculaban sobre `cot.lineas` — el PEDIDO, fijo
+  // desde que se cotizó — así que un faltante se pagaba igual: el vendedor
+  // cobraba comisión por tubos que nunca salieron del galpón.
+  //
+  // **Regla de José (6-oct-2026):** lo que se calcula al cotizar es una
+  // REFERENCIA, no un compromiso. El número real nace cuando se carga el
+  // camión, porque a veces falta y a veces sobra producto. Si de 100 tubos
+  // salen 50, se cobra por 50; si después sale el resto en otro camión, se
+  // cobra esa parte entonces. Y si salen 110, se cobra por 110.
+  //
+  // Se valora con `cantidadDespachada × precioFinal` de la cotización, NO con
+  // las líneas de la factura, para que el cálculo siga al camión aunque la
+  // factura se quede atrás (pasó en DES-0019: se corrigieron las cantidades
+  // despachadas después de facturar y la factura no se volvió a hacer).
+  //
+  // ⚠️ NO se restan las devoluciones aquí. Registrar una devolución ya
+  // descuenta `cantidadDespachada` (ver devoluciones.controller.ts, paso 3) y
+  // ya baja el `totalNeto` de la factura, así que esta base viene neta. Antes
+  // había que restarlas a mano porque la base era el pedido, que no se ajusta
+  // solo; restarlas ahora sería contarlas dos veces.
+  const preciosDeCot = new Map<number, Map<number, number>>();
+  const despachadoPorCot = new Map<number, { tuberia: number; conexion: number }>();
+  for (const linea of despacho.lineas) {
+    const cot = (linea as any).cotizacion;
+    if (!cot) continue;
+    let precios = preciosDeCot.get(cot.id);
+    if (!precios) {
+      precios = new Map<number, number>(
+        ((cot.lineas ?? []) as any[]).map((cl) => [cl.productoId as number, Number(cl.precioFinal ?? 0)]),
+      );
+      preciosDeCot.set(cot.id, precios);
     }
+    const acc = despachadoPorCot.get(cot.id) ?? { tuberia: 0, conexion: 0 };
+    const monto = Number(linea.cantidadDespachada) * (precios.get(linea.productoId) ?? 0);
+    if (esConexion(linea.producto?.codigo ?? null, linea.producto?.nombre ?? "", linea.producto?.categoria?.nombre)) {
+      acc.conexion += monto;
+    } else {
+      acc.tuberia += monto;
+    }
+    despachadoPorCot.set(cot.id, acc);
   }
+  const despachadoDe = (cotId: number) => despachadoPorCot.get(cotId) ?? { tuberia: 0, conexion: 0 };
 
   // ── Comisiones por cliente (misma fórmula que muestra NuevaCotizacion) ──────
   // Se calcula por cotización única: tubería × ctPct/(100+ctPct) + conexiones × ccPct/(100+ccPct)
@@ -720,18 +750,8 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     const ccPct = Number(ov?.conex ?? cot.cliente?.comisionConexionesPct ?? 0);
     if (ctPct + ccPct === 0 && !ov) continue;
 
-    let totalTuberia = 0, totalConexiones = 0;
-    for (const cl of (cot.lineas ?? []) as any[]) {
-      const monto = Number(cl.totalLinea ?? 0);
-      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre)) {
-        totalConexiones += monto;
-      } else {
-        totalTuberia += monto;
-      }
-    }
-    const devCom = cot.cliente?.id != null ? devueltoPorCliente.get(cot.cliente.id) : undefined;
-    totalTuberia = Math.max(0, totalTuberia - (devCom?.tuberia ?? 0));
-    totalConexiones = Math.max(0, totalConexiones - (devCom?.conexion ?? 0));
+    // Sobre lo DESPACHADO, no sobre lo pedido (ver "Lo DESPACHADO por cotización")
+    const { tuberia: totalTuberia, conexion: totalConexiones } = despachadoDe(cot.id);
 
     const monto =
       (ctPct > 0 ? totalTuberia  * ctPct / (100 + ctPct) : 0) +
@@ -767,18 +787,8 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     const fcPct = Number(cot.cliente?.fleteConexionesPct ?? 0);
     if (ftPct + fcPct === 0) continue;
 
-    let totalTuberia = 0, totalConexiones = 0;
-    for (const cl of (cot.lineas ?? []) as any[]) {
-      const monto = Number(cl.totalLinea ?? 0);
-      if (esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre)) {
-        totalConexiones += monto;
-      } else {
-        totalTuberia += monto;
-      }
-    }
-    const devFlete = cot.cliente?.id != null ? devueltoPorCliente.get(cot.cliente.id) : undefined;
-    totalTuberia = Math.max(0, totalTuberia - (devFlete?.tuberia ?? 0));
-    totalConexiones = Math.max(0, totalConexiones - (devFlete?.conexion ?? 0));
+    // Sobre lo DESPACHADO: el flete es de lo que de verdad viajó en el camión.
+    const { tuberia: totalTuberia, conexion: totalConexiones } = despachadoDe(cot.id);
 
     const monto =
       (ftPct > 0 ? totalTuberia  * ftPct / (100 + ftPct) : 0) +
@@ -837,14 +847,17 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     const tasa = tasaObj[socio];
     if (!tasa) continue;
 
-    // Calcular tubería de esta cotización (sin conexiones)
-    let cotSinCon = 0;
-    for (const cl of (cot.lineas ?? []) as any[]) {
-      if (!esConexion(cl.producto?.codigo ?? null, cl.producto?.nombre ?? "", cl.producto?.categoria?.nombre))
-        cotSinCon += Number(cl.totalLinea ?? 0);
-    }
-    const devSocio = cot.cliente?.id != null ? devueltoPorCliente.get(cot.cliente.id) : undefined;
-    cotSinCon = Math.max(0, cotSinCon - (devSocio?.tuberia ?? 0));
+    // Tubería DESPACHADA de esta cotización (sin conexiones).
+    //
+    // Esto tenía que cambiar junto con la comisión, y es lo más delicado de los
+    // tres: el POZO del socio se calcula sobre lo facturado, pero lo que se le
+    // quitaba se calculaba sobre lo pedido. Dos cuentas que se restan entre sí,
+    // medidas con reglas distintas. En un despacho parcial se le quitaba más de
+    // lo que ese cliente había aportado al pozo y el renglón del socio podía
+    // quedar NEGATIVO — cobrándole por mercancía que nunca salió. Ahora las dos
+    // van sobre lo despachado, así que lo que se le quita es exactamente lo que
+    // ese cliente puso: se anula solo, salga todo, la mitad o nada.
+    const cotSinCon = despachadoDe(cot.id).tuberia;
     if (cotSinCon <= 0) continue;
 
     const montoRedirigido = cotSinCon - cotSinCon / (1 + tasa);
@@ -856,7 +869,22 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     });
   }
 
-  // Montos finales de G2 (descontando las redirecciones)
+  // ── Tope: ningún socio puede quedar por debajo de cero ────────────────────
+  // Regla de José (6-oct-2026). Con la base corregida no debería poder pasar
+  // —lo que se le quita a un socio es justo lo que ese cliente aportó a su
+  // pozo—, pero es un seguro barato: si algún día entra un caso raro, el
+  // renglón se queda en 0 en vez de inventar una deuda que nadie debe.
+  const pozoDeSocio: Record<string, number> = { sbug, yolanda, sandra, comisiones };
+  const topesAplicados: string[] = [];
+  for (const socio of Object.keys(socioRedireccion)) {
+    const tope = pozoDeSocio[socio] ?? 0;
+    if (socioRedireccion[socio] > tope + 0.005) {
+      socioRedireccion[socio] = tope;
+      topesAplicados.push(socio);
+    }
+  }
+
+  // Montos finales de G2 (descontando las redirecciones, ya topeadas)
   const sbugFinal       = sbug       - (socioRedireccion.sbug       ?? 0);
   const yolandaFinal    = yolanda    - (socioRedireccion.yolanda    ?? 0);
   const sandraFinal     = sandra     - (socioRedireccion.sandra     ?? 0);
@@ -1104,7 +1132,7 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
       // montos brutos (antes de redirección) — para referencia
       sbugBruto: sbug, yolandaBruto: yolanda, sandraBruto: sandra, comisionesBruto: comisiones,
     },
-    socioRedireccion: { detalle: socioRedireccionDetalle, total: totalSocioRedirigido },
+    socioRedireccion: { detalle: socioRedireccionDetalle, total: totalSocioRedirigido, topesAplicados },
     comisionesVendedores: { detalle: comisionesVendedores, total: totalComisionVendedores },
     fletesCliente: { detalle: fletesCliente, total: totalFlete },
     gananciaMuchachos: { detalle: muchachosDetalle, total: totalMuchachos },

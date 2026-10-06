@@ -420,6 +420,35 @@ copia no existe: el fallback por nombre arma el código y consulta la tabla
 editable. **Al agregar un producto PEAD nuevo, lo correcto es darle su código y
 su renglón en Tablas de Ganancias**; el fallback es solo una red de seguridad.
 
+12. **Comisión, flete y socio equivalente van sobre LO DESPACHADO** (6-oct-2026).
+Antes las tres se calculaban sobre `cot.lineas` —el pedido original— así que un
+faltante se pagaba igual. Regla de José: *lo que se calcula al cotizar es una
+referencia, no un compromiso; el número real nace cuando se carga el camión,
+porque a veces falta y a veces sobra producto.* Si de 100 tubos salen 50, se
+cobra por 50; si después sale el resto en otro camión, se cobra esa parte
+entonces; y si salen 110, se cobra por 110.
+
+La base es `cantidadDespachada × precioFinal` de la cotización, **no** las líneas
+de la factura, para que el cálculo siga al camión aunque la factura se quede
+atrás (pasó en DES-0019). **Las devoluciones no se restan aparte:** registrar una
+devolución ya descuenta `cantidadDespachada` y ya baja el `totalNeto` de la
+factura (`devoluciones.controller.ts`, paso 3), así que ambas bases vienen netas
+— restarlas otra vez las contaría dos veces.
+
+La redirección al socio equivalente **tenía que cambiar junto con las otras dos**:
+el pozo de Ganancias_2 se calcula sobre lo facturado y lo que se le quita al
+socio se calculaba sobre lo cotizado. Dos cuentas que se restan entre sí medidas
+con reglas distintas: en un despacho parcial se le quitaba más de lo que ese
+cliente había aportado y el renglón del socio podía quedar **negativo**. Ahora
+ambas van sobre lo despachado, así que se anula solo. Además hay un **tope: ningún
+socio puede quedar por debajo de cero** (`topesAplicados` dice si se aplicó).
+
+Efecto medido al cambiarlo: $258,64 que se descontaban de más del Extra de
+material en 5 despachos (más $5.112,71 de DES-0006, que está PENDIENTE sin
+factura y con el cambio pasa a $0 solo). Ojo al medir: DES-0012 y DES-0018
+*parecen* afectados pero no lo están — su faltante era íntegramente devolución
+registrada.
+
 ---
 
 ## 15. Metodología de Trabajo (cómo trabajamos en este proyecto)
