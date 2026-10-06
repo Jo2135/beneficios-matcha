@@ -6,6 +6,7 @@ import { FileText, DollarSign, Clock, CheckCircle, AlertTriangle, Download, XCir
 import { pdfFactura, pdfEstadoCuenta } from "../utils/pdf";
 import { useAuth } from "../contexts/AuthContext";
 import ImportarFacturasExcel from "../components/ImportarFacturasExcel";
+import { fmtFecha } from "../utils/fecha";
 
 const ESTADO: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   EMITIDA:         { label: "Emitida",       color: "#475569", bg: "#f1f5f9", icon: FileText },
@@ -28,10 +29,9 @@ function usd(n: any) {
   const v = Number(n ?? 0);
   return isNaN(v) ? "$0,00" : `$${v.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function fecha(raw: any) {
-  if (!raw) return "—";
-  return new Date(raw).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
-}
+// Ver utils/fecha.ts: las fechas que escribe el usuario se guardan a medianoche
+// UTC y leerlas en hora de Venezuela las corre un dia hacia atras.
+const fecha = fmtFecha;
 
 export default function Facturas() {
   const qc = useQueryClient();
@@ -775,15 +775,20 @@ export default function Facturas() {
                 )}
 
                 {(() => {
+                  // La fecha que vale es la del PAGO (cuando el cliente pago), no la
+                  // de la asignacion (cuando se enlazo a esta factura). Al cargar
+                  // pagos viejos las dos se separan: el historial mostraba la de
+                  // hoy para tres pagos de septiembre.
+                  const cuando = (pa: any) => pa.pago?.fecha ?? pa.fechaAsignacion;
                   const pagosOrdenados = [...(factura.pagos ?? [])].sort(
-                    (a: any, b: any) => new Date(a.fechaAsignacion).getTime() - new Date(b.fechaAsignacion).getTime()
+                    (a: any, b: any) => new Date(cuando(a)).getTime() - new Date(cuando(b)).getTime()
                   );
                   let saldo = Number(factura.totalNeto);
                   return pagosOrdenados.map((pa: any) => {
                     const monto = Number(pa.montoAsignado);
                     const cuentaNombre = pa.pago?.cuenta?.nombre ?? pa.pago?.origenFondos ?? "Abono";
                     const moneda = pa.pago?.cuenta?.moneda ?? pa.pago?.moneda ?? "";
-                    const label = `${cuentaNombre}${moneda ? ` (${moneda})` : ""} · ${fecha(pa.fechaAsignacion)}`;
+                    const label = `${cuentaNombre}${moneda ? ` (${moneda})` : ""} · ${fecha(cuando(pa))}`;
                     saldo -= monto;
                     return (
                       <div key={pa.id}>
@@ -814,8 +819,8 @@ export default function Facturas() {
                     {factura.pagos?.length > 0 && (
                       <span style={{ fontWeight: 600, color: "#dcfce7", fontSize: 13 }}>
                         {fecha((factura.pagos as any[]).reduce((latest: any, pa: any) =>
-                          new Date(pa.fechaAsignacion) > new Date(latest.fechaAsignacion) ? pa : latest
-                        ).fechaAsignacion)}
+                          new Date(pa.pago?.fecha ?? pa.fechaAsignacion) > new Date(latest.pago?.fecha ?? latest.fechaAsignacion) ? pa : latest
+                        , (factura.pagos as any[])[0]).pago?.fecha ?? (factura.pagos as any[])[0].fechaAsignacion)}
                       </span>
                     )}
                   </div>

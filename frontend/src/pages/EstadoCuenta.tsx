@@ -2,15 +2,15 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { facturasApi } from "../api/endpoints";
 import { ArrowLeft, FileText } from "lucide-react";
+import { fmtFechaCorta } from "../utils/fecha";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) =>
   n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const fmtFecha = (iso: string) =>
-  new Date(iso).toLocaleDateString("es-VE", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-  });
+// Ver utils/fecha.ts: la fecha que escribe el usuario se guarda a medianoche UTC
+// y leerla en hora de Venezuela la corre un dia hacia atras.
+const fmtFecha = fmtFechaCorta;
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface PagoAsignado {
@@ -69,7 +69,9 @@ export default function EstadoCuenta() {
   for (const f of lista) {
     movimientos.push({ tipo: "factura", fecha: f.creadoEn, factura: f });
     for (const p of f.pagos) {
-      movimientos.push({ tipo: "pago", fecha: p.fechaAsignacion, pagoAsig: p, facturaNum: f.numero });
+      // La del PAGO, no la de la asignacion: si se carga un pago viejo, el estado
+      // de cuenta tiene que ubicarlo en el dia en que el cliente pago.
+      movimientos.push({ tipo: "pago", fecha: p.pago?.fecha ?? p.fechaAsignacion, pagoAsig: p, facturaNum: f.numero });
     }
   }
   movimientos.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
@@ -165,7 +167,7 @@ export default function EstadoCuenta() {
                   return (
                     <tr key={`p-${mov.pagoAsig.id}`} style={{ background: "#fff" }}>
                       <td style={{ ...tdSt, color: "#64748b", whiteSpace: "nowrap" }}>
-                        {fmtFecha(mov.pagoAsig.fechaAsignacion)}
+                        {fmtFecha(mov.pagoAsig.pago?.fecha ?? mov.pagoAsig.fechaAsignacion)}
                       </td>
                       <td style={tdSt}>
                         <div style={{ color: "#0f172a" }}>
@@ -257,7 +259,7 @@ export default function EstadoCuenta() {
                     <div style={{ marginTop: 8, paddingLeft: 8, borderLeft: "2px solid #e2e8f0" }}>
                       {f.pagos.map((p) => (
                         <div key={p.id} style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569", marginTop: 4 }}>
-                          <span style={{ whiteSpace: "nowrap", color: "#94a3b8" }}>{fmtFecha(p.fechaAsignacion)}</span>
+                          <span style={{ whiteSpace: "nowrap", color: "#94a3b8" }}>{fmtFecha(p.pago?.fecha ?? p.fechaAsignacion)}</span>
                           <span style={{ flex: 1 }}>
                             {p.pago.cuenta ? `${p.pago.cuenta.nombre} (${p.pago.cuenta.moneda})` : "Sin cuenta"}
                             {p.pago.referencia ? ` · Ref: ${p.pago.referencia}` : ""}

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pagosApi, facturasApi, clientesApi, cuentasApi } from "../api/endpoints";
 import { Plus, AlertCircle, CheckCircle, Clock, ArrowRight, Building2, Settings, Search, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { fmtFecha } from "../utils/fecha";
 
 const MONEDAS = ["USD", "USDT", "BS", "COP"];
 const MONEDA_LABEL: Record<string, string> = { USD: "$ USD", USDT: "USDT", BS: "Bs.", COP: "COP" };
@@ -11,10 +12,8 @@ function usd(n: any) {
   const v = Number(n ?? 0);
   return `$${v.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function fmtFecha(raw: any) {
-  if (!raw) return "—";
-  return new Date(raw).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
-}
+// Ver utils/fecha.ts: la fecha que escribe el usuario se guarda a medianoche UTC
+// y leerla en hora de Venezuela la corre un dia hacia atras.
 
 const ESTADO_COLOR: Record<string, string> = { LIBRE: "#f59e0b", PARCIAL: "#3b82f6", ASIGNADO: "#16a34a" };
 const ESTADO_LABEL: Record<string, string> = { LIBRE: "Sin asignar", PARCIAL: "Parcial", ASIGNADO: "Completo" };

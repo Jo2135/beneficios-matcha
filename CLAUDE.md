@@ -474,6 +474,25 @@ descuento **otra vez** y acreditaban de menos (en FAC-0016, con 3,13%, una
 devolución de 100 uds daba $89,68 en vez de $92,58). Ahora el precio por unidad
 se saca de la propia línea: `totalLinea / cantidad`.
 
+14. **Fechas: la del pago vs. la de la asignación, y el corrimiento de un día**
+(6-oct-2026). Dos cosas distintas que se veían como una sola:
+
+- `Pago.fecha` es **cuándo pagó el cliente**; `PagoAsignacion.fechaAsignacion` es
+**cuándo se enlazó ese pago a esa factura**. Normalmente coinciden, pero al
+cargar pagos viejos se separan. El Historial de Pagos de la factura y el Estado
+de Cuenta mostraban `fechaAsignacion`: tres pagos de septiembre salían con la
+fecha de hoy. Ahora usan `pago.fecha` (con `fechaAsignacion` como respaldo).
+
+- ⚠️ **Toda fecha que el usuario escribe se guarda a medianoche UTC.** El
+`<input type="date">` manda `"2026-09-05"` y `new Date(...)` lo interpreta como
+`2026-09-05T00:00:00Z`. Venezuela va en UTC-4, así que leerla en hora local la
+corre **un día hacia atrás**. Pasa con `Pago.fecha`, `BalancePagoCuota.fecha` y
+`GastoOperativo.fecha`. Para mostrarlas hay que usar **`frontend/src/utils/fecha.ts`**
+(`fmtFecha` / `fmtFechaCorta`), que lee en UTC los valores que caen exactos en
+medianoche —las fechas escritas— y en hora local los que traen hora —`creadoEn`,
+`fechaAsignacion`, `aprobadoEn`—, que es lo correcto para esos. BalancePago y
+GastosOperativos ya lo resolvían por su cuenta con el truco de `"T12:00:00"`.
+
 ---
 
 ## 15. Metodología de Trabajo (cómo trabajamos en este proyecto)
