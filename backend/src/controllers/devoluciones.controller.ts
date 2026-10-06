@@ -48,7 +48,18 @@ export async function crear(req: Request, res: Response) {
     return res.status(400).json({ error: `Solo quedan ${linea.cantidad} unidades facturadas de "${linea.producto.nombre} ${linea.producto.medida}" — no se puede devolver más de eso` });
   }
 
-  const precioNeto = Number(linea.precioUnitario) * (1 - Number(linea.descuentoPct) / 100);
+  // El precio por unidad sale de la PROPIA LÍNEA (totalLinea / cantidad), no de
+  // precioUnitario × (1 − descuentoPct). En las facturas de este sistema el
+  // precioUnitario YA viene con el descuento aplicado —se guarda el precioFinal
+  // de la cotización— y descuentoPct queda solo como referencia (verificado:
+  // las 19 líneas con descuento del sistema cumplen totalLinea = cantidad ×
+  // precioUnitario). Aplicarlo otra vez acreditaba de menos: en FAC-0022, con
+  // 3% de descuento, una devolución le quedaba corta un 3% al cliente y además
+  // dejaba el renglón descuadrado contra su propio total.
+  const cantFacturada = Number(linea.cantidad);
+  const precioNeto = cantFacturada > 0.005
+    ? Number(linea.totalLinea) / cantFacturada
+    : Number(linea.precioUnitario);
   const montoDevuelto = r2(cant * precioNeto);
 
   let avisoBalance: string | undefined;

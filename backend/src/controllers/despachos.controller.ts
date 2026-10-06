@@ -93,6 +93,160 @@ export async function crearDesdeCotizacion(req: Request, res: Response) {
   res.status(201).json(despacho);
 }
 
+const r2f = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Vuelve a cuadrar las facturas de un despacho con lo que REALMENTE salió.
+ *
+ * Una devolución ya rehacía su factura (renglón, totales, saldo y estado), pero
+ * **corregir las cantidades despachadas no la tocaba**: la factura se quedaba
+ * con las cantidades viejas. Así pasó con FAC-0021 (Fyfto, DES-0019): se
+ * verificó lo que llegó, se subieron 48 TEE 4" y se bajaron 12 YEE 4", y el
+ * cliente quedó debiendo $116,16 que nadie le estaba cobrando. Regla de José
+ * (6-oct-2026): después de corregir, la factura se regenera.
+ *
+ * Reglas:
+ * - **Si la factura ya tiene pagos aplicados NO se toca.** Ahí hay dinero del
+ *   cliente de por medio y la decisión es de José; se devuelve el aviso para
+ *   que la pantalla se lo diga.
+ * - **Los precios no se recalculan**: se conserva el `precioUnitario` con el
+ *   que se facturó. Solo cambian las cantidades. Un renglón nuevo toma el
+ *   precio de la cotización.
+ * - Las devoluciones no estorban: bajan la cantidad despachada y el renglón de
+ *   la factura a la vez, así que reconstruir desde el despacho da lo mismo.
+ */
+async function resincronizarFacturas(despachoId: number) {
+  const actualizadas: { numero: string; cliente: string; antes: number; ahora: number }[] = [];
+  const bloqueadas: { numero: string; cliente: string; motivo: string }[] = [];
+
+  const facturas = await prisma.factura.findMany({
+    where: { ordenDespachoId: despachoId, estado: { not: "ANULADA" } },
+    select: {
+      id: true, numero: true, clienteId: true, totalPagado: true, montoConceptosExtra: true,
+      cliente: { select: { nombre: true } },
+      lineas: { select: { id: true, productoId: true, cantidad: true, precioUnitario: true, orden: true } },
+    },
+  });
+  if (facturas.length === 0) return { actualizadas, bloqueadas };
+
+  const lineas = await prisma.despachoLinea.findMany({
+    where: { ordenDespachoId: despachoId },
+    select: {
+      productoId: true, cantidadDespachada: true,
+      producto: { select: { origen: true, pesoUnitarioKg: true } },
+      cotizacion: { select: { clienteId: true, lineas: { select: { productoId: true, precioFinal: true, descuentoPct: true } } } },
+    },
+  });
+
+  const despachado = new Map<number, Map<number, number>>();   // cliente -> producto -> cantidad
+  const precioCot  = new Map<string, { precio: number; desc: number }>();
+  const datosProd  = new Map<number, { origen: any; peso: number | null }>();
+  for (const l of lineas) {
+    const cliId = l.cotizacion?.clienteId;
+    if (cliId == null) continue;
+    const m = despachado.get(cliId) ?? new Map<number, number>();
+    m.set(l.productoId, (m.get(l.productoId) ?? 0) + Number(l.cantidadDespachada));
+    despachado.set(cliId, m);
+    datosProd.set(l.productoId, {
+      origen: l.producto?.origen ?? "INTERNO",
+      peso: l.producto?.pesoUnitarioKg != null ? Number(l.producto.pesoUnitarioKg) : null,
+    });
+    for (const cl of l.cotizacion?.lineas ?? []) {
+      precioCot.set(`${cliId}:${cl.productoId}`, { precio: Number(cl.precioFinal), desc: Number(cl.descuentoPct ?? 0) });
+    }
+  }
+
+  // La factura no guarda de qué cotización nació, así que se empareja por
+  // cliente. Si un cliente tiene dos facturas en el mismo despacho no hay forma
+  // de saber qué renglón va a cuál: se deja quieto y se avisa.
+  const cuantasPorCliente = new Map<number, number>();
+  for (const f of facturas) cuantasPorCliente.set(f.clienteId, (cuantasPorCliente.get(f.clienteId) ?? 0) + 1);
+
+  for (const f of facturas) {
+    if ((cuantasPorCliente.get(f.clienteId) ?? 0) > 1) {
+      bloqueadas.push({ numero: f.numero, cliente: f.cliente.nombre, motivo: "el cliente tiene más de una factura en este despacho" });
+      continue;
+    }
+    if (Number(f.totalPagado) > 0.005) {
+      bloqueadas.push({ numero: f.numero, cliente: f.cliente.nombre, motivo: `ya tiene $${Number(f.totalPagado).toFixed(2)} en pagos aplicados` });
+      continue;
+    }
+
+    const objetivo = despachado.get(f.clienteId) ?? new Map<number, number>();
+    const extra = Number(f.montoConceptosExtra ?? 0);
+    const antes = r2f(f.lineas.reduce((s, l) => s + Number(l.cantidad) * Number(l.precioUnitario), 0)) + extra;
+    const porProducto = new Map(f.lineas.map((l) => [l.productoId, l]));
+
+    let huboCambio = false;
+    let ahora = antes;
+
+    await prisma.$transaction(async (tx) => {
+      let orden = Math.max(-1, ...f.lineas.map((l) => Number(l.orden ?? 0)));
+
+      for (const [productoId, cant] of objetivo) {
+        const ex = porProducto.get(productoId);
+        const pd = datosProd.get(productoId);
+        if (ex) {
+          if (Math.abs(Number(ex.cantidad) - cant) < 0.005) continue;
+          huboCambio = true;
+          if (cant <= 0.005) {
+            await tx.facturaLinea.delete({ where: { id: ex.id } });
+          } else {
+            const pu = Number(ex.precioUnitario);
+            await tx.facturaLinea.update({
+              where: { id: ex.id },
+              data: {
+                cantidad: cant, totalLinea: r2f(cant * pu),
+                ...(pd?.peso != null ? { pesoTotalKg: r2f(pd.peso * cant) } : {}),
+              },
+            });
+          }
+        } else if (cant > 0.005) {
+          const p = precioCot.get(`${f.clienteId}:${productoId}`);
+          if (!p) continue;   // sin precio en la cotización no se puede facturar
+          huboCambio = true;
+          await tx.facturaLinea.create({
+            data: {
+              facturaId: f.id, productoId, cantidad: cant,
+              precioUnitario: p.precio, descuentoPct: p.desc, totalLinea: r2f(cant * p.precio),
+              origen: pd?.origen ?? "INTERNO",
+              pesoTotalKg: pd?.peso != null ? r2f(pd.peso * cant) : null,
+              orden: ++orden,
+            },
+          });
+        }
+      }
+
+      // Renglones que ya no vienen del despacho
+      for (const ex of f.lineas) {
+        if (!objetivo.has(ex.productoId)) {
+          huboCambio = true;
+          await tx.facturaLinea.delete({ where: { id: ex.id } });
+        }
+      }
+
+      if (!huboCambio) return;
+
+      const finales = await tx.facturaLinea.findMany({
+        where: { facturaId: f.id },
+        select: { cantidad: true, precioUnitario: true, totalLinea: true },
+      });
+      const bruto = r2f(finales.reduce((s, l) => s + Number(l.precioUnitario) * Number(l.cantidad), 0)) + extra;
+      const neto  = r2f(finales.reduce((s, l) => s + Number(l.totalLinea), 0)) + extra;
+      ahora = neto;
+      // Sin pagos aplicados (ya se verificó arriba): el saldo es el total.
+      await tx.factura.update({
+        where: { id: f.id },
+        data: { totalBruto: bruto, totalNeto: neto, descuentoTotal: r2f(bruto - neto), saldoPendiente: neto, estado: "EMITIDA" },
+      });
+    }, { timeout: 20000 });
+
+    if (huboCambio) actualizadas.push({ numero: f.numero, cliente: f.cliente.nombre, antes: r2f(antes), ahora: r2f(ahora) });
+  }
+
+  return { actualizadas, bloqueadas };
+}
+
 export async function actualizarLineas(req: Request, res: Response) {
   const despachoId = Number(req.params.id);
   const lineas: { id: number; cantidadDespachada: number }[] = req.body;
@@ -137,7 +291,12 @@ export async function actualizarLineas(req: Request, res: Response) {
 
   await prisma.ordenDespacho.update({ where: { id: despachoId }, data: { estado: estadoDespacho } });
 
-  res.json({ ok: true });
+  // Si el despacho ya tiene facturas, hay que rehacerlas con las cantidades
+  // nuevas: antes se quedaban con las viejas y el cliente terminaba pagando de
+  // más o de menos sin que nadie se enterara.
+  const facturas = await resincronizarFacturas(despachoId);
+
+  res.json({ ok: true, facturas });
 }
 
 export async function agregarCotizacion(req: Request, res: Response) {
@@ -493,5 +652,9 @@ export async function agregarLinea(req: Request, res: Response) {
     });
   });
 
-  res.status(201).json({ ok: true, producto: `${producto.nombre} ${producto.medida}`, precio, cotizacion: cotizacion.numero });
+  // Misma razon que en actualizarLineas: si el despacho ya esta facturado, la
+  // mercancia que se agrega ahora tiene que aparecer en la factura.
+  const facturasResinc = await resincronizarFacturas(despachoId);
+
+  res.status(201).json({ ok: true, producto: `${producto.nombre} ${producto.medida}`, precio, cotizacion: cotizacion.numero, facturas: facturasResinc });
 }

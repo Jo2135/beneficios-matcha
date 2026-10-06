@@ -101,6 +101,24 @@ export default function Despachos() {
     return despachada > 0 ? despachada : Number(linea.cantidadPedida);
   };
 
+  // Al corregir cantidades, el backend rehace las facturas del despacho para que
+  // coincidan con lo que salio. Si alguna no se pudo tocar (ya tiene pagos), el
+  // usuario tiene que saberlo: la factura quedo con las cantidades viejas.
+  const avisarFacturas = (r: any) => {
+    const act: any[] = r?.actualizadas ?? [];
+    const blo: any[] = r?.bloqueadas ?? [];
+    if (act.length > 0) {
+      const detalle = act
+        .map((f) => `• ${f.numero} (${f.cliente}): $${Number(f.antes).toFixed(2)} → $${Number(f.ahora).toFixed(2)}`)
+        .join("\n");
+      alert(`Se actualizó la factura para que coincida con lo despachado:\n\n${detalle}`);
+    }
+    if (blo.length > 0) {
+      const detalle = blo.map((f) => `• ${f.numero} (${f.cliente}) — ${f.motivo}`).join("\n");
+      alert(`⚠️ ATENCIÓN\n\nEstas facturas NO se tocaron y quedaron con las cantidades anteriores:\n\n${detalle}\n\nRevísalas tú antes de cobrar.`);
+    }
+  };
+
   const guardarLineas = useMutation({
     mutationFn: () => {
       const lineas = (despacho?.lineas ?? []).map((l: any) => ({
@@ -109,10 +127,12 @@ export default function Despachos() {
       }));
       return despachosApi.actualizarLineas(despachoId!, lineas);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["despacho", despachoId] });
       qc.invalidateQueries({ queryKey: ["despachos"] });
+      qc.invalidateQueries({ queryKey: ["facturas"] });
       setCantidades({});
+      avisarFacturas(data?.facturas);
     },
   });
 

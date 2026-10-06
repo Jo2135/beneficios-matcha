@@ -449,6 +449,31 @@ factura y con el cambio pasa a $0 solo). Ojo al medir: DES-0012 y DES-0018
 *parecen* afectados pero no lo están — su faltante era íntegramente devolución
 registrada.
 
+13. **Corregir las cantidades despachadas regenera la factura** (6-oct-2026).
+Había dos caminos por los que cambian las cantidades y solo uno rehacía la
+factura: una **devolución** sí (renglón, totales, saldo y estado, en una
+transacción), pero **corregir las cantidades despachadas no la tocaba**. Por ahí
+se coló FAC-0021 (Fyfto, DES-0019): se verificó lo que llegó, se subieron 48
+TEE 4" y se bajaron 12 YEE 4", y el cliente quedó debiendo $116,16 que nadie le
+cobraba. Ahora `actualizarLineas` y `agregarLinea` llaman a
+`resincronizarFacturas()`, que rearma los renglones con lo que salió.
+
+Reglas de esa función: **si la factura ya tiene pagos aplicados NO se toca** —
+ahí hay dinero del cliente y la decisión es de José; se devuelve el aviso y la
+pantalla se lo dice. **Los precios no se recalculan**: se conserva el
+`precioUnitario` con el que se facturó y solo cambian las cantidades; un renglón
+nuevo toma el precio de la cotización. La factura no guarda de qué cotización
+nació, así que se empareja **por cliente**: si un cliente tiene dos facturas en
+el mismo despacho, se deja quieto y se avisa.
+
+⚠️ **En las líneas de factura el `precioUnitario` YA trae el descuento aplicado**
+(se guarda el `precioFinal` de la cotización); `descuentoPct` queda solo como
+referencia — verificado: las 19 líneas con descuento del sistema cumplen
+`totalLinea = cantidad × precioUnitario`. Las devoluciones aplicaban el
+descuento **otra vez** y acreditaban de menos (en FAC-0016, con 3,13%, una
+devolución de 100 uds daba $89,68 en vez de $92,58). Ahora el precio por unidad
+se saca de la propia línea: `totalLinea / cantidad`.
+
 ---
 
 ## 15. Metodología de Trabajo (cómo trabajamos en este proyecto)
