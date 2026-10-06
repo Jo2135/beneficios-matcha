@@ -243,12 +243,18 @@ export async function actualizar(req: Request, res: Response) {
   const fechaVencimiento = new Date();
   fechaVencimiento.setDate(fechaVencimiento.getDate() + (validezDias ?? 30));
 
-  // Vendedor: MASTER/ADMIN pueden cambiarlo; si no eligen, quedan ellos como vendedor.
-  // VENDEDOR no puede reasignar (se conserva el vendedor actual).
+  // Vendedor: MASTER/ADMIN pueden cambiarlo; VENDEDOR no puede reasignar.
+  //
+  // OJO con el orden: antes esta cadena terminaba en `?? null`, asi que editar
+  // una cotizacion sin elegir vendedor lo BORRABA. A Sonia y a Darwin (ADMIN) no
+  // se les puede caer en `creadorDb.vendedorId` porque no estan ligados a ningun
+  // vendedor, con lo cual su edicion dejaba la cotizacion huerfana y la comision
+  // aparecia en Ganancias sin dueno. Ahora, si nadie elige, se CONSERVA el
+  // vendedor que ya tenia, y solo si no tenia ninguno se cae al del cliente.
   let vendedorFinal: number | null | undefined = undefined;
   if (usuario.rol !== "VENDEDOR") {
     const creadorDb = await prisma.usuario.findUnique({ where: { id: usuario.id }, select: { vendedorId: true } });
-    vendedorFinal = vendedorId ?? creadorDb?.vendedorId ?? null;
+    vendedorFinal = vendedorId ?? cot.vendedorId ?? creadorDb?.vendedorId ?? cliente.vendedorId ?? null;
   }
 
   await prisma.cotizacionLinea.deleteMany({ where: { cotizacionId: id } });

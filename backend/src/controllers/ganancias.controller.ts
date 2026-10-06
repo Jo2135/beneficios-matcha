@@ -434,7 +434,11 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
           select: {
             id: true, totalNeto: true,
             vendedor: { select: { nombre: true, gananciaMuchachosPct: true } },
-            cliente:  { select: { id: true, nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true } },
+            cliente:  { select: { id: true, nombre: true, comisionTuberiaPct: true, comisionConexionesPct: true, fleteTuberiaPct: true, fleteConexionesPct: true, socioEquivalente: true, vendedorEsMaster: true,
+                                  // respaldo para el nombre: el % de comision sale del
+                                  // CLIENTE, asi que si la cotizacion quedo sin vendedor
+                                  // el dueno de esa plata es el vendedor del cliente.
+                                  vendedor: { select: { nombre: true } } } },
             lineas:   { select: { totalLinea: true, producto: { select: { codigo: true, nombre: true, categoria: { select: { nombre: true } } } } } },
           },
         },
@@ -736,7 +740,9 @@ export async function calcularGananciasDespacho(id: number): Promise<any | null>
     if (monto > 0 || ov) {
       comisionesVendedores.push({
         clienteNombre:  cot.cliente?.nombre  ?? `Cot #${cot.id}`,
-        vendedorNombre: cot.vendedor?.nombre ?? "—",
+        // Si la cotizacion no tiene vendedor, el del cliente: una comision nunca
+        // debe aparecer sin nombre, porque es plata que alguien cobra.
+        vendedorNombre: cot.vendedor?.nombre ?? cot.cliente?.vendedor?.nombre ?? "—",
         ctPct, ccPct, totalTuberia, totalConexiones, monto,
         facturaId: cot.cliente?.id != null ? (facturaPorCliente.get(cot.cliente.id) ?? null) : null,
         ajustada: !!ov,
