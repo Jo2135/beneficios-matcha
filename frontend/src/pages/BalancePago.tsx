@@ -469,6 +469,74 @@ export default function BalancePago() {
         </div>
       )}
 
+      {/* ── Resumen de la carga ───────────────────────────────────────────────
+          Pedido por José (7-oct-2026): ver de un golpe, arriba, cuánto se ha
+          abonado, cuánto se repartió desde Gastos Operativos y cuánto queda,
+          sin tener que sumar la columna de Saldo a mano.
+          Los colores son los mismos de la tabla: verde los abonos, azul
+          petróleo los gastos operativos, para que se reconozcan al bajar. */}
+      {(() => {
+        const abonado  = items.reduce((s, i) => s + i.cuotas.reduce((t, c) => t + Number(c.monto), 0), 0);
+        const asignado = items.reduce((s, i) => s + (i.gastos ?? []).reduce((t, g) => t + Number(g.monto), 0), 0);
+        const nAbonos  = items.reduce((s, i) => s + i.cuotas.length, 0);
+        const nGastos  = items.reduce((s, i) => s + (i.gastos ?? []).length, 0);
+
+        const txtAbonos = nAbonos === 1 ? "1 abono registrado" : `${nAbonos} abonos registrados`;
+        const txtGastos = nGastos === 1 ? "1 gasto operativo" : `${nGastos} gastos operativos`;
+
+        // La barra sale del total; si algún renglón quedó negativo se acota para
+        // que no se desborde ni se vaya a negativo.
+        const usado   = totalGeneral > 0.005 ? Math.min(100, Math.max(0, (totalPagado / totalGeneral) * 100)) : 0;
+        const pctAbon = totalGeneral > 0.005 ? Math.min(100, Math.max(0, (abonado / totalGeneral) * 100)) : 0;
+        const pctAsig = Math.max(0, usado - pctAbon);
+
+        const casilla = (
+          titulo: string, monto: number, pie: string, color: string, destacada?: boolean,
+        ) => (
+          <div style={{
+            flex: "1 1 160px", minWidth: 150,
+            background: destacada ? "#fffbeb" : "transparent",
+            border: destacada ? "1px solid #fde68a" : "1px solid transparent",
+            borderRadius: 8, padding: destacada ? "8px 12px" : "8px 0",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
+              {titulo}
+            </div>
+            <div style={{ fontSize: 21, fontWeight: 800, color, marginTop: 2, whiteSpace: "nowrap" }}>
+              {monto < 0 ? `($${fmt(Math.abs(monto))})` : `$${fmt(monto)}`}
+            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{pie}</div>
+          </div>
+        );
+
+        return (
+          <div style={{
+            background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
+            padding: "12px 18px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,.06)",
+          }}>
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "stretch" }}>
+              {casilla("Total de la carga", totalGeneral, `${items.length} conceptos`, "#1e293b")}
+              {casilla("Abonado", abonado, txtAbonos, "#16a34a")}
+              {casilla("Asignado", asignado, txtGastos, "#0e7490")}
+              {casilla("Disponible", totalSaldo, "sin usar todavía", "#b45309", true)}
+            </div>
+
+            {totalGeneral > 0.005 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", height: 7, borderRadius: 999, overflow: "hidden", background: "#f1f5f9" }}>
+                  <div style={{ width: `${pctAbon}%`, background: "#16a34a" }} title={`Abonado: $${fmt(abonado)}`} />
+                  <div style={{ width: `${pctAsig}%`, background: "#0e7490" }} title={`Asignado: $${fmt(asignado)}`} />
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                  Se ha usado el <strong style={{ color: "#1e293b" }}>{usado.toFixed(1)}%</strong> de esta carga
+                  {nGastos > 0 && <> — ${fmt(abonado)} en abonos y ${fmt(asignado)} en gastos operativos</>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Gastos de la carga y conceptos adicionales: al guardar, recalculan solos */}
       {isMaster && (
         <>
