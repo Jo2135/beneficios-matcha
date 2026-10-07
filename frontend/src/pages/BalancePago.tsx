@@ -481,8 +481,15 @@ export default function BalancePago() {
         const nAbonos  = items.reduce((s, i) => s + i.cuotas.length, 0);
         const nGastos  = items.reduce((s, i) => s + (i.gastos ?? []).length, 0);
 
-        const txtAbonos = nAbonos === 1 ? "1 abono registrado" : `${nAbonos} abonos registrados`;
+        const txtAbonos = nAbonos === 1 ? "1 abono · referencial" : `${nAbonos} abonos · referencial`;
         const txtGastos = nGastos === 1 ? "1 gasto operativo" : `${nGastos} gastos operativos`;
+
+        // Lo que se gastó de esta carga por encima de lo que entró a ella.
+        // Regla de José (7-oct-2026): los abonos NO limitan lo que se puede
+        // asignar — cuando un cliente se tarda, los gastos se cubren con
+        // recursos de otras cargas. Por eso esto no bloquea nada: solo se
+        // muestra, para saber cuánto de esta carga está puesto por otros.
+        const excedente = Math.max(0, asignado - abonado);
 
         // La barra sale del total; si algún renglón quedó negativo se acota para
         // que no se desborde ni se vaya a negativo.
@@ -518,6 +525,13 @@ export default function BalancePago() {
               {casilla("Total de la carga", totalGeneral, `${items.length} conceptos`, "#1e293b")}
               {casilla("Abonado", abonado, txtAbonos, "#16a34a")}
               {casilla("Asignado", asignado, txtGastos, "#0e7490")}
+              {casilla(
+                "Asignado de más",
+                excedente,
+                excedente > 0.005 ? "puesto por otras cargas" : "lo abonado alcanza",
+                excedente > 0.005 ? "#dc2626" : "#94a3b8",
+                excedente > 0.005,
+              )}
               {casilla("Disponible", totalSaldo, "sin usar todavía", "#b45309", true)}
             </div>
 
@@ -533,6 +547,13 @@ export default function BalancePago() {
                 </div>
               </div>
             )}
+
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8, lineHeight: 1.5 }}>
+              Los abonos son <strong style={{ color: "#64748b" }}>referenciales</strong>: no limitan lo que se
+              puede asignar a esta carga. Cuando un cliente se tarda en pagar, los gastos se cubren con recursos
+              de otras cargas — <strong style={{ color: "#64748b" }}>“Asignado de más”</strong> es justamente esa
+              parte, la que todavía está puesta por otros.
+            </div>
           </div>
         );
       })()}

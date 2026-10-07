@@ -493,6 +493,20 @@ medianoche —las fechas escritas— y en hora local los que traen hora —`crea
 `fechaAsignacion`, `aprobadoEn`—, que es lo correcto para esos. BalancePago y
 GastosOperativos ya lo resolvían por su cuenta con el truco de `"T12:00:00"`.
 
+15. **Los abonos del balance son REFERENCIALES** (regla de José, 7-oct-2026).
+No limitan lo que se puede asignar a una carga. Cuando un cliente se tarda en
+pagar, los gastos de su carga se cubren con **recursos de otros clientes**, así
+que un balance puede tener más gasto asignado que dinero abonado y eso **no es
+un error ni se debe bloquear**. Nunca poner una validación que impida asignar
+por encima de lo abonado.
+
+Lo que sí hace falta es **verlo**: el resumen de arriba del Balance de Pagos
+muestra *Total de la carga · Abonado · Asignado · **Asignado de más** ·
+Disponible*. "Asignado de más" es `max(0, asignado − abonado)`: la parte de esa
+carga que todavía está puesta por otras. Verificado con una prueba de ida y
+vuelta: $500 en una carga sin abonos marca $500 de más; $800 en una carga con
+$5.000 abonados no marca nada.
+
 ---
 
 ## 15. Metodología de Trabajo (cómo trabajamos en este proyecto)
